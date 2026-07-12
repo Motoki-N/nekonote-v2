@@ -141,6 +141,7 @@ export type Database = {
         Row: {
           content: string
           created_at: string
+          deleted_at: string | null
           id: string
           title: string
           updated_at: string
@@ -149,6 +150,7 @@ export type Database = {
         Insert: {
           content?: string
           created_at?: string
+          deleted_at?: string | null
           id?: string
           title?: string
           updated_at?: string
@@ -157,6 +159,7 @@ export type Database = {
         Update: {
           content?: string
           created_at?: string
+          deleted_at?: string | null
           id?: string
           title?: string
           updated_at?: string
@@ -574,6 +577,39 @@ export type Database = {
           name?: string
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      templates: {
+        Row: {
+          content: string
+          created_at: string
+          id: string
+          is_default: boolean
+          name: string
+          tag_name: string | null
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name: string
+          tag_name?: string | null
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string
+          id?: string
+          is_default?: boolean
+          name?: string
+          tag_name?: string | null
+          updated_at?: string
+          user_id?: string | null
         }
         Relationships: []
       }

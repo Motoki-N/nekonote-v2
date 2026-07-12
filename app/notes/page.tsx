@@ -1,0 +1,166 @@
+import Link from "next/link";
+import { Trash2 } from "lucide-react";
+
+import { createClient } from "@/lib/supabase/server";
+import { createNote } from "@/lib/actions/notes";
+import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { NoteCard, type NoteListItem } from "@/components/notes/note-card";
+import { TrashCard } from "@/components/notes/trash-card";
+import { TagFilter } from "@/components/notes/tag-filter";
+import { SearchForm } from "@/components/notes/search-form";
+
+// ILIKE パターンと PostgREST の or() 構文を壊す文字を除去・エスケープする
+function toSearchPattern(q: string): string {
+  const cleaned = q.replaceAll(/[,()"\\]/g, "").replaceAll(/[%_]/g, (m) => `\\${m}`);
+  return `%${cleaned}%`;
+}
+
+type NoteRow = {
+  id: string;
+  title: string;
+  content: string;
+  updated_at: string;
+  deleted_at: string | null;
+  note_tags: { tags: { id: string; name: string; kind: string } | null }[];
+};
+
+function toListItem(row: NoteRow): NoteListItem {
+  return {
+    id: row.id,
+    title: row.title,
+    content: row.content,
+    updatedAt: row.updated_at,
+    deletedAt: row.deleted_at,
+    tags: row.note_tags.flatMap((nt) => (nt.tags ? [nt.tags] : [])),
+  };
+}
+
+export default async function NotesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; tags?: string; view?: string }>;
+}) {
+  const { q, tags: tagsParam, view } = await searchParams;
+  const isTrash = view === "trash";
+  const supabase = await createClient();
+
+  // 絞り込みチップ用の全タグ
+  const { data: allTags } = await supabase
+    .from("tags")
+    .select("id, name, kind")
+    .order("kind")
+    .order("name");
+
+  const selectedTagIds = (tagsParam ?? "").split(",").filter(Boolean);
+
+  // タグAND絞り込み: 選択タグごとの note_id 集合を交差させる（ソロ利用規模のためJS交差で十分）
+  let tagFilteredNoteIds: string[] | null = null;
+  if (!isTrash && selectedTagIds.length > 0) {
+    const { data: links } = await supabase
+      .from("note_tags")
+      .select("note_id, tag_id")
+      .in("tag_id", selectedTagIds);
+    const byTag = new Map<string, Set<string>>();
+    for (const link of links ?? []) {
+      const set = byTag.get(link.tag_id) ?? new Set<string>();
+      set.add(link.note_id);
+      byTag.set(link.tag_id, set);
+    }
+    tagFilteredNoteIds = selectedTagIds.reduce<string[] | null>((acc, tagId) => {
+      const ids = [...(byTag.get(tagId) ?? new Set<string>())];
+      if (acc === null) return ids;
+      const set = new Set(ids);
+      return acc.filter((id) => set.has(id));
+    }, null);
+  }
+
+  let notes: NoteListItem[] = [];
+  if (tagFilteredNoteIds === null || tagFilteredNoteIds.length > 0) {
+    let query = supabase
+      .from("notes")
+      .select("id, title, content, updated_at, deleted_at, note_tags(tags(id, name, kind))");
+    if (isTrash) {
+      query = query.not("deleted_at", "is", null).order("deleted_at", { ascending: false });
+    } else {
+      query = query.is("deleted_at", null).order("updated_at", { ascending: false });
+      if (q) {
+        const pattern = toSearchPattern(q);
+        query = query.or(`title.ilike.${pattern},content.ilike.${pattern}`);
+      }
+      if (tagFilteredNoteIds) {
+        query = query.in("id", tagFilteredNoteIds);
+      }
+    }
+    const { data } = await query;
+    notes = (data ?? []).map(toListItem);
+  }
+
+  return (
+    <div className="flex flex-1 flex-col">
+      <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
+        <div className="flex items-center gap-3">
+          <Link href="/" className="text-lg font-semibold text-foreground">
+            🐱
+          </Link>
+          <h1 className="text-lg font-semibold text-foreground">
+            {isTrash ? "ごみ箱" : "ノート"}
+          </h1>
+        </div>
+        <div className="flex items-center gap-2">
+          {isTrash ? (
+            <Button variant="outline" size="sm" render={<Link href="/notes">ノートへ戻る</Link>} />
+          ) : (
+            <>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="ごみ箱"
+                render={
+                  <Link href="/notes?view=trash">
+                    <Trash2 />
+                  </Link>
+                }
+              />
+              <form action={createNote}>
+                <Button type="submit" size="sm">
+                  新規ノート
+                </Button>
+              </form>
+            </>
+          )}
+          <ThemeToggle />
+        </div>
+      </header>
+
+      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4 sm:p-6">
+        {!isTrash && (
+          <>
+            <SearchForm q={q} tagsParam={tagsParam} />
+            <TagFilter tags={allTags ?? []} selectedTagIds={selectedTagIds} q={q} />
+          </>
+        )}
+
+        {notes.length === 0 ? (
+          <p className="py-12 text-center text-sm text-muted-foreground">
+            {isTrash
+              ? "ごみ箱は空です"
+              : q || selectedTagIds.length > 0
+                ? "条件に合うノートがありません"
+                : "まだノートがありません。「新規ノート」から書きはじめましょう"}
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {notes.map((note) =>
+              isTrash ? (
+                <TrashCard key={note.id} note={note} />
+              ) : (
+                <NoteCard key={note.id} note={note} />
+              ),
+            )}
+          </ul>
+        )}
+      </main>
+    </div>
+  );
+}

@@ -14,7 +14,7 @@
 | 論点 | 決定 |
 |---|---|
 | エディタ方式 | WYSIWYG（Tiptap）。Notionに近い書き心地を優先 |
-| 保存形式 | **Markdown**（tiptap-markdown で往復変換）。`notes.content` はMarkdownという設計を維持し、対応記法を往復安全な範囲に限定する |
+| 保存形式 | **Markdown**（公式 `@tiptap/markdown` で往復変換。SPEC策定時はサードパーティの tiptap-markdown を想定していたが、Tiptap v3 に公式パッケージがあるため実装時に変更）。`notes.content` はMarkdownという設計を維持し、対応記法を往復安全な範囲に限定する |
 | 保存モデル | 自動保存（入力停止後数秒のデバウンス＋離脱時保存）。保存失敗時は localStorage へドラフト退避（SPEC-auth §6 が要件の正） |
 | タグUX | インライン作成。ノート画面のタグ入力欄で既存候補から選択 or その場で新規作成（種類を選んで） |
 | テンプレート管理 | **DBテーブル（`templates`）**。ハイブリッド所有モデル（標準同梱行 user_id null＋ユーザー作成行、personas と同型） |

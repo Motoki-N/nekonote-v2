@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -22,6 +24,7 @@ export default function Home() {
         <p className="text-sm text-muted-foreground">
           小説は人間が書き、AIはネタ出し・レビュー・校正で伴走する。
         </p>
+        <Button render={<Link href="/notes">ノートをひらく</Link>} />
       </main>
     </div>
   );

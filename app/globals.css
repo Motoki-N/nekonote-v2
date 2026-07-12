@@ -128,3 +128,44 @@
     @apply font-sans;
   }
 }
+
+/* Tiptap エディタ本文（SPEC-notes §3.2 の対応記法のみ）。色はテーマ用CSS変数のみ使用 */
+@layer components {
+  .tiptap-editor {
+    @apply min-h-[50vh] flex-1 text-base leading-relaxed text-foreground;
+  }
+  .tiptap-editor > * + * {
+    @apply mt-3;
+  }
+  .tiptap-editor h1 {
+    @apply mt-6 text-2xl font-bold;
+  }
+  .tiptap-editor h2 {
+    @apply mt-5 text-xl font-bold;
+  }
+  .tiptap-editor h3 {
+    @apply mt-4 text-lg font-semibold;
+  }
+  .tiptap-editor ul {
+    @apply list-disc pl-6;
+  }
+  .tiptap-editor ol {
+    @apply list-decimal pl-6;
+  }
+  .tiptap-editor li + li {
+    @apply mt-1;
+  }
+  .tiptap-editor blockquote {
+    @apply border-l-2 border-border pl-4 text-muted-foreground;
+  }
+  .tiptap-editor hr {
+    @apply my-6 border-t border-border;
+  }
+  .tiptap-editor a {
+    @apply text-primary underline underline-offset-4;
+  }
+  /* 空エディタのプレースホルダー行のキャレット位置ずれ防止 */
+  .tiptap-editor p {
+    @apply min-h-[1em];
+  }
+}
