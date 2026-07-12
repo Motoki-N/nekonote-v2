@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export default function Home() {
@@ -5,7 +6,14 @@ export default function Home() {
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b border-border px-6 py-4">
         <h1 className="text-lg font-semibold text-foreground">🐱 ネコノテAI</h1>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          <ThemeToggle />
+          <form action="/logout" method="post">
+            <Button type="submit" variant="ghost" size="sm">
+              ログアウト
+            </Button>
+          </form>
+        </div>
       </header>
       <main className="flex flex-1 flex-col items-center justify-center gap-4 p-8">
         <p className="text-2xl font-bold text-foreground">
