@@ -19,6 +19,9 @@ build/
 # typescript
 *.tsbuildinfo
 
+# claude code（個人設定のみ除外。settings.json はコミット対象）
+.claude/settings.local.json
+
 # misc
 .DS_Store
 *.log
