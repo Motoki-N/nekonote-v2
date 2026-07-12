@@ -26,7 +26,7 @@
 ### 3.1 セッション管理方式
 
 - `@supabase/ssr` によるCookieベースのセッション管理（Next.js App Router標準パターン）
-- **middleware.ts で全リクエスト時に `supabase.auth.getUser()` を呼び、セッションCookieを更新する**。
+- **proxy.ts（Next.js 16で middleware から改名された規約）で全リクエスト時に `supabase.auth.getUser()` を呼び、セッションCookieを更新する**。
   これが第一期の「切れる」問題への直接の対策（リフレッシュがユーザー操作に依存しない）
 - アクセストークン（JWT）有効期限: Supabaseデフォルトの1時間
 - リフレッシュトークン: ローテーション有効（Supabaseデフォルト）。
@@ -36,7 +36,7 @@
 
 ### 3.2 認証フロー
 
-1. 未認証ユーザーが保護ページへアクセス → middleware が `/login` へリダイレクト（元URLを `returnTo` クエリで保持）
+1. 未認証ユーザーが保護ページへアクセス → proxy が `/login` へリダイレクト（元URLを `returnTo` クエリで保持）
 2. `/login` で「Googleでログイン」ボタン → `signInWithOAuth({ provider: 'google' })`（PKCEフロー）
 3. Google認証後 `/auth/callback` へ戻り、`exchangeCodeForSession` でセッション確立
 4. `returnTo` があればそこへ、なければトップへリダイレクト
@@ -44,7 +44,7 @@
 ### 3.3 保護範囲
 
 - **全ページ認証必須**。例外（公開ルート）は `/login` と `/auth/callback` のみ
-- API Route / Server Action も同様に認証チェックを通す（middlewareのmatcherで静的アセット以外を対象にする）
+- API Route / Server Action も同様に認証チェックを通す（proxyのmatcherで静的アセット以外を対象にする）
 
 ## 4. 許可リスト（サインイン制限）
 
@@ -61,7 +61,7 @@
 - **DB側（一次ゲート）**: `private.auth_allowlist` テーブル（emailのみの1カラム）に許可メールを保持し、トリガー関数がこれを参照する。
   許可リスト変更時はマイグレーション（または SQL 1文）で更新する。テーブルは private スキーマに置き、API（PostgREST）からのアクセスを revoke で遮断する。
   ※ 当初案の `ALTER DATABASE ... SET`（GUC方式）は、ホスト版 Supabase では postgres ロールに権限がなく実行不可だったため、テーブル方式に変更（2026-07-12）
-- **アプリ側（二次ゲート・多層防御）**: 環境変数 `ALLOWED_EMAILS`（カンマ区切り）を middleware でチェックし、リスト外のセッションは強制サインアウト。
+- **アプリ側（二次ゲート・多層防御）**: 環境変数 `ALLOWED_EMAILS`（カンマ区切り）を proxy でチェックし、リスト外のセッションは強制サインアウト。
   DB側とアプリ側の値は手動で同期する（ソロ利用・実質1件のため許容）
 
 将来のマルチユーザー化時は `allowed_users` テーブル＋管理画面へ移行する（本仕様のスコープ外）。
@@ -87,7 +87,7 @@
 
 | ファイル | 役割 |
 |---|---|
-| `middleware.ts` | セッション更新・未認証リダイレクト・許可リスト二次チェック |
+| `proxy.ts`（旧 `middleware.ts`） | セッション更新・未認証リダイレクト・許可リスト二次チェック |
 | `lib/supabase/client.ts` | ブラウザ用Supabaseクライアント生成 |
 | `lib/supabase/server.ts` | サーバー用Supabaseクライアント生成（Cookie連携） |
 | `app/login/page.tsx` | ログイン画面（Googleボタン・拒否時エラー表示） |
