@@ -89,12 +89,12 @@ nekonote-v2/
 
 ### フェーズ0: 環境整備（実装開始前・1〜2日）
 
-- [ ] リポジトリ初期化・`/init` で CLAUDE.md 雛形生成 → 上記方針で刈り込み
-- [ ] hooks 3種の設定と動作確認
-- [ ] `gh` CLI セットアップ（原稿管理の GitHub 移管と Claude Code 運用の両方の軸）
-- [ ] `.claude/skills/` に Story Engineering / 草稿→浄書 / レビュープロファイルの知識を配置
-- [ ] security-reviewer subagent の定義
-- [ ] `docs/dev-log.md` 作成（技術書典用の記録先）
+- [x] リポジトリ初期化・`/init` で CLAUDE.md 雛形生成 → 上記方針で刈り込み
+- [x] hooks 3種の設定と動作確認（設定済み 7/12。発火の実地確認はスキャフォールド後の初回 .ts 編集時に実施）
+- [x] `gh` CLI セットアップ（原稿管理の GitHub 移管と Claude Code 運用の両方の軸）（7/12 認証確認済み）
+- [x] `.claude/skills/` に Story Engineering / 草稿→浄書 / レビュープロファイルの知識を配置（7/12）
+- [x] security-reviewer subagent の定義（7/12）
+- [x] `docs/dev-log.md` 作成（技術書典用の記録先）
 
 ### フェーズ1: 仕様策定（インタビュー駆動）
 
