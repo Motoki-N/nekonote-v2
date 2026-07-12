@@ -1,15 +1,23 @@
 -- SPEC-auth 4: メール許可リスト（一次ゲート: DB）
--- 許可リストを Postgres 設定（DB側の環境変数に相当）として保持し、
+-- 許可リストを private スキーマのテーブルに保持し、
 -- auth.users への BEFORE INSERT トリガーでリスト外のユーザー作成を拒否する。
--- 許可リスト変更時はこの設定値を UPDATE する（アプリ側 ALLOWED_EMAILS と手動同期）。
+-- 許可リスト変更時はこのテーブルを UPDATE する（アプリ側 ALLOWED_EMAILS と手動同期）。
 --
--- 【運用注意】ALTER DATABASE ... SET は新規接続にのみ反映される。
--- Auth サーバー（GoTrue）が古いプール接続を保持していると設定が NULL のままとなり、
--- フェイルクローズにより許可済みメールでもサインイン拒否される。
--- 適用後にログイン検証を行い、拒否される場合は Supabase ダッシュボードから
--- プロジェクトを再起動（Settings > General > Restart project）して接続を張り直すこと。
+-- ※ 当初は ALTER DATABASE ... SET（GUC方式）の設計だったが、ホスト版 Supabase では
+--    postgres ロールに ALTER DATABASE 権限がなく（所有者は supabase_admin）実行不可のため、
+--    テーブル方式に変更した。トリガーが毎回テーブルを参照するので、変更は即時反映される。
 
-alter database postgres set app.allowed_emails = 'motoking55@gmail.com';
+create schema if not exists private;
+
+create table private.auth_allowlist (
+  email text primary key
+);
+
+-- API（PostgREST）経由のアクセスを禁止する。private スキーマは公開スキーマ外だが多層防御として明示
+revoke all on schema private from anon, authenticated;
+revoke all on private.auth_allowlist from anon, authenticated;
+
+insert into private.auth_allowlist (email) values ('motoking55@gmail.com');
 
 create or replace function public.check_email_allowlist()
 returns trigger
@@ -17,16 +25,13 @@ language plpgsql
 security definer
 set search_path = ''
 as $$
-declare
-  allowed text[];
 begin
-  -- 設定未定義時は空リスト＝全拒否（フェイルクローズ）
-  allowed := string_to_array(
-    replace(lower(coalesce(current_setting('app.allowed_emails', true), '')), ' ', ''),
-    ','
-  );
-
-  if new.email is null or not (lower(new.email) = any (allowed)) then
+  -- テーブルが空なら全拒否（フェイルクローズ）
+  if new.email is null or not exists (
+    select 1
+    from private.auth_allowlist a
+    where lower(a.email) = lower(new.email)
+  ) then
     raise exception 'signup not allowed for this email';
   end if;
 

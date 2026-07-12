@@ -58,8 +58,9 @@
 環境変数管理の方針とDBトリガー拒否の組み合わせには制約がある：
 **PostgresのトリガーはVercelの環境変数を読めない**。そのため以下の2層構成とする。
 
-- **DB側（一次ゲート）**: マイグレーションで `ALTER DATABASE ... SET app.allowed_emails = 'motoking55@gmail.com'` としてPostgres設定に保持し、トリガー関数は `current_setting('app.allowed_emails')` を参照する。
-  Postgres設定は「DB側の環境変数」に相当し、許可リスト変更時はマイグレーション（または SQL 1文）で更新する
+- **DB側（一次ゲート）**: `private.auth_allowlist` テーブル（emailのみの1カラム）に許可メールを保持し、トリガー関数がこれを参照する。
+  許可リスト変更時はマイグレーション（または SQL 1文）で更新する。テーブルは private スキーマに置き、API（PostgREST）からのアクセスを revoke で遮断する。
+  ※ 当初案の `ALTER DATABASE ... SET`（GUC方式）は、ホスト版 Supabase では postgres ロールに権限がなく実行不可だったため、テーブル方式に変更（2026-07-12）
 - **アプリ側（二次ゲート・多層防御）**: 環境変数 `ALLOWED_EMAILS`（カンマ区切り）を middleware でチェックし、リスト外のセッションは強制サインアウト。
   DB側とアプリ側の値は手動で同期する（ソロ利用・実質1件のため許容）
 
