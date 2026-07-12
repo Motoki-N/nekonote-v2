@@ -116,3 +116,12 @@
 - 検証手法メモ: トースト（4秒自動消滅）はツール呼び出しレイテンシで見逃す → MutationObserver を先に仕込んで捕捉・自動クリック。認証済みREST（ページ内fetch＋Cookieのaccess_token）でDB状態を直接検証
 - 残: 本番デプロイ後の実地確認（Notionからのネタメモ引っ越し＝実運用移行はユーザー実施）
 - 本番デプロイ完了（`npx vercel deploy --prod --yes`、Ready確認済み）。外形確認OK: 未認証の /notes が 307 → /login?returnTo=%2Fnotes。気づき: Next.js 16 が middleware ファイル規約の非推奨警告を出している（proxy への移行が今後必要）
+
+### セッション⑦: SPEC-ai-deep-dive インタビュー・策定（AI掘り下げ支援・Sprint 1後半）
+
+- SPEC-notes で分離していた「AI掘り下げ支援」（Vercel AI SDK導入・ai_model_settings とセット）のSPECインタビューを2巡実施
+  - 1巡目（方針）: UI→**エディタ内サイドパネル**（スマホはボトムシート）／履歴→**ノートごとに1スレッドDB保存**／ペルソナ→**標準ペルソナ前倒しシード**／ノート反映→**応答ごとに「ノートに挿入」**
+  - 2巡目（派生する落とし穴）: chat_threads/chat_messages→**汎用設計**（note_id nullable＋persona_id。R2の独立チャット画面も同テーブルで実現、マイグレーション作り直し不要）／ノート削除連動→**運命共同体**（ごみ箱中は非表示のみ・完全削除でcascade）／シード範囲→**conversational 2人**（アシスタント・マスター）で担当はアシスタント固定（reviewer 4人はSprint 2の領分）／ai_model_settings→**コード内デフォルト定数にフォールバック**（設定UIはSprint 5）
+- インタビューで聞かずに設計原則で決めた点（レビューで確認済み）: ストリーミング＋Route Handler `/api/chat`（Server Actionはストリーミング不可）／ノート本文は送信時点のエディタ現在値を渡す／履歴は直近20メッセージ制限・関連ノートは含めない／会話リセットボタン／必須APIキーは `OPENAI_API_KEY` のみ（medium帯=GPT-5.4-mini）
+- docs/SPEC-ai-deep-dive.md 策定 → ユーザーレビューで指摘なし → **確定**（2026-07-13）
+- 次: 新規セッションで実装。chat_threads/chat_messages マイグレーションのプランモード承認から（security-reviewer 必須ゲート: マイグレーションRLS＋/api/chat）。冒頭で `OPENAI_API_KEY` の .env.local 登録＋ `vercel env add` が必要（キーはユーザーが用意）
