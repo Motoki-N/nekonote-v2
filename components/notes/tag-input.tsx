@@ -71,7 +71,7 @@ export function TagInput({
         className="h-7 text-sm"
       />
       {open && (candidates.length > 0 || (trimmed !== "" && !exactMatch)) && (
-        <ul className="absolute top-full right-0 left-0 z-10 mt-1 max-h-56 overflow-y-auto rounded-md border border-border bg-popover p-1 text-sm text-popover-foreground shadow-md">
+        <ul className="absolute top-full right-0 left-0 z-20 mt-1 max-h-56 overflow-y-auto rounded-md border border-border bg-popover p-1 text-sm text-popover-foreground shadow-md">
           {candidates.map((tag) => (
             <li key={tag.id}>
               <button

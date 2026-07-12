@@ -238,6 +238,7 @@ export function NoteEditor({
         <Button
           variant="ghost"
           size="sm"
+          nativeButton={false}
           render={
             <Link href="/notes">
               <ArrowLeft data-icon="inline-start" />
@@ -314,7 +315,8 @@ export function NoteEditor({
         </div>
 
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-lg border border-border bg-background/95 p-1 backdrop-blur">
-          <EditorToolbar editor={editor} />
+          {/* useEditorState はマウント時の editor でスナップショットを初期化するため、生成後にマウントする */}
+          {editor && <EditorToolbar editor={editor} />}
           <div className="ml-auto">
             <TemplateMenu templates={templates} onInsert={insertTemplate} />
           </div>
@@ -326,31 +328,25 @@ export function NoteEditor({
   );
 }
 
-function EditorToolbar({ editor }: { editor: Editor | null }) {
+function EditorToolbar({ editor }: { editor: Editor }) {
   const state = useEditorState({
     editor,
-    selector: ({ editor: e }) =>
-      e
-        ? {
-            h1: e.isActive("heading", { level: 1 }),
-            h2: e.isActive("heading", { level: 2 }),
-            h3: e.isActive("heading", { level: 3 }),
-            bold: e.isActive("bold"),
-            italic: e.isActive("italic"),
-            bulletList: e.isActive("bulletList"),
-            orderedList: e.isActive("orderedList"),
-            blockquote: e.isActive("blockquote"),
-            link: e.isActive("link"),
-            canUndo: e.can().undo(),
-            canRedo: e.can().redo(),
-          }
-        : null,
+    selector: ({ editor: e }) => ({
+      h1: e.isActive("heading", { level: 1 }),
+      h2: e.isActive("heading", { level: 2 }),
+      h3: e.isActive("heading", { level: 3 }),
+      bold: e.isActive("bold"),
+      italic: e.isActive("italic"),
+      bulletList: e.isActive("bulletList"),
+      orderedList: e.isActive("orderedList"),
+      blockquote: e.isActive("blockquote"),
+      link: e.isActive("link"),
+      canUndo: e.can().undo(),
+      canRedo: e.can().redo(),
+    }),
   });
 
-  if (!editor || !state) return null;
-
   function toggleLink() {
-    if (!editor) return;
     if (editor.isActive("link")) {
       editor.chain().focus().extendMarkRange("link").unsetLink().run();
       return;

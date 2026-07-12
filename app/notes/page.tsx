@@ -109,13 +109,19 @@ export default async function NotesPage({
         </div>
         <div className="flex items-center gap-2">
           {isTrash ? (
-            <Button variant="outline" size="sm" render={<Link href="/notes">ノートへ戻る</Link>} />
+            <Button
+              variant="outline"
+              size="sm"
+              nativeButton={false}
+              render={<Link href="/notes">ノートへ戻る</Link>}
+            />
           ) : (
             <>
               <Button
                 variant="ghost"
                 size="icon-sm"
                 aria-label="ごみ箱"
+                nativeButton={false}
                 render={
                   <Link href="/notes?view=trash">
                     <Trash2 />
