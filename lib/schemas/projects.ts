@@ -57,3 +57,20 @@ export const sceneUpdateSchema = sceneInputSchema.partial().omit({ project_id: t
 
 export type SceneInput = z.infer<typeof sceneInputSchema>
 export type SceneUpdate = z.infer<typeof sceneUpdateSchema>
+
+// シーン編集ダイアログの保存ペイロード（並び順はD&D＝reorderScenes の領分）
+export const sceneEditSchema = z.object({
+  title: z.string().max(200),
+  content: z.string().max(20000),
+  part: z.enum(sceneParts),
+  anchor: z.enum(sceneAnchors).nullable(),
+  emotion_start: z.enum(emotions).nullable(),
+  emotion_end: z.enum(emotions).nullable(),
+})
+export type SceneEdit = z.infer<typeof sceneEditSchema>
+
+// D&D確定時の全シーン最終順序（レーン=part はドロップ先で確定する）
+export const sceneOrderSchema = z
+  .array(z.object({ id: z.uuid(), part: z.enum(sceneParts) }))
+  .max(500)
+export type SceneOrder = z.infer<typeof sceneOrderSchema>

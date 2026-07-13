@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import type { ProjectStatus, ProposalStatus } from "@/lib/schemas/enums";
+import type { ProposalStatus } from "@/lib/schemas/enums";
 import type { LinkedNote } from "@/lib/actions/projects";
 import { ProposalEditor } from "@/components/projects/proposal-editor";
 
@@ -9,15 +9,13 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select(
-      "id, title, status, event_name, deadline, target_pages, proposals (id, genre, target_audience, content, status, updated_at)",
-    )
-    .eq("id", id)
+  // プロジェクト情報ヘッダーは layout.tsx が描画する。ここでは企画書のみ引く
+  const { data: proposal } = await supabase
+    .from("proposals")
+    .select("id, project_id, genre, target_audience, content, status, updated_at")
+    .eq("project_id", id)
     .maybeSingle();
-  if (!project || !project.proposals) notFound();
-  const proposal = project.proposals;
+  if (!proposal) notFound();
 
   // 紐づけノート（ごみ箱中は非表示。SPEC-proposal-review §3.2）
   const { data: links } = await supabase
@@ -32,14 +30,6 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
 
   return (
     <ProposalEditor
-      project={{
-        id: project.id,
-        title: project.title,
-        status: project.status as ProjectStatus,
-        event_name: project.event_name,
-        deadline: project.deadline,
-        target_pages: project.target_pages,
-      }}
       proposal={{
         id: proposal.id,
         genre: proposal.genre,

@@ -1,3 +1,6 @@
+import { ANCHOR_LABEL, EMOTION_LABEL, PART_LABEL, type SceneRecord } from '@/lib/board'
+import type { Emotion, SceneAnchor } from '@/lib/schemas/enums'
+
 export type NoteContext = {
   title: string
   content: string
@@ -16,10 +19,10 @@ export type FeedbackHistoryItem = {
 }
 
 /**
- * 企画書レビューの system プロンプト。
+ * レビュー（企画書・構成・シーン共通）の system プロンプト。
  * ペルソナの口調（personas.description）＋レビュープロファイルの観点（prompt_template）を組み立てる
  */
-export function buildProposalReviewSystemPrompt({
+export function buildReviewSystemPrompt({
   personaDescription,
   promptTemplate,
 }: {
@@ -27,6 +30,47 @@ export function buildProposalReviewSystemPrompt({
   promptTemplate: string
 }): string {
   return [personaDescription, '', promptTemplate].join('\n')
+}
+
+/** 企画書セクションの整形（企画書・構成・シーンレビューで共用） */
+function proposalSection(proposal: ProposalContext): string[] {
+  return [
+    '# 企画書',
+    `ジャンル: ${proposal.genre || '（未記入）'}`,
+    `ターゲット層: ${proposal.targetAudience || '（未記入）'}`,
+    '本文:',
+    '"""',
+    proposal.content || '（まだ何も書かれていない）',
+    '"""',
+  ]
+}
+
+/** 同一セッションの過去フィードバック・返答メモの整形（反復の文脈。全レビュー共用） */
+function historySection(history: FeedbackHistoryItem[]): string[] {
+  if (history.length === 0) return []
+  const lines: string[] = ['', '# このセッションの過去レビュー（古い順）']
+  history.forEach((item, index) => {
+    lines.push(
+      `## 第${index + 1}回フィードバック`,
+      '"""',
+      item.content,
+      '"""',
+      `作者の返答メモ: ${item.userResponse || '（なし）'}`,
+      '',
+    )
+  })
+  lines.push('上記をふまえ、前回の指摘が改善されたかの確認から始めること。')
+  return lines
+}
+
+function emotionArc(start: Emotion | null, end: Emotion | null): string {
+  if (start === null && end === null) return '（未設定）'
+  const label = (e: Emotion | null) => (e === null ? '未設定' : EMOTION_LABEL[e])
+  return `${label(start)} → ${label(end)}`
+}
+
+function anchorLabel(anchor: SceneAnchor | null): string {
+  return anchor === null ? '' : `【${ANCHOR_LABEL[anchor]}】`
 }
 
 /**
@@ -42,17 +86,7 @@ export function buildProposalReviewInput({
   notes: NoteContext[]
   history: FeedbackHistoryItem[]
 }): string {
-  const lines: string[] = [
-    '# 企画書',
-    `ジャンル: ${proposal.genre || '（未記入）'}`,
-    `ターゲット層: ${proposal.targetAudience || '（未記入）'}`,
-    '本文:',
-    '"""',
-    proposal.content || '（まだ何も書かれていない）',
-    '"""',
-    '',
-    '# 紐づけノート（設定資料）',
-  ]
+  const lines: string[] = [...proposalSection(proposal), '', '# 紐づけノート（設定資料）']
 
   if (notes.length === 0) {
     lines.push('（紐づけノートなし）')
@@ -69,21 +103,82 @@ export function buildProposalReviewInput({
     }
   }
 
-  if (history.length > 0) {
-    lines.push('', '# このセッションの過去レビュー（古い順）')
-    history.forEach((item, index) => {
+  lines.push(...historySection(history))
+  return lines.join('\n')
+}
+
+/**
+ * 構成レビューの user 入力（SPEC-beat-board §3.5）。
+ * 企画書＋全シーンを構成順に整形（パート・アンカー・タイトル・本文・感情の起点→終点）
+ */
+export function buildStructureReviewInput({
+  proposal,
+  scenes,
+  history,
+}: {
+  proposal: ProposalContext
+  scenes: SceneRecord[]
+  history: FeedbackHistoryItem[]
+}): string {
+  const lines: string[] = [...proposalSection(proposal), '', '# 構成（4部構成・構成順）']
+
+  if (scenes.length === 0) {
+    lines.push('（シーンはまだない）')
+  } else {
+    scenes.forEach((scene, index) => {
       lines.push(
-        `## 第${index + 1}回フィードバック`,
+        `## ${index + 1}. [${PART_LABEL[scene.part]}]${anchorLabel(scene.anchor)} ${scene.title || '（無題）'}`,
+        `感情の起伏: ${emotionArc(scene.emotion_start, scene.emotion_end)}`,
         '"""',
-        item.content,
+        scene.content || '（本文なし）',
         '"""',
-        `作者の返答メモ: ${item.userResponse || '（なし）'}`,
         '',
       )
     })
-    lines.push('上記をふまえ、前回の指摘が改善されたかの確認から始めること。')
   }
 
+  lines.push(...historySection(history))
+  return lines.join('\n')
+}
+
+/**
+ * シーンレビューの user 入力（SPEC-beat-board §3.5）。
+ * 企画書＋対象シーン全文＋前後の流れが分かる全シーンのタイトル・アンカー・感情の一覧
+ */
+export function buildSceneReviewInput({
+  proposal,
+  scene,
+  scenes,
+  history,
+}: {
+  proposal: ProposalContext
+  scene: SceneRecord
+  scenes: SceneRecord[]
+  history: FeedbackHistoryItem[]
+}): string {
+  const lines: string[] = [
+    ...proposalSection(proposal),
+    '',
+    '# 対象シーン',
+    `パート: ${PART_LABEL[scene.part]}${scene.anchor ? ` ${anchorLabel(scene.anchor)}` : ''}`,
+    `タイトル: ${scene.title || '（無題）'}`,
+    `感情の起伏: ${emotionArc(scene.emotion_start, scene.emotion_end)}`,
+    '本文:',
+    '"""',
+    scene.content || '（本文なし）',
+    '"""',
+    '',
+    '# 全シーン一覧（構成順。→ が対象シーン）',
+  ]
+
+  scenes.forEach((item, index) => {
+    const marker = item.id === scene.id ? '→ ' : ''
+    lines.push(
+      `${index + 1}. ${marker}[${PART_LABEL[item.part]}]${anchorLabel(item.anchor)} ${item.title || '（無題）'}（感情: ${emotionArc(item.emotion_start, item.emotion_end)}）`,
+    )
+  })
+
+  lines.push(...historySection(history))
   return lines.join('\n')
 }
 

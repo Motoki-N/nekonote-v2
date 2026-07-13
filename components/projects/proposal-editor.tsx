@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Link from "next/link";
 import { EditorContent, type Editor } from "@tiptap/react";
-import { ArrowLeft, ClipboardCheck, Pencil } from "lucide-react";
+import { ClipboardCheck } from "lucide-react";
 
 import { updateProposal, type LinkedNote } from "@/lib/actions/projects";
 import type { ProposalStatus } from "@/lib/schemas/enums";
@@ -17,12 +16,8 @@ import {
   type SaveStatus,
 } from "@/components/editor/use-autosave";
 import { LinkedNotes } from "@/components/projects/linked-notes";
-import {
-  EditProjectDialog,
-  type ProjectFormValues,
-} from "@/components/projects/project-form-dialog";
-import { ReviewPanel } from "@/components/projects/review-panel";
-import { ProjectStatusBadge, ProposalStatusBadge } from "@/components/projects/status-badges";
+import { ProposalReviewPanel } from "@/components/projects/review-panel";
+import { ProposalStatusBadge } from "@/components/projects/status-badges";
 
 type ProposalPayload = { genre: string | null; target_audience: string | null; content: string };
 
@@ -31,11 +26,9 @@ function draftKey(proposalId: string): string {
 }
 
 export function ProposalEditor({
-  project,
   proposal,
   linkedNotes,
 }: {
-  project: ProjectFormValues;
   proposal: {
     id: string;
     genre: string | null;
@@ -124,43 +117,8 @@ export function ProposalEditor({
   };
 
   return (
-    // エディタはビューポート内で完結させ、本文（main）とパネルが各自スクロールする
-    <div className="flex h-dvh flex-col">
-      <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
-        <Button
-          variant="ghost"
-          size="sm"
-          nativeButton={false}
-          render={
-            <Link href="/projects">
-              <ArrowLeft data-icon="inline-start" />
-              プロジェクト一覧
-            </Link>
-          }
-        />
-        <div className="flex items-center gap-2">
-          <span
-            className={`text-xs ${status === "offline" ? "text-destructive" : "text-muted-foreground"}`}
-            role="status"
-          >
-            {statusLabel[status]}
-          </span>
-          <EditProjectDialog
-            project={project}
-            trigger={
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="プロジェクトを編集"
-                className="text-muted-foreground"
-              >
-                <Pencil />
-              </Button>
-            }
-          />
-        </div>
-      </header>
-
+    // 共通レイアウト（ヘッダー＋タブ）の残り高さ内で完結させ、本文（main）とパネルが各自スクロールする
+    <div className="flex min-h-0 flex-1 flex-col">
       {restorableDraft && (
         <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted px-4 py-2 text-sm text-foreground sm:px-6">
           <span>保存されていない下書きがあります。復元しますか？</span>
@@ -178,9 +136,13 @@ export function ProposalEditor({
       <div className="flex min-h-0 flex-1">
         <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6">
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-xl font-bold text-foreground">{project.title}</h1>
-            <ProjectStatusBadge status={project.status} />
             <ProposalStatusBadge status={proposal.status} />
+            <span
+              className={`ml-auto text-xs ${status === "offline" ? "text-destructive" : "text-muted-foreground"}`}
+              role="status"
+            >
+              {statusLabel[status]}
+            </span>
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -232,7 +194,7 @@ export function ProposalEditor({
         </main>
 
         {showReview && (
-          <ReviewPanel
+          <ProposalReviewPanel
             proposalId={proposal.id}
             proposalStatus={proposal.status}
             flushSave={flush}

@@ -3,13 +3,28 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import { EDITOR_PERSONA_ID, PROPOSAL_REVIEW_PROFILE_ID } from '@/lib/ai/personas'
+import {
+  EDITOR_PERSONA_ID,
+  PROPOSAL_REVIEW_PROFILE_ID,
+  SCENE_REVIEW_PROFILE_ID,
+  STRUCTURE_REVIEW_PROFILE_ID,
+} from '@/lib/ai/personas'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
 import type { ReviewVerdict } from '@/lib/schemas/enums'
 import { createClient } from '@/lib/supabase/server'
 
 const uuidSchema = z.uuid()
+
+// レビュー対象の種別（SPEC-beat-board §3.4。target_ref に入る id の意味が変わる）
+export type ReviewTargetKind = 'proposal' | 'structure' | 'scene'
+const reviewTargetKindSchema = z.enum(['proposal', 'structure', 'scene'])
+
+const PROFILE_BY_KIND: Record<ReviewTargetKind, string> = {
+  proposal: PROPOSAL_REVIEW_PROFILE_ID,
+  structure: STRUCTURE_REVIEW_PROFILE_ID,
+  scene: SCENE_REVIEW_PROFILE_ID,
+}
 
 export type FeedbackRecord = {
   id: string
@@ -24,18 +39,73 @@ export type ReviewSessionState = {
   feedbacks: FeedbackRecord[]
 }
 
+type Supabase = Awaited<ReturnType<typeof createClient>>
+
+/**
+ * 対象の RLS 越し所有確認と、セッション作成に使う project_id の解決。
+ * target_ref: proposal = 企画書id / structure = プロジェクトid / scene = シーンid
+ */
+async function resolveTarget(
+  supabase: Supabase,
+  kind: ReviewTargetKind,
+  targetId: string,
+): Promise<{ projectId: string }> {
+  if (kind === 'proposal') {
+    const { data, error } = await supabase
+      .from('proposals')
+      .select('id, project_id')
+      .eq('id', targetId)
+      .maybeSingle()
+    if (error) throw new AppError('internal', error.message)
+    if (!data) throw new AppError('not_found', '企画書が見つかりません')
+    return { projectId: data.project_id }
+  }
+  if (kind === 'structure') {
+    const { data, error } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', targetId)
+      .maybeSingle()
+    if (error) throw new AppError('internal', error.message)
+    if (!data) throw new AppError('not_found', 'プロジェクトが見つかりません')
+    return { projectId: data.id }
+  }
+  const { data, error } = await supabase
+    .from('scenes')
+    .select('id, project_id')
+    .eq('id', targetId)
+    .maybeSingle()
+  if (error) throw new AppError('internal', error.message)
+  if (!data) throw new AppError('not_found', 'シーンが見つかりません')
+  return { projectId: data.project_id }
+}
+
+async function fetchFeedbacks(supabase: Supabase, sessionId: string): Promise<FeedbackRecord[]> {
+  const { data, error } = await supabase
+    .from('review_feedbacks')
+    .select('id, content, user_response, verdict, created_at')
+    .eq('review_session_id', sessionId)
+    .order('created_at')
+  if (error) throw new AppError('internal', error.message)
+  return (data ?? []) as FeedbackRecord[]
+}
+
 /** パネル表示用の読み取り: running セッションがなければ null（開いただけでは行を作らない） */
 export async function getReviewSessionState(
-  proposalId: string,
+  kind: ReviewTargetKind,
+  targetId: string,
 ): Promise<ActionResult<ReviewSessionState | null>> {
   try {
-    const pid = uuidSchema.parse(proposalId)
+    reviewTargetKindSchema.parse(kind)
+    const tid = uuidSchema.parse(targetId)
     const supabase = await createClient()
 
     const { data: session, error: selectError } = await supabase
       .from('review_sessions')
       .select('id')
-      .eq('target_ref', pid)
+      .eq('target_ref', tid)
+      // kind とプロファイルの対応ずれ防止（target_ref のセマンティクスはDB制約がないため多層防御）
+      .eq('review_profile_id', PROFILE_BY_KIND[kind])
       .eq('status', 'running')
       .order('created_at', { ascending: false })
       .limit(1)
@@ -43,16 +113,9 @@ export async function getReviewSessionState(
     if (selectError) throw new AppError('internal', selectError.message)
     if (!session) return { ok: true, data: null }
 
-    const { data: feedbacks, error: feedbacksError } = await supabase
-      .from('review_feedbacks')
-      .select('id, content, user_response, verdict, created_at')
-      .eq('review_session_id', session.id)
-      .order('created_at')
-    if (feedbacksError) throw new AppError('internal', feedbacksError.message)
-
     return {
       ok: true,
-      data: { sessionId: session.id, feedbacks: (feedbacks ?? []) as FeedbackRecord[] },
+      data: { sessionId: session.id, feedbacks: await fetchFeedbacks(supabase, session.id) },
     }
   } catch (error) {
     return toActionError(error)
@@ -60,29 +123,26 @@ export async function getReviewSessionState(
 }
 
 /**
- * 企画書の running レビューセッション（反復スレッド）を get-or-create し、フィードバック履歴を返す。
- * running セッションは企画書ごとに高々1本（SPEC-proposal-review §4.1。アプリロジックで担保）
+ * running レビューセッション（反復スレッド）を get-or-create し、フィードバック履歴を返す。
+ * running セッションは対象ごとに高々1本（SPEC-proposal-review §4.1。アプリロジックで担保）
  */
 export async function getOrCreateReviewSession(
-  proposalId: string,
+  kind: ReviewTargetKind,
+  targetId: string,
 ): Promise<ActionResult<ReviewSessionState>> {
   try {
-    const pid = uuidSchema.parse(proposalId)
+    const parsedKind = reviewTargetKindSchema.parse(kind)
+    const tid = uuidSchema.parse(targetId)
     const supabase = await createClient()
 
-    // RLS越しの取得＝所有確認を兼ねる
-    const { data: proposal, error: proposalError } = await supabase
-      .from('proposals')
-      .select('id, project_id')
-      .eq('id', pid)
-      .maybeSingle()
-    if (proposalError) throw new AppError('internal', proposalError.message)
-    if (!proposal) throw new AppError('not_found', '企画書が見つかりません')
+    const { projectId } = await resolveTarget(supabase, parsedKind, tid)
 
     const { data: existing, error: selectError } = await supabase
       .from('review_sessions')
       .select('id')
-      .eq('target_ref', pid)
+      .eq('target_ref', tid)
+      // kind とプロファイルの対応ずれ防止（getReviewSessionState と同じ多層防御）
+      .eq('review_profile_id', PROFILE_BY_KIND[kind])
       .eq('status', 'running')
       .order('created_at', { ascending: false })
       .limit(1)
@@ -94,10 +154,10 @@ export async function getOrCreateReviewSession(
       const { data: created, error: insertError } = await supabase
         .from('review_sessions')
         .insert({
-          project_id: proposal.project_id,
-          review_profile_id: PROPOSAL_REVIEW_PROFILE_ID,
+          project_id: projectId,
+          review_profile_id: PROFILE_BY_KIND[parsedKind],
           persona_id: EDITOR_PERSONA_ID,
-          target_ref: pid,
+          target_ref: tid,
           status: 'running',
         })
         .select('id')
@@ -108,16 +168,9 @@ export async function getOrCreateReviewSession(
       sessionId = created.id
     }
 
-    const { data: feedbacks, error: feedbacksError } = await supabase
-      .from('review_feedbacks')
-      .select('id, content, user_response, verdict, created_at')
-      .eq('review_session_id', sessionId)
-      .order('created_at')
-    if (feedbacksError) throw new AppError('internal', feedbacksError.message)
-
     return {
       ok: true,
-      data: { sessionId, feedbacks: (feedbacks ?? []) as FeedbackRecord[] },
+      data: { sessionId, feedbacks: await fetchFeedbacks(supabase, sessionId) },
     }
   } catch (error) {
     return toActionError(error)

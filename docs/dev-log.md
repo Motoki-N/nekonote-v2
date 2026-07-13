@@ -188,3 +188,26 @@
 - インタビューで聞かずに設計原則で決めた点（レビューで確認済み）: **マイグレーション不要**（scenes・プロファイルシード・review基盤すべて既存。今回スキーマ変更ゼロ）／order_index はプロジェクト内通し番号でD&D確定時に一括再採番（1 Server Action = 1トランザクション）／未設定の境界アンカーは空スロットのプレースホルダー常時表示（固定スロット方式の良さを一部取り込み）／1転換点1シーン・パート変更時のアンカー自動解除・パート別のアンカー選択肢出し分けはアプリロジック担保／シーン削除でそのシーンのレビューセッションを明示削除（target_ref は text 参照で cascade が効かない）
 - docs/SPEC-beat-board.md 策定 → ユーザーレビューで指摘なし → **確定**（2026-07-13）
 - 次: 新規セッションで実装（Sprint 3・7/17〜）。dnd-kit（@dnd-kit/core / sortable）導入から。マイグレーションはないが `/api/review` の対象拡張（scene / project 所有確認）は security-reviewer 必須ゲート。Fable期間中はD&Dが1日詰まったらリスト形式（上下移動ボタン）に縮退判断
+
+### セッション⑫: ビートボード実装（SPEC-beat-board・Sprint 3）
+
+- 前倒しスケジュールの Sprint 3（7/17〜19枠）をさらに前倒しして 7/13 に実施。プランモード承認で実装開始。**マイグレーションなし**（スキーマ変更ゼロ）、dnd-kit（core 6.3.1 / sortable 10.0.0 / utilities 3.2.2）導入から
+- **タブナビ共通レイアウト**: `app/projects/[id]/layout.tsx` 新設（プロジェクトヘッダー＋タブ「企画書|ビートボード」）。proposal-editor は自前ヘッダーを縮退（保存ステータスは本文上部へ）。※サーバーコンポーネントから `trigger` のJSXを渡すと Base UI DialogTrigger が hydration ミスマッチ → クライアントラッパー `EditProjectButton` で解消
+- **正準順序の一元化**（`lib/board.ts` 純関数）: 「パート順连結の通し番号・境界アンカーはレーン末尾固定」を `toCanonicalOrder` に集約し、Server Actions とクライアント楽観的更新の**両方が同じ関数を通る**設計に（保存成功時の再セット不要・ロールバックだけ持てばよい）。part↔anchor 不整合は `normalizeAnchor` でアンカー解除に正規化
+- **シーンServer Actions**（`lib/actions/scenes.ts`）: create（レーン末尾・境界スロット手前に挿入）/ update（1転換点1シーンの付け替え・パート変更でアンカー自動解除・境界付与でレーン末尾へ）/ reorder（全件検証→0..N-1一括再採番）/ delete（そのシーンの review_sessions を明示削除→シーン削除の順）。supabase-js にトランザクションがないため**変更行のみの単一 upsert**（1ステートメント＝原子的）で整合担保
+- **ボードUI**（`components/board/*` 6ファイル）: DndContext（Pointer/Touch/Keyboard センサー・multiple containers・DragOverlay）＋楽観的更新→失敗ロールバック＋トースト。境界アンカースロット（未設定はプレースホルダー常時表示・スロット内カードはドラッグ不可）。感情バッジ（＋/−アイコン）＋ボード下部SVG折れ線（構成順・2値・シーン番号つき）。編集ダイアログ（4観点placeholder・パート別アンカー選択肢・付け替え/自動解除の注意書き・確認つき物理削除・シーンレビュー導線）
+- **レビュー基盤の共通化**: 既存パネルを `components/review/review-panel.tsx` に汎用化（kind: proposal|structure|scene、verdictバッジ条件表示、フッター拡張スロット）。企画書側は「企画を通す」フッターを載せた薄いラッパーに。`lib/actions/review.ts` は (kind, targetId) 一般化＋`resolveTarget` で RLS 越し所有確認。`/api/review` は `review_profiles.target_phase` 分岐（structure=企画書＋全シーン構成順、scene=企画書＋対象シーン全文＋全シーン一覧）で、structure/scene は **verdict パースをスキップ（null保存）**・proposals.status 遷移もしない
+- **security-reviewer ゲート通過**: Critical/High ゼロ。Medium 1件修正（reorderScenes が重複IDを拒否せず再採番が壊れうる → id集合の一意性チェック追加）、Low 1件修正（セッション検索に review_profile_id 絞り込みを追加=kindとプロファイルの対応ずれ防止の多層防御）。3分岐のIDOR・upsert行混入・過剰削除・プロンプトインジェクション→承認ゲートは全て問題なしの評価
+- **E2E検証（SPEC §8）11項目すべて通過**。ハイライト:
+  - D&D: レーン内・レーン間（part更新）とも成立、DBの order_index 0..N-1 再採番と境界アンカーのレーン末尾維持を `npx supabase db query --linked` で直接確認（今回確立した検証手段。ページ内fetch方式より簡便）
+  - アンカー: PP1付け替え（注意書き→元シーンから自動で外れる）・パート変更で自動解除→空スロットのプレースホルダー復活まで一巡
+  - 構成レビュー: シーン番号を挙げた転換点評価＋企画書内容（主人公名）を踏まえた指摘。返答メモ→再レビューで「前回指摘の改善確認」から開始し**メモ内容（追加予定シーン）を直接引用**。判定バッジ・「通す」なし、DB verdict=NULL を確認
+  - シーンレビュー: 4観点それぞれに言及・構成内位置（8番目）も認識。**シーン削除でセッション・フィードバックが道連れ消滅**（孤児ゼロをDB確認）
+  - モバイル375px: 縦積み・D&D成立・ボトムシート65dvh・ライトモード反転もテーマ変数どおり
+  - 企画書レビュー回帰: 共通化後のラッパー経由で判定行パース→差し戻しバッジ表示・「通す」非表示まで正常
+- E2E検証で発見・修正した3件（教訓）:
+  1. サーバーコンポーネントから JSX要素を client の Base UI Trigger 系 prop に渡すと hydration ミスマッチ（data-slot の解決順が変わる）→ トリガーはクライアント側で組み立てる
+  2. **DndContext は `id` 未指定だと SSR で hydration ミスマッチ**（useId 由来の aria-describedby）→ 固定 id を渡す
+  3. **兄弟要素間の key 重複バグ**: 編集ダイアログ `key={editing.id}` とシーンレビューパネル `key={review.scene.id}` が同一シーンで衝突し、React の差分計算が壊れて**ゴーストDOM（削除もクローズも効かないパネル）が蓄積**。console の「two children with the same key」を実行時フックで捕捉して特定 → key にプレフィックス付与で解消。症状（state は null なのに DOM が残る）から key 重複を疑う教訓
+- 検証手法の学び: 合成ドラッグは **pointerdown→複数 pointermove→pointerup を段階発火**し、**目標座標はドラッグ開始前に固定測定**する（dnd-kit は開始時 rect で衝突判定するため、ドラッグ中の getBoundingClientRect 追従はプレビューシフトに引っ張られて self ドロップになる）。React の state 検証は fiber の memoizedState 直読みが有効
+- 残: 本番デプロイ＋実機（タッチ）でのD&D確認は実運用を兼ねる。検証用プロジェクト「竜の巣（ビートボード検証）」は本番DBに残置（デモを兼ねる。不要なら一覧から削除可）
