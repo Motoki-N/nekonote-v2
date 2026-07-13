@@ -211,3 +211,13 @@
   3. **兄弟要素間の key 重複バグ**: 編集ダイアログ `key={editing.id}` とシーンレビューパネル `key={review.scene.id}` が同一シーンで衝突し、React の差分計算が壊れて**ゴーストDOM（削除もクローズも効かないパネル）が蓄積**。console の「two children with the same key」を実行時フックで捕捉して特定 → key にプレフィックス付与で解消。症状（state は null なのに DOM が残る）から key 重複を疑う教訓
 - 検証手法の学び: 合成ドラッグは **pointerdown→複数 pointermove→pointerup を段階発火**し、**目標座標はドラッグ開始前に固定測定**する（dnd-kit は開始時 rect で衝突判定するため、ドラッグ中の getBoundingClientRect 追従はプレビューシフトに引っ張られて self ドロップになる）。React の state 検証は fiber の memoizedState 直読みが有効
 - 残: 本番デプロイ＋実機（タッチ）でのD&D確認は実運用を兼ねる。検証用プロジェクト「竜の巣（ビートボード検証）」は本番DBに残置（デモを兼ねる。不要なら一覧から削除可）
+
+### セッション⑬: SPEC-proofreading インタビュー・策定（Sprint 4前半 入り口）
+
+- 計画（7/19夜）より前倒しでGitHub連携＋AI校正のSPECインタビューを2巡実施。SPECは校正フェーズ全体（PAT〜コミット・進捗）を定義し、実装は前半（縦通し）/後半（受入拒否・コミット・進捗）に分割
+  - 1巡目（方針）: 原稿の入り口→**自動一覧＋開いたら管理対象**（base_path配下ツリー常時表示・manuscript_links自動作成。「リポジトリが正」の思想）／校正単位→**ファイル全文**（1ファイル=1実行）／結果形式→**構造化提案カード**（原文抜粋/修正案/理由をrevision_suggestionsへ。後半は受入/拒否ボタンを足すだけ）／PAT設定→**最小の/settings新設**（Sprint 5設定画面の受け皿）
+  - 2巡目（派生する落とし穴）: 原稿更新→**ファイル単位SHA記録＋更新バナー・提案は残す**（last_reviewed_commitはリポジトリHEADでなくファイル単位＝モノレポで他作品コミットに反応させない）／再校正→**pendingのみ置き換え**（on_hold/処理済みは残す。「保留はコミット後も残る」の要求仕様と整合）／実行中UI→**streamObjectで提案カード逐次表示**（保存は完了時にまとめて＝途中切断で半端保存を残さない）／担い手→**校正さん固定**（担当編集の校閲・講評系はSprint 5）
+- インタビューで聞かずに設計原則で決めた点（レビューで確認済み）: 暗号化=アプリ層AES-256-GCM（ENCRYPTION_KEY・server-only・平文をクライアントへ返すAPIは作らない。Vault不採用）／PAT登録時にGET /userで疎通検証→github_username保存（値のマスク表示すらしない）／校正はreview_sessions不使用（ライフサイクルはrevision_suggestions.statusが担う）／シード済み校正プロファイルの出力形式節を構造化前提にマイグレーションで改訂／granularity='sentence'固定（'scene'は担当編集校閲用に温存）／GitHubクライアントはfetch直叩き薄ラッパー（octokit不採用）／縮退計画=GitHub読み込みが詰まったら手動貼り付けを暫定入り口に
+- **発見: `GOOGLE_GENERATIVE_AI_API_KEY` 未登録**（校正さん=low帯のデフォルトは gemini-3.1-flash-lite）。実装セッション冒頭でGoogleキー登録 or ai_model_settings で low→anthropic（haiku 4.5）差し替えの判断が必要
+- docs/SPEC-proofreading.md 策定 → ユーザーレビューで指摘なし → **確定**（2026-07-13）
+- 次: 新規セッションで実装（Sprint 4前半）。マイグレーション（user_settings PAT列＋プロファイル改訂）のプランモード承認から。**security-reviewer 必須ゲート**（暗号化・PAT取り扱い・/api/proofread）。ユーザー準備物: ①Google APIキー or low帯差し替え判断 ②検証用原稿リポジトリ（誤字入りダミー.md数ファイル）＋Fine-grained PAT（対象リポ限定・Contents: Read/Write） ③ENCRYPTION_KEYはセッション内で生成・登録（CLI完結・値は非出力）
