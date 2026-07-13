@@ -119,6 +119,12 @@ export default async function NotesPage({
             <>
               <Button
                 variant="ghost"
+                size="sm"
+                nativeButton={false}
+                render={<Link href="/projects">プロジェクト</Link>}
+              />
+              <Button
+                variant="ghost"
                 size="icon-sm"
                 aria-label="ごみ箱"
                 nativeButton={false}

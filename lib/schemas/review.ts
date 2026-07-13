@@ -4,6 +4,7 @@ import {
   personaTypes,
   referenceScopes,
   reviewSessionStatuses,
+  reviewVerdicts,
   targetPhases,
 } from './enums'
 
@@ -51,6 +52,7 @@ export const reviewFeedbackInputSchema = z.object({
   review_session_id: z.uuid(),
   content: z.string().min(1),
   user_response: z.string().nullish(),
+  verdict: z.enum(reviewVerdicts).nullish(), // AIの承認判定（判定行のパース結果）
 })
 export const reviewFeedbackUpdateSchema = reviewFeedbackInputSchema
   .partial()
@@ -58,3 +60,10 @@ export const reviewFeedbackUpdateSchema = reviewFeedbackInputSchema
 
 export type ReviewFeedbackInput = z.infer<typeof reviewFeedbackInputSchema>
 export type ReviewFeedbackUpdate = z.infer<typeof reviewFeedbackUpdateSchema>
+
+/** POST /api/review のリクエストボディ（レビュー入力は保存済みDB値からサーバー側で組み立てる） */
+export const reviewRequestSchema = z.object({
+  sessionId: z.uuid(),
+})
+
+export type ReviewRequest = z.infer<typeof reviewRequestSchema>

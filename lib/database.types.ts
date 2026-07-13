@@ -404,6 +404,7 @@ export type Database = {
           review_session_id: string
           updated_at: string
           user_response: string | null
+          verdict: string | null
         }
         Insert: {
           content: string
@@ -412,6 +413,7 @@ export type Database = {
           review_session_id: string
           updated_at?: string
           user_response?: string | null
+          verdict?: string | null
         }
         Update: {
           content?: string
@@ -420,6 +422,7 @@ export type Database = {
           review_session_id?: string
           updated_at?: string
           user_response?: string | null
+          verdict?: string | null
         }
         Relationships: [
           {

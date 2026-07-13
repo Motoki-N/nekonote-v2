@@ -24,7 +24,14 @@ export default function Home() {
         <p className="text-sm text-muted-foreground">
           小説は人間が書き、AIはネタ出し・レビュー・校正で伴走する。
         </p>
-        <Button nativeButton={false} render={<Link href="/notes">ノートをひらく</Link>} />
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <Button nativeButton={false} render={<Link href="/notes">ノートをひらく</Link>} />
+          <Button
+            variant="outline"
+            nativeButton={false}
+            render={<Link href="/projects">プロジェクト</Link>}
+          />
+        </div>
       </main>
     </div>
   );

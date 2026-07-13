@@ -28,7 +28,10 @@ export const proposalInputSchema = z.object({
   content: z.string().default(''), // Markdown（コンセプト/キャラ/テーマ）
   status: z.enum(proposalStatuses).default('draft'),
 })
-export const proposalUpdateSchema = proposalInputSchema.partial().omit({ project_id: true })
+// status は承認ゲートの検証を通る経路（/api/review の onFinish・approveProposal）でのみ遷移させる
+export const proposalUpdateSchema = proposalInputSchema
+  .partial()
+  .omit({ project_id: true, status: true })
 
 export type ProposalInput = z.infer<typeof proposalInputSchema>
 export type ProposalUpdate = z.infer<typeof proposalUpdateSchema>

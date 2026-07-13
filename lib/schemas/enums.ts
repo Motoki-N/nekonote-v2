@@ -48,6 +48,10 @@ export type TargetPhase = (typeof targetPhases)[number]
 export const reviewSessionStatuses = ['running', 'completed', 'failed'] as const
 export type ReviewSessionStatus = (typeof reviewSessionStatuses)[number]
 
+// AIの承認判定（review_feedbacks.verdict。20260713000002 の CHECK 制約と対応）
+export const reviewVerdicts = ['approved', 'needs_work'] as const
+export type ReviewVerdict = (typeof reviewVerdicts)[number]
+
 export const suggestionGranularities = ['sentence', 'scene'] as const
 export type SuggestionGranularity = (typeof suggestionGranularities)[number]
 

@@ -161,3 +161,21 @@
 - シード範囲は実装計画どおり: reviewer 4人（担当編集・校正さん・読者代表・書店員）＋レビュープロファイル5種を固定UUIDで全件（UIから使うのは今回「企画書レビュー」のみ。他は Sprint 3・4 の領分）
 - docs/SPEC-proposal-review.md 策定 → ユーザーレビューで指摘なし → **確定**（2026-07-13）
 - 次: 新規セッションで実装。マイグレーション（verdict 列＋シード）のプランモード承認から（security-reviewer 必須ゲート: シードRLS＋/api/review）。**冒頭で `ANTHROPIC_API_KEY` の登録が必要**（担当編集=high帯=claude-sonnet-5。.env.local＋Vercel本番。キーはユーザーが用意・登録、確認は grep -c のみ）
+
+### セッション⑩: 企画フェーズ＋レビューゲート実装（SPEC-proposal-review・Sprint 2中核）
+
+- プランモード承認で実装開始。冒頭で `ANTHROPIC_API_KEY` をユーザーが登録（.env.local＋Vercel本番。確認は `grep -c` のみ、値は一切出力しない運用を維持）
+- マイグレーション `20260713000002_review_gate_and_reviewer_personas.sql`: review_feedbacks.verdict 列（approved/needs_work・null可）＋reviewer ペルソナ4人（担当編集/校正さん/読者代表/近所の書店員・固定UUID e5a1c0de-0003〜0006）＋レビュープロファイル5種（同 1001〜1005）を標準シード。プロンプトは review-profiles / story-engineering スキル準拠でシード時に全件確定
+- **security-reviewer ゲート×2回通過**: ①マイグレーション=指摘ゼロ。②API/Actions=Medium 1件を修正（`proposalUpdateSchema` が status を含んだままで、`updateProposal` 経由で承認ゲートのサーバー側検証をバイパスできた → omit に追加）、Low 2件を修正（判定行パースを行単位アンカーに強化＝ノート経由のプロンプトインジェクションで「判定: 承認」を文中に混ぜる誘導を遮断／attachProposalNote は先にRLS越し所有確認して not_found に正規化＋ごみ箱中ノートの紐づけをサーバー側でも遮断）、Low 2件（approveProposal の TOCTOU・並行 running セッション）はSPECの「ゲートは演出」判断どおり許容
+- 実装: `/api/review`（認証→RLS越し所有確認→保存済みDB値でコンテキスト組み立て→streamText→**プレーンテキストストリーム**（文書1本なので useChat/UIMessage 不使用）→onFinish で verdict パース＋feedback 保存＋draft→in_review）、`lib/actions/projects.ts`（CRUD・一括/個別紐づけ・タグ別候補・検索）、`lib/actions/review.ts`（get-or-create セッション・読み取り専用 state・返答メモ・「企画を通す」のサーバー側 verdict 再検証）、/projects 一覧＋作成/編集ダイアログ、/projects/[id] 企画書エディタ＋レビューゲートパネル（ボトムシート同型）
+- **エディタ共通化**: note-editor.tsx から Tiptap 構成＋ツールバー（`components/editor/markdown-editor.tsx`）と自動保存＋localStorage退避（`components/editor/use-autosave.ts`）を切り出し、ノート/企画書で共用。ノート側は挙動不変を維持（リファクタ後のE2Eで回帰なし確認）
+- **E2E検証（SPEC §8）11項目すべて通過**。ハイライト:
+  - 反復レビューが本物のゲートとして機能: 4巡（差し戻し×3→承認）。第2回は「前回指摘の改善状況」から始まり返答メモを個別確認、さらに**企画書と紐づけノートの矛盾（人物メモ「消息を絶った」vs 企画書「目撃した」）を検出**＝紐づけノート全文参照と整合性チェックの実証
+  - ストリーミング表示はDOM長の増加（134→1347字）で実測。sonnet-5 は思考が長く初回トークンまで20秒前後かかる（見かけ上止まって見えるだけ）
+  - cascade は authenticated REST のカウントで確認（削除前 sessions=2/feedbacks=4 → 削除後すべて0、ノート2件は残存）。verdict のDB保存値も needs_work×3→approved で一致
+  - キー未設定エラー（E2E9）は .env.local のキー行を sed で一時リネームして再現（値は非出力）。日本語エラーがパネル内表示され落ちない
+  - anon REST は新シード行含め全テーブル401、モバイル375pxでボトムシート・ダイアログとも成立
+- 検証手法の学び: **ブラウザペインが非フォーカスだと `el.focus()` でReactのonFocusが発火しない → `focusin` イベントを手動ディスパッチ**する。javascript_tool は30秒制限があるので長いポーリングは複数回に分割。React制御inputへの値設定は native setter＋input イベント方式が安定
+- 修正: `db:types` スクリプトが `supabase` 直呼びで毎回失敗していたのを `npx supabase` に修正
+- 本番デプロイ完了（Ready・46s）。外形確認OK: 未認証 /projects → 307 /login、未認証 POST /api/review → 307（フェイルクローズ維持）
+- **Sprint 2 の中核（プロジェクトCRUD・企画書エディタ・レビューゲート・レビュー基盤シード）完了**。前倒しスケジュールv2どおり。次: 7/16夜にビートボードSPECインタビュー → Sprint 3（7/17〜19）

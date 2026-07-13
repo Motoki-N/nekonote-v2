@@ -1,5 +1,18 @@
-// 標準同梱ペルソナの固定UUID。
-// supabase/migrations/20260713000001_chat_and_conversational_personas.sql のシードと対応させる。
+// 標準同梱ペルソナ・レビュープロファイルの固定UUID。
+// supabase/migrations のシードと対応させる:
+//   - conversational 2人: 20260713000001_chat_and_conversational_personas.sql
+//   - reviewer 4人＋プロファイル5種: 20260713000002_review_gate_and_reviewer_personas.sql
 
 export const ASSISTANT_PERSONA_ID = 'e5a1c0de-0001-4000-8000-000000000001'
 export const CAFE_MASTER_PERSONA_ID = 'e5a1c0de-0002-4000-8000-000000000002'
+
+export const EDITOR_PERSONA_ID = 'e5a1c0de-0003-4000-8000-000000000003'
+export const PROOFREADER_PERSONA_ID = 'e5a1c0de-0004-4000-8000-000000000004'
+export const READER_PERSONA_ID = 'e5a1c0de-0005-4000-8000-000000000005'
+export const BOOKSELLER_PERSONA_ID = 'e5a1c0de-0006-4000-8000-000000000006'
+
+export const PROPOSAL_REVIEW_PROFILE_ID = 'e5a1c0de-1001-4000-8000-000000001001'
+export const CHARACTER_REVIEW_PROFILE_ID = 'e5a1c0de-1002-4000-8000-000000001002'
+export const STRUCTURE_REVIEW_PROFILE_ID = 'e5a1c0de-1003-4000-8000-000000001003'
+export const SCENE_REVIEW_PROFILE_ID = 'e5a1c0de-1004-4000-8000-000000001004'
+export const PROOFREADING_PROFILE_ID = 'e5a1c0de-1005-4000-8000-000000001005'
