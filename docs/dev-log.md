@@ -138,4 +138,5 @@
   2. **Base UI 版 shadcn の `AlertDialogAction` が Close プリミティブ非使用で、実行後にダイアログが閉じない潜在バグ**（trash-card では行アンマウントで露見せず）→ `AlertDialogPrimitive.Close` ベースに修正（既存の完全削除ダイアログも同時に修復）
 - その他: eslint に `.claude/**` の ignore を追加（worktree 内 .next を lint が巻き込むため）。PostToolUse の eslint フックが react-hooks 新ルール（set-state-in-effect / refs）で2回ブロック→ effect 内 setState を async 継続に、transport+ref 構成を廃止して解消
 - **APIキーの教訓（インシデント）**: ①ユーザー登録キーが `NEXT_PUBLIC_` プレフィックス付きになっており秘密鍵として不適切＋コードが読めない ②その確認時に私の抽出コマンドが**キー値を出力してしまい、ローテーションを実施してもらった**。以後、キー行の確認は `grep -c '^KEY='`（値を出さない）に統一 ③OpenAI 429 insufficient_quota はコード正常・クレジット追加で解決
-- 残: `vercel env add OPENAI_API_KEY production`（ユーザー作業）→ 本番デプロイ（要承認）
+- 本番反映完了: `OPENAI_API_KEY` を本番envへ登録（ユーザー実施）→ `npx vercel deploy --prod --yes`（Ready・37s）。外形確認OK: 未認証の /notes は 307 → /login、未認証POST /api/chat も middleware で 307（フェイルクローズ維持）。本番でのAI応答の実地確認は実運用（Notionネタメモ移行後の日常利用）を兼ねる
+- **Sprint 1 の全タスク完了**（ノートCRUD・タグ・テンプレ挿入・AI掘り下げ・SDK導入・ai_model_settings解決）。次はSprint 2（企画フェーズ: プロジェクトCRUD・企画書エディタ・レビューゲート。入り口はSPECインタビューから）
