@@ -40,6 +40,22 @@ export function toAppError(error: unknown): AppError {
   return new AppError("internal", message, { cause: error });
 }
 
+// Server Action の throw は本番でメッセージが握りつぶされるため、
+// { ok, error? } の戻り値でクライアントへ伝える（internal は固定文言に置換）
+export type ActionResult<T = undefined> =
+  | { ok: true; data?: T }
+  | { ok: false; error: { code: string; message: string } }
+
+/** Server Action 用: 例外を ActionResult のエラー形に正規化する */
+export function toActionError(error: unknown): ActionResult<never> {
+  const appError = toAppError(error)
+  if (appError.code === 'internal') {
+    console.error(appError)
+    return { ok: false, error: { code: 'internal', message: 'サーバーエラーが発生しました' } }
+  }
+  return { ok: false, error: { code: appError.code, message: appError.message } }
+}
+
 /** API Route 用の共通エラーレスポンス。内部詳細はログのみに残し、クライアントには code と message だけ返す */
 export function errorResponse(error: unknown): NextResponse {
   const appError = toAppError(error);

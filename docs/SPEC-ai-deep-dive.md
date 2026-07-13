@@ -103,6 +103,7 @@ chat_messages:
 ## 5. AI基盤の実装方式
 
 - パッケージ: `ai`（Vercel AI SDK）＋ `@ai-sdk/anthropic` / `@ai-sdk/openai` / `@ai-sdk/google` ＋ `@ai-sdk/react`（useChat）。バージョンは実装セッションで最新安定版を確認
+  - **実装時確認（2026-07-13）: v7系（ai@7）を採用**。本SPECの `toUIMessageStreamResponse` / `onFinish` は v7 では `createUIMessageStreamResponse` ＋ `toUIMessageStream({ onEnd })` に対応。ノート現在値の同梱はトランスポート差し替えではなく `sendMessage` の per-request `body` オプションで行う
 - `lib/ai/models.ts`: capability → `ai_model_settings` 解決 → プロバイダ別モデルインスタンス生成（このSPECの中核。レビュー機能も将来ここを通す）
 - `lib/ai/prompts.ts`: 掘り下げ用 system プロンプト組み立て（ペルソナ description＋役割指示＋ノートコンテキスト）
 - API: Route Handler `POST /api/chat`（ストリーミングのため Server Action ではなく Route Handler）

@@ -143,12 +143,17 @@ function AlertDialogDescription({
 
 function AlertDialogAction({
   className,
+  variant = "default",
+  size = "default",
   ...props
-}: React.ComponentProps<typeof Button>) {
+}: AlertDialogPrimitive.Close.Props &
+  Pick<React.ComponentProps<typeof Button>, "variant" | "size">) {
+  // Close ベースにしないと実行後にダイアログが閉じない（Base UI に Radix の Action 相当はない）
   return (
-    <Button
+    <AlertDialogPrimitive.Close
       data-slot="alert-dialog-action"
       className={cn(className)}
+      render={<Button variant={variant} size={size} />}
       {...props}
     />
   )

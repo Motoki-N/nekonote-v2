@@ -125,3 +125,17 @@
 - インタビューで聞かずに設計原則で決めた点（レビューで確認済み）: ストリーミング＋Route Handler `/api/chat`（Server Actionはストリーミング不可）／ノート本文は送信時点のエディタ現在値を渡す／履歴は直近20メッセージ制限・関連ノートは含めない／会話リセットボタン／必須APIキーは `OPENAI_API_KEY` のみ（medium帯=GPT-5.4-mini）
 - docs/SPEC-ai-deep-dive.md 策定 → ユーザーレビューで指摘なし → **確定**（2026-07-13）
 - 次: 新規セッションで実装。chat_threads/chat_messages マイグレーションのプランモード承認から（security-reviewer 必須ゲート: マイグレーションRLS＋/api/chat）。冒頭で `OPENAI_API_KEY` の .env.local 登録＋ `vercel env add` が必要（キーはユーザーが用意）
+
+### セッション⑧: AI掘り下げ支援 実装（SPEC-ai-deep-dive・Sprint 1後半）
+
+- プランモード承認で実装開始。**AI SDK は v7系（ai@7.0.22）が最新**で、SPECの想定API（v5相当）から読み替え: `createUIMessageStreamResponse`＋`toUIMessageStream({ onEnd })` で永続化、クライアントは `useChat`＋`sendMessage` の per-request `body` にノート現在値を同梱（DefaultChatTransport＋prepareSendMessagesRequest 案は react-hooks 新ルール（refs in render）に弾かれ、より単純なこちらに）。SPEC §5 に実装時確認を追記済み
+- マイグレーション `20260713000001_chat_and_conversational_personas.sql`: chat_threads（汎用設計・部分unique）／chat_messages（不変・親経由RLS、update/deleteポリシーなし）／conversationalペルソナ2行を固定UUIDシード（コードの `lib/ai/personas.ts` 定数と対応）
+- **security-reviewer ゲート×2回通過**: ①マイグレーション: Medium 1件修正（chat_threads ポリシーに note_id/persona_id の所有 exists 検証を追加）、Low 1件（role偽装INSERT）は設計上許容。②/api/chat・AI基盤: Critical/High/Medium なし、Low 2件（messages件数上限→ `.max(100)` 反映済み／Server Actions の明示認証なし→既存パターン踏襲で許容）
+- 実装: `lib/ai/models.ts`（DEFAULT_MODEL_MAP＋resolveModel。ai_model_settings ユーザー行→定数の解決順、キー未設定は AppError で日本語エラー）、`lib/ai/prompts.ts`、`app/api/chat/route.ts`（認証→RLS越し所有確認→streamText→onEnd で差分2件保存）、`lib/actions/chat.ts`（get-or-create・リセット=スレッド削除）、`components/notes/deep-dive-panel.tsx`（サイドパネル/ボトムシート・挿入ボタン・リセット・stop・エラー表示）。`ActionResult`/`toActionError` は lib/errors.ts へ移動して共用化
+- **E2E検証（SPEC §8）11項目すべて通過**: ストリーミング対話（ノート内容を踏まえた掘り下げ質問）／リロード履歴復元／エディタ現在値の反映（追記した固有名を応答が復唱）／挿入＋1Undo／リセット／ごみ箱復元で会話残存→完全削除で cascade 消滅（REST SELECT で0件確認）／ai_model_settings 行の一時挿入で medium→anthropic に切替わることを確認（エラー文言の変化で実証）→行削除でデフォルト復帰／キー未設定エラー表示／anon 全テーブル401／モバイル375px 全操作
+- E2E検証で発見・修正した2件:
+  1. lg以上でパネルの入力欄がビューポート外（`lg:h-dvh` がヘッダー分はみ出す）→ エディタページを内部スクロール構造に変更（main に overflow-y-auto。sticky ツールバーは main がスクロールコンテナになり従来どおり機能）
+  2. **Base UI 版 shadcn の `AlertDialogAction` が Close プリミティブ非使用で、実行後にダイアログが閉じない潜在バグ**（trash-card では行アンマウントで露見せず）→ `AlertDialogPrimitive.Close` ベースに修正（既存の完全削除ダイアログも同時に修復）
+- その他: eslint に `.claude/**` の ignore を追加（worktree 内 .next を lint が巻き込むため）。PostToolUse の eslint フックが react-hooks 新ルール（set-state-in-effect / refs）で2回ブロック→ effect 内 setState を async 継続に、transport+ref 構成を廃止して解消
+- **APIキーの教訓（インシデント）**: ①ユーザー登録キーが `NEXT_PUBLIC_` プレフィックス付きになっており秘密鍵として不適切＋コードが読めない ②その確認時に私の抽出コマンドが**キー値を出力してしまい、ローテーションを実施してもらった**。以後、キー行の確認は `grep -c '^KEY='`（値を出さない）に統一 ③OpenAI 429 insufficient_quota はコード正常・クレジット追加で解決
+- 残: `vercel env add OPENAI_API_KEY production`（ユーザー作業）→ 本番デプロイ（要承認）

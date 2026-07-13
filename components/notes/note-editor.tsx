@@ -18,6 +18,7 @@ import {
   ListOrdered,
   Minus,
   Redo2,
+  Sparkles,
   TextQuote,
   Trash2,
   Undo2,
@@ -33,9 +34,11 @@ import {
   updateNote,
   type AttachedTag,
 } from "@/lib/actions/notes";
+import type { NoteContext } from "@/lib/ai/prompts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DeepDivePanel } from "@/components/notes/deep-dive-panel";
 import { TagInput } from "@/components/notes/tag-input";
 import { TemplateMenu, type Template } from "@/components/notes/template-menu";
 import { tagVariant } from "@/components/notes/note-card";
@@ -78,6 +81,7 @@ export function NoteEditor({
   const [tags, setTags] = useState<AttachedTag[]>(initialTags);
   const [status, setStatus] = useState<SaveStatus>("saved");
   const [restorableDraft, setRestorableDraft] = useState<Draft | null>(null);
+  const [showDeepDive, setShowDeepDive] = useState(false);
 
   const titleRef = useRef(note.title);
   const lastSavedRef = useRef({ title: note.title, content: note.content });
@@ -206,6 +210,21 @@ export function NoteEditor({
     }
   }
 
+  /** 掘り下げパネルへ渡す、送信時点のノート現在値（保存前の編集内容を含む） */
+  function getNoteContext(): NoteContext {
+    return {
+      title: titleRef.current,
+      content: editorRef.current?.getMarkdown() ?? "",
+      tags: tags.map((t) => t.name),
+    };
+  }
+
+  function insertFromDeepDive(markdown: string) {
+    if (!editor) return;
+    // テンプレ挿入と同じ流儀: カーソル位置に挿入、1回のUndoで取り消せる
+    editor.chain().focus().insertContent(markdown, { contentType: "markdown" }).run();
+  }
+
   async function handleTrash() {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     await save();
@@ -233,7 +252,8 @@ export function NoteEditor({
   };
 
   return (
-    <div className="flex flex-1 flex-col">
+    // エディタはビューポート内で完結させ、本文（main）とパネルが各自スクロールする
+    <div className="flex h-dvh flex-col">
       <header className="flex items-center justify-between gap-2 border-b border-border px-4 py-3 sm:px-6">
         <Button
           variant="ghost"
@@ -279,7 +299,8 @@ export function NoteEditor({
         </div>
       )}
 
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-3 p-4 sm:p-6">
+      <div className="flex min-h-0 flex-1">
+        <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6">
         <Input
           value={title}
           onChange={(e) => {
@@ -317,13 +338,32 @@ export function NoteEditor({
         <div className="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-lg border border-border bg-background/95 p-1 backdrop-blur">
           {/* useEditorState はマウント時の editor でスナップショットを初期化するため、生成後にマウントする */}
           {editor && <EditorToolbar editor={editor} />}
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-1">
             <TemplateMenu templates={templates} onInsert={insertTemplate} />
+            <Button
+              variant={showDeepDive ? "secondary" : "outline"}
+              size="sm"
+              aria-pressed={showDeepDive}
+              onClick={() => setShowDeepDive((v) => !v)}
+            >
+              <Sparkles data-icon="inline-start" />
+              掘り下げ
+            </Button>
           </div>
         </div>
 
         <EditorContent editor={editor} className="flex flex-1 flex-col" />
-      </main>
+        </main>
+
+        {showDeepDive && (
+          <DeepDivePanel
+            noteId={note.id}
+            getNoteContext={getNoteContext}
+            onInsert={insertFromDeepDive}
+            onClose={() => setShowDeepDive(false)}
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -3,24 +3,12 @@
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
-import { AppError, toAppError } from '@/lib/errors'
+import { AppError, toActionError } from '@/lib/errors'
+import type { ActionResult } from '@/lib/errors'
 import { noteUpdateSchema, tagInputSchema } from '@/lib/schemas/notes'
 import type { TagInput } from '@/lib/schemas/notes'
 
-// Server Action の throw は本番でメッセージが握りつぶされるため、
-// { ok, error? } の戻り値でクライアントへ伝える（internal は固定文言に置換）
-export type ActionResult<T = undefined> =
-  | { ok: true; data?: T }
-  | { ok: false; error: { code: string; message: string } }
-
-function toActionError(error: unknown): ActionResult<never> {
-  const appError = toAppError(error)
-  if (appError.code === 'internal') {
-    console.error(appError)
-    return { ok: false, error: { code: 'internal', message: 'サーバーエラーが発生しました' } }
-  }
-  return { ok: false, error: { code: appError.code, message: appError.message } }
-}
+export type { ActionResult } from '@/lib/errors'
 
 /** 1クリック新規作成: 空ノートを作ってエディタへ遷移する */
 export async function createNote(): Promise<never> {

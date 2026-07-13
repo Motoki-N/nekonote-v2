@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Claude Code の worktree（別作業ツリーのビルド生成物を巻き込まない）
+    ".claude/**",
   ]),
 ]);
 

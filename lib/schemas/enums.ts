@@ -56,3 +56,6 @@ export type SuggestionStatus = (typeof suggestionStatuses)[number]
 
 export const aiProviders = ['anthropic', 'openai', 'google'] as const
 export type AiProvider = (typeof aiProviders)[number]
+
+export const chatRoles = ['user', 'assistant'] as const
+export type ChatRole = (typeof chatRoles)[number]
