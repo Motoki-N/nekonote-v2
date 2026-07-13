@@ -3,12 +3,15 @@
 import { useCallback, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, FileText, Info, Loader2, Settings, SpellCheck } from "lucide-react";
+import { toast } from "sonner";
 
 import {
   openManuscriptFile,
+  updateSuggestionStatus,
   type ManuscriptFileData,
   type ManuscriptTreeData,
 } from "@/lib/actions/manuscripts";
+import type { SuggestionStatus } from "@/lib/schemas/enums";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ProofreadPanel } from "@/components/manuscript/proofread-panel";
@@ -58,6 +61,26 @@ export function ManuscriptWorkspace({
   const refreshFile = useCallback(async () => {
     if (selectedPath) await openFile(selectedPath);
   }, [selectedPath, openFile]);
+
+  // 受入/拒否/保留はGitHub再取得を伴わないため、成功時はローカルの提案一覧だけ差し替える
+  const handleUpdateSuggestion = useCallback(
+    async (id: string, status: SuggestionStatus) => {
+      const result = await updateSuggestionStatus(id, status);
+      if (!result.ok) {
+        toast.error(result.error.message);
+        return;
+      }
+      setFile((prev) =>
+        prev
+          ? {
+              ...prev,
+              suggestions: prev.suggestions.map((s) => (s.id === id ? { ...s, status } : s)),
+            }
+          : prev,
+      );
+    },
+    [],
+  );
 
   if (treeError) {
     return (
@@ -222,7 +245,9 @@ export function ManuscriptWorkspace({
         <ProofreadPanel
           key={file.linkId}
           linkId={file.linkId}
+          content={file.content}
           suggestions={file.suggestions}
+          onUpdateStatus={handleUpdateSuggestion}
           onCompleted={refreshFile}
           onClose={() => setPanelOpen(false)}
         />

@@ -9,12 +9,25 @@ import {
   getFileContent,
   getLatestCommitSha,
   getManuscriptTree as fetchManuscriptTree,
+  putFileContent,
 } from '@/lib/git/github'
+import { applySuggestions } from '@/lib/proofread-apply'
+import { suggestionStatuses } from '@/lib/schemas/enums'
 import type { SuggestionStatus } from '@/lib/schemas/enums'
 import { manuscriptFilePathSchema } from '@/lib/schemas/manuscript'
 import { createClient } from '@/lib/supabase/server'
 
 const uuidSchema = z.uuid()
+
+/** 空白・改行を除いた文字数（表示・進捗集計で共通の数え方） */
+function countChars(content: string): number {
+  return content.replaceAll(/\s/g, '').length
+}
+
+/** 進捗記録の「当日」はJST基準（サーバーはUTCで動く） */
+function todayInJst(): string {
+  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date())
+}
 
 /** 原稿タブの前提チェック結果（誘導表示の出し分け用。SPEC-proofreading §3.2） */
 export type ManuscriptTreeData =
@@ -61,8 +74,12 @@ export type SuggestionRecord = {
   suggested_text: string
   reason: string | null
   status: SuggestionStatus
+  committed_sha: string | null
   created_at: string
 }
+
+const SUGGESTION_COLUMNS =
+  'id, original_text, suggested_text, reason, status, committed_sha, created_at'
 
 export type ManuscriptFileData = {
   linkId: string
@@ -107,7 +124,7 @@ export async function openManuscriptFile(
     const credential = await patCredentialProvider.getCredential(supabase)
     if (!credential) throw new AppError('validation', 'GitHub PATが未登録です')
 
-    const [content, latestSha] = await Promise.all([
+    const [{ content }, latestSha] = await Promise.all([
       getFileContent(credential.token, project.repo, path),
       getLatestCommitSha(credential.token, project.repo, path),
     ])
@@ -123,7 +140,7 @@ export async function openManuscriptFile(
 
     const { data: link, error: linkError } = await supabase
       .from('manuscript_links')
-      .select('id, last_reviewed_commit, revision_suggestions (id, original_text, suggested_text, reason, status, created_at)')
+      .select(`id, last_reviewed_commit, revision_suggestions (${SUGGESTION_COLUMNS})`)
       .eq('project_id', pid)
       .eq('file_path', path)
       .maybeSingle()
@@ -134,13 +151,27 @@ export async function openManuscriptFile(
       .map((s) => ({ ...s, status: s.status as SuggestionStatus }))
       .sort((a, b) => a.created_at.localeCompare(b.created_at))
 
+    // 原稿読み込み時に当日の総文字数を進捗として記録する（SPEC-proofreading §3.4）。
+    // 補助機能なので、失敗しても原稿の読み込み自体は成功させる
+    try {
+      await recordWritingProgress(supabase, {
+        projectId: pid,
+        repo: project.repo,
+        basePath,
+        token: credential.token,
+        openedFile: { path, content },
+      })
+    } catch (progressError) {
+      console.error('進捗の記録に失敗:', progressError)
+    }
+
     return {
       ok: true,
       data: {
         linkId: link.id,
         filePath: path,
         content,
-        charCount: content.replaceAll(/\s/g, '').length,
+        charCount: countChars(content),
         latestSha,
         lastReviewedCommit: link.last_reviewed_commit,
         suggestions,
@@ -160,7 +191,7 @@ export async function getSuggestions(
     const supabase = await createClient()
     const { data: link, error } = await supabase
       .from('manuscript_links')
-      .select('id, last_reviewed_commit, revision_suggestions (id, original_text, suggested_text, reason, status, created_at)')
+      .select(`id, last_reviewed_commit, revision_suggestions (${SUGGESTION_COLUMNS})`)
       .eq('id', linkId)
       .maybeSingle()
     if (error) throw new AppError('internal', error.message)
@@ -172,6 +203,188 @@ export async function getSuggestions(
       ok: true,
       data: { suggestions, lastReviewedCommit: link.last_reviewed_commit },
     }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * base_path 配下の全原稿ファイルの総文字数を集計し、当日分として upsert する
+ * （SPEC-proofreading §3.4。可視化はダッシュボード=Sprint 5）。
+ * 開いているファイルの本文は取得済みのものを使い、再取得しない
+ */
+async function recordWritingProgress(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  params: {
+    projectId: string
+    repo: string
+    basePath: string
+    token: string
+    openedFile: { path: string; content: string }
+  },
+): Promise<void> {
+  const files = await fetchManuscriptTree(params.token, params.repo, params.basePath)
+  // 同時リクエストを絞って取得する（無制限の並列は GitHub の secondary rate limit に触れうる）
+  let totalChars = 0
+  const CONCURRENCY = 10
+  for (let i = 0; i < files.length; i += CONCURRENCY) {
+    const contents = await Promise.all(
+      files.slice(i, i + CONCURRENCY).map((f) =>
+        f.path === params.openedFile.path
+          ? Promise.resolve(params.openedFile.content)
+          : getFileContent(params.token, params.repo, f.path).then((file) => file.content),
+      ),
+    )
+    totalChars += contents.reduce((sum, content) => sum + countChars(content), 0)
+  }
+
+  const { error } = await supabase.from('writing_progress').upsert(
+    { project_id: params.projectId, date: todayInJst(), total_chars: totalChars },
+    { onConflict: 'project_id,date' },
+  )
+  if (error) throw new AppError('internal', error.message)
+}
+
+const suggestionStatusSchema = z.enum(suggestionStatuses)
+
+/**
+ * 提案の受入/拒否/保留（と未処理への戻し）。コミット済みの提案は変更できない。
+ * 受入可否（原文が現在の原稿に一意に見つかるか）の判定はクライアント表示と
+ * コミット時の再検証（commitAcceptedSuggestions）が担う
+ */
+export async function updateSuggestionStatus(
+  suggestionId: string,
+  status: SuggestionStatus,
+): Promise<ActionResult> {
+  try {
+    const sid = uuidSchema.parse(suggestionId)
+    const nextStatus = suggestionStatusSchema.parse(status)
+    const supabase = await createClient()
+
+    // RLS越しの更新＝所有確認を兼ねる。「未コミットのみ」を UPDATE の条件に含めて原子化する
+    // （SELECT→UPDATE の分割だと、並行するコミットと交錯してコミット済み提案を書き換えうる）
+    const { data: updated, error: updateError } = await supabase
+      .from('revision_suggestions')
+      .update({ status: nextStatus })
+      .eq('id', sid)
+      .is('committed_sha', null)
+      .select('id')
+    if (updateError) throw new AppError('internal', updateError.message)
+
+    if (!updated || updated.length === 0) {
+      // 更新0件 = 行が存在しない（他人の行含む）か、コミット済み。理由を出し分ける
+      const { data: existing, error: selectError } = await supabase
+        .from('revision_suggestions')
+        .select('id')
+        .eq('id', sid)
+        .maybeSingle()
+      if (selectError) throw new AppError('internal', selectError.message)
+      if (!existing) throw new AppError('not_found', '提案が見つかりません')
+      throw new AppError('validation', 'コミット済みの提案は変更できません')
+    }
+
+    return { ok: true }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * 受け入れ済み（未コミット）の提案をまとめて適用し、1コミットでリポジトリへ書き戻す
+ * （SPEC-proofreading §3.4。ネコノテからGitへの書き込みはこの操作のみ）。
+ * 適用は最新原稿への一意一致を再検証し、1件でも適用できなければコミットしない（部分適用を作らない）
+ */
+export async function commitAcceptedSuggestions(
+  manuscriptLinkId: string,
+): Promise<ActionResult<{ commitSha: string; appliedCount: number; warning?: string }>> {
+  try {
+    const linkId = uuidSchema.parse(manuscriptLinkId)
+    const supabase = await createClient()
+
+    // RLS越しの取得＝所有確認を兼ねる
+    const { data: link, error: linkError } = await supabase
+      .from('manuscript_links')
+      .select('id, file_path, projects (id, repo, base_path)')
+      .eq('id', linkId)
+      .maybeSingle()
+    if (linkError) throw new AppError('internal', linkError.message)
+    if (!link || !link.projects) throw new AppError('not_found', '原稿リンクが見つかりません')
+    if (!link.projects.repo) throw new AppError('validation', 'リポジトリが設定されていません')
+    // DB由来の file_path も再検証する（多層防御。/api/proofread と同じ作法）。
+    // 書き込み経路なので base_path 配下であることも読み取り側と対称に確認する
+    const filePath = manuscriptFilePathSchema.parse(link.file_path)
+    const basePath = link.projects.base_path ?? ''
+    if (basePath !== '' && !filePath.startsWith(`${basePath.replace(/\/$/, '')}/`)) {
+      throw new AppError('validation', 'ファイルパスが不正です')
+    }
+
+    const credential = await patCredentialProvider.getCredential(supabase)
+    if (!credential) {
+      throw new AppError('validation', 'GitHub PATが未登録です。設定から登録してください')
+    }
+
+    const { data: accepted, error: acceptedError } = await supabase
+      .from('revision_suggestions')
+      .select('id, original_text, suggested_text')
+      .eq('manuscript_link_id', linkId)
+      .eq('status', 'accepted')
+      .is('committed_sha', null)
+      .order('created_at', { ascending: true })
+    if (acceptedError) throw new AppError('internal', acceptedError.message)
+    if (!accepted || accepted.length === 0) {
+      throw new AppError('validation', '受け入れ済みの提案がありません')
+    }
+
+    // 最新原稿を取得して適用（blob SHA 起点の楽観ロック。リモート更新が挟まると PUT が conflict になる）
+    const { content, sha } = await getFileContent(credential.token, link.projects.repo, filePath)
+    const applied = applySuggestions(content, accepted)
+    if (!applied.ok) {
+      const excerpt =
+        applied.failedOriginal.length > 20
+          ? `${applied.failedOriginal.slice(0, 20)}…`
+          : applied.failedOriginal
+      throw new AppError(
+        'validation',
+        `適用できない提案があります（「${excerpt}」が現在の原稿に一意に見つかりません）。該当の提案を未処理に戻すか拒否してから、もう一度コミットしてください`,
+      )
+    }
+
+    const fileName = filePath.split('/').pop() ?? filePath
+    const { commitSha } = await putFileContent(credential.token, link.projects.repo, filePath, {
+      content: applied.content,
+      sha,
+      message: `校正: ${fileName} に修正${accepted.length}件を適用（ネコノテAI）`,
+    })
+
+    // コミット成立後の記録。ここで失敗してエラーにすると「未コミット扱いのまま再コミット→
+    // 二重適用」の事故につながるため、リトライした上で、失敗しても成功（警告つき）として返す
+    let markError: { message: string } | null = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error } = await supabase
+        .from('revision_suggestions')
+        .update({ committed_sha: commitSha })
+        .in(
+          'id',
+          accepted.map((s) => s.id),
+        )
+      markError = error
+      if (!error) break
+    }
+    let warning: string | undefined
+    if (markError) {
+      console.error('committed_sha の記録に失敗（コミット自体は成立）:', markError.message)
+      warning =
+        'コミットは完了しましたが、提案への記録に失敗しました。そのまま再コミットすると同じ修正を二重に適用するおそれがあります。ファイルを開き直して提案の状態を確認してください'
+    }
+
+    // 自分のコミットで更新バナーを出さないよう、レビュー済みSHAを進める
+    const { error: shaError } = await supabase
+      .from('manuscript_links')
+      .update({ last_reviewed_commit: commitSha })
+      .eq('id', linkId)
+    if (shaError) console.error('last_reviewed_commit の更新に失敗:', shaError.message)
+
+    return { ok: true, data: { commitSha, appliedCount: accepted.length, warning } }
   } catch (error) {
     return toActionError(error)
   }

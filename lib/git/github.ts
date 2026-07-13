@@ -98,23 +98,72 @@ export async function getManuscriptTree(
     .sort((a, b) => a.path.localeCompare(b.path, 'en'))
 }
 
-/** ファイル本文を取得する（Contents API・base64復号。1MB超はAPI制約のままエラー） */
+function contentsApiPath(repo: string, filePath: string): string {
+  return `/repos/${repo}/contents/${filePath.split('/').map(encodeURIComponent).join('/')}`
+}
+
+export type ManuscriptFile = {
+  content: string
+  /** ファイルの blob SHA（Contents API での書き戻し時に必要） */
+  sha: string
+}
+
+/** ファイル本文＋blob SHAを取得する（Contents API・base64復号。1MB超はAPI制約のままエラー） */
 export async function getFileContent(
   token: string,
   repo: string,
   filePath: string,
-): Promise<string> {
-  const res = await githubFetch(
-    token,
-    `/repos/${repo}/contents/${filePath.split('/').map(encodeURIComponent).join('/')}`,
-  )
+): Promise<ManuscriptFile> {
+  const res = await githubFetch(token, contentsApiPath(repo, filePath))
   if (!res.ok) throw toGithubError(res, `ファイル ${filePath} が見つかりません`)
-  const data = (await res.json()) as { content?: string; encoding?: string }
-  if (data.encoding !== 'base64' || data.content === undefined) {
+  const data = (await res.json()) as { content?: string; encoding?: string; sha?: string }
+  if (data.encoding !== 'base64' || data.content === undefined || !data.sha) {
     // 1MB超のファイルは content が返らない（Contents API の制約）
     throw new AppError('validation', 'このファイルは大きすぎて読み込めません（上限1MB）')
   }
-  return Buffer.from(data.content, 'base64').toString('utf8')
+  return { content: Buffer.from(data.content, 'base64').toString('utf8'), sha: data.sha }
+}
+
+/**
+ * ファイルを書き戻して1コミットを作る（Contents API PUT。ネコノテからの書き込みはこの操作のみ）。
+ * sha は取得時の blob SHA。リモートが先に更新されていると 409 になる（上書き事故の防止）
+ */
+export async function putFileContent(
+  token: string,
+  repo: string,
+  filePath: string,
+  params: { content: string; sha: string; message: string },
+): Promise<{ commitSha: string }> {
+  const res = await fetch(`${API_BASE}${contentsApiPath(repo, filePath)}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message: params.message,
+      content: Buffer.from(params.content, 'utf8').toString('base64'),
+      sha: params.sha,
+    }),
+  })
+  // 409 = blob SHA 不一致（取得後にリモートが更新された）。422 は他のバリデーション失敗でも
+  // 返るため、SHA不一致の文言（"does not match"）のときだけ conflict に正規化する
+  if (res.status === 409 || res.status === 422) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string }
+    if (res.status === 409 || /does not match/i.test(body.message ?? '')) {
+      throw new AppError(
+        'conflict',
+        '原稿がリモートで更新されています。ファイルを開き直して提案を確認してから、もう一度コミットしてください',
+      )
+    }
+    throw new AppError('internal', `GitHub APIエラー（status: ${res.status}）`)
+  }
+  if (!res.ok) throw toGithubError(res, `ファイル ${filePath} が見つかりません`)
+  const data = (await res.json()) as { commit?: { sha?: string } }
+  if (!data.commit?.sha) throw new AppError('internal', 'コミット結果の取得に失敗しました')
+  return { commitSha: data.commit.sha }
 }
 
 /**

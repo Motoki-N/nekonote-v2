@@ -2,12 +2,25 @@
 
 import { useState } from "react";
 import { useObject } from "@ai-sdk/react";
-import { CircleStop, Loader2, SpellCheck, X } from "lucide-react";
+import { CircleStop, GitCommitHorizontal, Loader2, SpellCheck, X } from "lucide-react";
+import { toast } from "sonner";
 import { z } from "zod";
 
-import type { SuggestionRecord } from "@/lib/actions/manuscripts";
+import { commitAcceptedSuggestions, type SuggestionRecord } from "@/lib/actions/manuscripts";
+import { isApplicable } from "@/lib/proofread-apply";
 import type { SuggestionStatus } from "@/lib/schemas/enums";
 import { proofreadSuggestionSchema } from "@/lib/schemas/manuscript";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
@@ -45,19 +58,27 @@ const STATUS_VARIANT: Record<SuggestionStatus, "default" | "secondary" | "outlin
  */
 export function ProofreadPanel({
   linkId,
+  content,
   suggestions,
+  onUpdateStatus,
   onCompleted,
   onClose,
 }: {
   linkId: string;
+  /** 表示中の原稿本文（受入可否＝原文抜粋の一意一致の判定に使う） */
+  content: string;
   /** 保存済み提案（親が openManuscriptFile / 再読込で取得したもの） */
   suggestions: SuggestionRecord[];
-  /** 校正完了時に親がファイル情報（本文・提案・バナー）を取り直す */
+  /** 受入/拒否/保留の状態変更（親が提案一覧を更新する） */
+  onUpdateStatus: (id: string, status: SuggestionStatus) => Promise<void>;
+  /** 校正完了・コミット完了時に親がファイル情報（本文・提案・バナー）を取り直す */
   onCompleted: () => Promise<void>;
   onClose: () => void;
 }) {
   const [hasRun, setHasRun] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
 
   const { object, submit, isLoading, stop, error } = useObject({
@@ -80,10 +101,45 @@ export function ProofreadPanel({
     },
   });
 
-  const busy = isLoading || refreshing;
+  const busy = isLoading || refreshing || committing || updatingId !== null;
   const streaming = isLoading ? (object ?? []) : null;
   const pendingCount = suggestions.filter((s) => s.status === "pending").length;
+  const acceptedUncommitted = suggestions.filter(
+    (s) => s.status === "accepted" && s.committed_sha === null,
+  );
+  // 受入済みに適用不能が混ざっているとコミットは必ず失敗するため、先にUIで止める
+  const inapplicableAcceptedCount = acceptedUncommitted.filter(
+    (s) => !isApplicable(content, s.original_text),
+  ).length;
   const displayError = error ? toDisplayError(error) : streamError;
+
+  const handleUpdateStatus = async (id: string, status: SuggestionStatus) => {
+    setUpdatingId(id);
+    try {
+      await onUpdateStatus(id, status);
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const handleCommit = async () => {
+    setCommitting(true);
+    try {
+      const result = await commitAcceptedSuggestions(linkId);
+      if (!result.ok || !result.data) {
+        toast.error(result.ok ? "コミットに失敗しました" : result.error.message);
+        return;
+      }
+      if (result.data.warning) {
+        toast.warning(result.data.warning);
+      } else {
+        toast(`${result.data.appliedCount}件の修正をコミットしました`);
+      }
+      await onCompleted();
+    } finally {
+      setCommitting(false);
+    }
+  };
 
   return (
     <aside
@@ -119,7 +175,14 @@ export function ProofreadPanel({
           )}
           {streaming === null &&
             suggestions.map((s) => (
-              <SavedSuggestionCard key={s.id} suggestion={s} />
+              <SavedSuggestionCard
+                key={s.id}
+                suggestion={s}
+                applicable={isApplicable(content, s.original_text)}
+                disabled={busy}
+                updating={updatingId === s.id}
+                onUpdateStatus={(status) => void handleUpdateStatus(s.id, status)}
+              />
             ))}
           {streaming !== null && (
             <>
@@ -150,32 +213,146 @@ export function ProofreadPanel({
             停止
           </Button>
         ) : (
-          <Button
-            disabled={refreshing}
-            onClick={() => {
-              setHasRun(true);
-              setStreamError(null);
-              submit({ manuscriptLinkId: linkId });
-            }}
-          >
-            {suggestions.length === 0 && !hasRun ? "校正を受ける" : "再校正を受ける"}
-          </Button>
+          <>
+            {acceptedUncommitted.length > 0 && (
+              <>
+                {inapplicableAcceptedCount > 0 && (
+                  <p className="text-xs text-destructive">
+                    適用不能の受入提案が{inapplicableAcceptedCount}件あります。
+                    未処理に戻すか拒否するとコミットできます
+                  </p>
+                )}
+                <AlertDialog>
+                  <AlertDialogTrigger
+                    render={
+                      <Button
+                        variant="secondary"
+                        disabled={busy || inapplicableAcceptedCount > 0}
+                      >
+                        {committing ? (
+                          <Loader2 data-icon="inline-start" className="animate-spin" />
+                        ) : (
+                          <GitCommitHorizontal data-icon="inline-start" />
+                        )}
+                        確定分をコミット（{acceptedUncommitted.length}件）
+                      </Button>
+                    }
+                  />
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>修正をリポジトリに書き戻しますか？</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        受け入れた{acceptedUncommitted.length}
+                        件の修正をまとめて適用し、1コミットとしてGitHubへ書き戻します。
+                        保留中の提案はコミット後も残ります。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => void handleCommit()}>
+                        コミットする
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
+            )}
+            <Button
+              disabled={busy}
+              onClick={() => {
+                setHasRun(true);
+                setStreamError(null);
+                submit({ manuscriptLinkId: linkId });
+              }}
+            >
+              {suggestions.length === 0 && !hasRun ? "校正を受ける" : "再校正を受ける"}
+            </Button>
+          </>
         )}
       </footer>
     </aside>
   );
 }
 
-function SavedSuggestionCard({ suggestion }: { suggestion: SuggestionRecord }) {
+function SavedSuggestionCard({
+  suggestion,
+  applicable,
+  disabled,
+  updating,
+  onUpdateStatus,
+}: {
+  suggestion: SuggestionRecord;
+  /** 原文抜粋が現在の原稿に一意に見つかるか（見つからなければ受入不可＝適用不能） */
+  applicable: boolean;
+  disabled: boolean;
+  updating: boolean;
+  onUpdateStatus: (status: SuggestionStatus) => void;
+}) {
+  const committed = suggestion.committed_sha !== null;
+  const { status } = suggestion;
+  // 適用不能の表示は「これから適用しうる」状態（未処理・保留・未コミットの受入）に限る
+  const showInapplicable =
+    !applicable && !committed && (status === "pending" || status === "on_hold" || status === "accepted");
+
   return (
     <SuggestionCardBody
       originalText={suggestion.original_text}
       suggestedText={suggestion.suggested_text}
       reason={suggestion.reason}
       header={
-        <Badge variant={STATUS_VARIANT[suggestion.status]}>
-          {STATUS_LABEL[suggestion.status]}
-        </Badge>
+        <>
+          <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
+          {committed && <Badge variant="outline">コミット済み</Badge>}
+          {showInapplicable && <Badge variant="destructive">適用不能</Badge>}
+          {updating && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
+        </>
+      }
+      footer={
+        committed ? null : (
+          <div className="mt-2 flex items-center gap-1">
+            {(status === "pending" || status === "on_hold") && (
+              <>
+                <Button
+                  size="xs"
+                  variant="outline"
+                  disabled={disabled || !applicable}
+                  onClick={() => onUpdateStatus("accepted")}
+                >
+                  受入
+                </Button>
+                {status === "pending" && (
+                  <Button
+                    size="xs"
+                    variant="ghost"
+                    disabled={disabled}
+                    onClick={() => onUpdateStatus("on_hold")}
+                  >
+                    保留
+                  </Button>
+                )}
+                <Button
+                  size="xs"
+                  variant="ghost"
+                  className="text-destructive"
+                  disabled={disabled}
+                  onClick={() => onUpdateStatus("rejected")}
+                >
+                  拒否
+                </Button>
+              </>
+            )}
+            {(status === "accepted" || status === "rejected") && (
+              <Button
+                size="xs"
+                variant="ghost"
+                disabled={disabled}
+                onClick={() => onUpdateStatus("pending")}
+              >
+                未処理に戻す
+              </Button>
+            )}
+          </div>
+        )
       }
     />
   );
@@ -186,11 +363,13 @@ function SuggestionCardBody({
   suggestedText,
   reason,
   header,
+  footer,
 }: {
   originalText: string;
   suggestedText: string;
   reason: string | null;
   header: React.ReactNode;
+  footer?: React.ReactNode;
 }) {
   return (
     <article className="rounded-lg border border-border bg-card p-3">
@@ -213,6 +392,7 @@ function SuggestionCardBody({
           </div>
         )}
       </dl>
+      {footer}
     </article>
   );
 }

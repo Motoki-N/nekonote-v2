@@ -236,3 +236,20 @@
 - その他: GitHub API の一時的502に遭遇（アプリは落ちずエラー表示=フェイルソフト動作の実地確認になった）。server-only パッケージ追加。npm audit の指摘は Next 内部の postcss（fix は Next 9 への破壊的ダウングレード）のため見送り
 - 本番反映完了（Ready・45s）: 未認証の /settings・/projects・POST /api/proofread すべて 307 → /login（フェイルクローズ維持）。PAT はユーザーが実運用用に再登録済み（DB共通なので本番でもそのまま有効）
 - **Sprint 4前半（PAT登録・GitCredentialProvider・原稿タブ・AI校正の縦通し）完了**。次: Sprint 4後半（提案の受入/拒否/保留・まとめてコミット・writing_progress 集計。SPEC §3.4 の方針に従う）
+
+### セッション⑮: 提案の受入/拒否/保留・まとめてコミット・進捗集計（SPEC-proofreading §3.4・Sprint 4後半）
+
+- 7/21以降の通常ペース枠を 7/14 に前倒し実施。**マイグレーションなし**（`revision_suggestions.status` / `committed_sha` / `writing_progress` はコアスキーマ定義済み）。SPECインタビューも不要（§3.4 の方針確定済み）
+- **適用判定の一元化**（`lib/proofread-apply.ts` 新設・純関数): 「原文抜粋が現在の原稿に一意に見つかるか」（出現回数ちょうど1）を安全弁とし、クライアントの「適用不能」バッジとサーバーのコミット時再検証が**同じ関数を通る**。適用は逐次置換で、1件でも失敗したら全体を失敗に（部分適用のコミットを作らない）。`String.replace` の `$` 特殊解釈はインデックス連結で回避
+- **受入/拒否/保留**（`updateSuggestionStatus`）: pending⇄on_hold/accepted/rejected を自由に遷移（誤操作は「未処理に戻す」で復帰）。コミット済み（committed_sha 記録済み）は変更不可。UI は適用不能の提案の受入ボタンを無効化し、状態変更は GitHub 再取得を伴わないためローカル state の差し替えのみ（軽快）
+- **まとめてコミット**（`commitAcceptedSuggestions`＋`putFileContent`）: accepted（未コミット）を作成順に適用し Contents API PUT で**1コミット**書き戻し（ネコノテからGitへの唯一の書き込み）。blob SHA の楽観ロックでリモート先行更新は conflict に。成功後 `committed_sha` 記録＋`last_reviewed_commit` を新コミットSHAへ進める（**自分のコミットで更新バナーを出さない**）。コミットメッセージは `校正: {ファイル名} に修正n件を適用（ネコノテAI）`。確認ダイアログ（AlertDialog）経由でのみ実行
+- **writing_progress 集計**: `openManuscriptFile` 時に base_path 配下の全原稿ファイルの総文字数（空白除外・表示と同じ数え方）を当日分（**JST基準**・`sv-SE`+Asia/Tokyo）として upsert。同時取得は10並列に制限（secondary rate limit 対策）。失敗しても原稿読み込みは成功させる（補助機能のフェイルソフト）
+- **security-reviewer ゲート通過**: Critical/High ゼロ。Medium 1件＋Low 4件を全て修正——①コミット成立後の committed_sha 記録失敗→再試行で二重適用の恐れ（リトライ3回＋失敗時は警告つき成功応答に。エラー扱いにすると「未コミット扱い→再コミット→二重適用」の事故経路になる）②updateSuggestionStatus の check-then-update TOCTOU（UPDATE に `.is('committed_sha', null)` を含めて原子化）③書き込み経路に base_path 前置チェック追加（読み取り側と対称の多層防御）④進捗集計の並列制限（上記）⑤PUT の 422 一括 conflict 扱いを「does not match」文言判定に（実装バグ由来の422を誤案内しない）
+- **E2E検証（実リポ Motoki-N/writings・全53ファイル・ユーザー承認の上で書き込み検証）**:
+  - 状態遷移: 保留→受入・未処理→拒否→未処理に戻す、DB反映・バッジ・ボタン出し分けすべて期待どおり
+  - 適用不能: 原稿に存在しない原文のダミー提案（一時挿入→検証後削除）で、バッジ表示・受入無効化・**accepted に混ざるとコミットボタン無効＋警告文**を確認
+  - コミット: 受入1件（表記揺れ「バシャッバシャッと」→「バシャバシャと」）→確認ダイアログ→**実コミット成立**（`校正: シーン1.txt に修正1件を適用（ネコノテAI）`）。committed_sha・last_reviewed_commit 同値更新・バナー非表示・「コミット済み」バッジ＋ボタン消滅・本文更新・pending 3件残存を三面（DB/GitHub/UI）で確認
+  - **安全弁の実地動作**: コミットで原文が変わった結果、陳腐化した既存 pending 提案が自動で「適用不能」表示に切り替わった（SPEC §3.4 の想定シナリオそのもの）
+  - 進捗: writing_progress に当日行（JST 7/14）37,490字 → コミット後の開き直しで **37,488字に upsert 更新**（「ッ」2文字減を正確に追従）
+  - モバイル375px: ボトムシート内のカード・バッジ・ボタン成立
+- **Sprint 4後半（受入/拒否/保留・まとめてコミット・writing_progress 集計）完了＝Sprint 4完了**。校正フェーズのワークフロー（読み込み→校正→受入→書き戻し→進捗）が一巡。次: Sprint 5（ダッシュボード・プロファイル選択UI・講評系・設定画面拡張）

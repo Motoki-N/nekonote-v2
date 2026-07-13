@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     }
 
     // 画面表示が古くても、その時点の最新原稿を正として校正する
-    const [content, latestSha] = await Promise.all([
+    const [{ content }, latestSha] = await Promise.all([
       getFileContent(credential.token, link.projects.repo, filePath),
       getLatestCommitSha(credential.token, link.projects.repo, filePath),
     ])
