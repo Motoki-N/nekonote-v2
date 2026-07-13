@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Settings } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -9,6 +10,18 @@ export default function Home() {
       <header className="flex items-center justify-between border-b border-border px-6 py-4">
         <h1 className="text-lg font-semibold text-foreground">🐱 ネコノテAI</h1>
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="設定"
+            className="text-muted-foreground"
+            nativeButton={false}
+            render={
+              <Link href="/settings">
+                <Settings />
+              </Link>
+            }
+          />
           <ThemeToggle />
           <form action="/logout" method="post">
             <Button type="submit" variant="ghost" size="sm">

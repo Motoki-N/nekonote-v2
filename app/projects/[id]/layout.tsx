@@ -26,7 +26,7 @@ export default async function ProjectLayout({
 
   const { data: project } = await supabase
     .from("projects")
-    .select("id, title, status, event_name, deadline, target_pages")
+    .select("id, title, status, event_name, deadline, target_pages, repo, base_path")
     .eq("id", id)
     .maybeSingle();
   if (!project) notFound();
@@ -56,6 +56,8 @@ export default async function ProjectLayout({
             event_name: project.event_name,
             deadline: project.deadline,
             target_pages: project.target_pages,
+            repo: project.repo,
+            base_path: project.base_path,
           }}
         />
         <div className="ml-auto">

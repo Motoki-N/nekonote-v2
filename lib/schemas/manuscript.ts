@@ -29,6 +29,31 @@ export const revisionSuggestionUpdateSchema = revisionSuggestionInputSchema
 export type RevisionSuggestionInput = z.infer<typeof revisionSuggestionInputSchema>
 export type RevisionSuggestionUpdate = z.infer<typeof revisionSuggestionUpdateSchema>
 
+// 原稿ファイルパスの検証（トラバーサル・絶対パス・原稿以外の拡張子を拒否）。
+// Server Action（openManuscriptFile）と /api/proofread のDB由来値の再検証で共用する
+export const manuscriptFilePathSchema = z
+  .string()
+  .min(1)
+  .max(500)
+  .refine(
+    (p) => !p.startsWith('/') && !p.includes('..') && /\.(md|txt)$/.test(p),
+    'ファイルパスが不正です',
+  )
+
+// AI校正の構造化提案（SPEC-proofreading §3.5。streamObject の要素スキーマ＝クライアントと共用）
+export const proofreadSuggestionSchema = z.object({
+  original_text: z
+    .string()
+    .describe('修正対象の箇所。原稿から一字一句そのまま引用する（原稿内で一意に特定できる長さで）'),
+  suggested_text: z.string().describe('原文抜粋をそのまま置き換えられる修正案'),
+  reason: z.string().describe('問題点の簡潔な説明（一文）'),
+})
+export type ProofreadSuggestion = z.infer<typeof proofreadSuggestionSchema>
+
+export const proofreadRequestSchema = z.object({
+  manuscriptLinkId: z.uuid(),
+})
+
 export const writingProgressInputSchema = z.object({
   project_id: z.uuid(),
   date: z.iso.date(),

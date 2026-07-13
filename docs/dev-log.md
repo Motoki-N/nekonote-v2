@@ -221,3 +221,18 @@
 - **発見: `GOOGLE_GENERATIVE_AI_API_KEY` 未登録**（校正さん=low帯のデフォルトは gemini-3.1-flash-lite）。実装セッション冒頭でGoogleキー登録 or ai_model_settings で low→anthropic（haiku 4.5）差し替えの判断が必要
 - docs/SPEC-proofreading.md 策定 → ユーザーレビューで指摘なし → **確定**（2026-07-13）
 - 次: 新規セッションで実装（Sprint 4前半）。マイグレーション（user_settings PAT列＋プロファイル改訂）のプランモード承認から。**security-reviewer 必須ゲート**（暗号化・PAT取り扱い・/api/proofread）。ユーザー準備物: ①Google APIキー or low帯差し替え判断 ②検証用原稿リポジトリ（誤字入りダミー.md数ファイル）＋Fine-grained PAT（対象リポ限定・Contents: Read/Write） ③ENCRYPTION_KEYはセッション内で生成・登録（CLI完結・値は非出力）
+
+### セッション⑭: GitHub連携＋AI校正 実装（SPEC-proofreading・Sprint 4前半）
+
+- 前倒しスケジュール（7/20枠）をさらに前倒しして 7/13 に実施。プランモード承認で実装開始。冒頭判断: **low帯は ai_model_settings で anthropic（claude-haiku-4-5）に差し替え**（Googleキー登録は不要に。行削除でいつでもデフォルトに戻る）。ENCRYPTION_KEY はセッション内でCLI生成し .env.local＋Vercel本番へ登録（値は非出力の運用どおり）
+- マイグレーション `20260713000003_github_pat_and_proofreading.sql`: user_settings に github_pat_ciphertext / github_username（null可・既存RLS踏襲）＋校正プロファイル（…1005）の出力形式節を構造化出力前提に改訂
+- **security-reviewer ゲート×2回通過**: ①マイグレーション=指摘なし（Low 2件は実装側引き継ぎ: 復号失敗の情報非漏洩・github_username を信頼しない表示値として扱う→両方実装済み）。②実装=Critical/High/Medium なし、Low 2件を修正（repo 正規表現を GitHub 実仕様に強化＝`..`等のURL正規化による別エンドポイント到達を遮断／/api/proofread で DB由来 file_path を manuscriptFilePathSchema で再検証＝PostgREST直叩きで作られた不正行への多層防御）
+- 実装: `lib/crypto.ts`（AES-256-GCM・server-only・iv+authTag+暗号文のbase64）、`lib/git/credentials.ts`（GitCredentialProvider 抽象化＋PAT実装）、`lib/git/github.ts`（fetch直叩き薄ラッパー: ツリー・本文・ファイル単位SHA・疎通検証。AppError正規化）、`lib/actions/settings.ts`（登録=GET /user 疎通→暗号化upsert・削除。**暗号文・平文は一切クライアントへ返さない**）、`/settings` ページ、プロジェクト編集に repo/base_path 欄、原稿タブ（ファイル一覧・読み込み専用ビュー・更新バナー・誘導表示のフェイルソフト）、`/api/proofread`（streamObject 配列・onFinish で pending 置き換え＋last_reviewed_commit 更新）、校正パネル（useObject 逐次カード・stop・statusバッジ）
+- **E2E検証（SPEC §8）11項目すべて通過**（検証はユーザーの実原稿リポ Motoki-N/writings を流用。前半は読み取り専用なので安全）: PAT登録（DB暗号文のみ・無効トークン日本語エラー）／誘導表示（repo未設定・PAT未登録）／原稿読み込み（日本語パスのツリー・本文2218字・manuscript_links自動作成）／AI校正（実原稿の表記揺れ「バシャッバシャッと」を検出・pending/sentence保存・SHA記録）／再校正（on_hold残存・pending置き換え）／更新バナー（SHA不一致→表示、校正完了→自動消灯）／PAT削除→誘導復帰／キー未設定の日本語エラー／モバイル375px（ボトムシート）／anon REST 401／既存タブ回帰
+- E2E検証で発見・修正した3件（教訓）:
+  1. **【重要インシデント】Next.js dev の Server Action ログが引数を平文出力し、登録PATがターミナルログに露出** → `next.config.ts` に `logging: { serverFunctions: false }` で恒久停止＋ユーザーがPATをローテーション（Revoke→再発行→差し替え）。**秘密情報を Server Action の引数で受ける機能を作るときは、このログ抑止が前提条件**
+  2. **`.env.local` への追記で ANTHROPIC_API_KEY を破損**（末尾改行なしのファイルに `>>` 追記して行連結→キーが401に）。修復して復旧。**追記前に末尾改行の有無を確認する**（`tail -c 1` チェックか `printf '\n...'` 前置）
+  3. **ストリーム中のプロバイダエラーが「指摘事項はありません」と誤表示**（streamObject はストリーム開始後のエラーがHTTPステータスに出ない）→ useObject の onError/onFinish 両方でエラー捕捉＋空メッセージはエラー時に出さない。あわせて**サーバー onFinish の保存とクライアント取り直しのレース**（完了直後の再取得が保存前に走り更新バナーが残る）を発見→取り直しを即時＋1.2秒後の二段に
+- その他: GitHub API の一時的502に遭遇（アプリは落ちずエラー表示=フェイルソフト動作の実地確認になった）。server-only パッケージ追加。npm audit の指摘は Next 内部の postcss（fix は Next 9 への破壊的ダウングレード）のため見送り
+- 本番反映完了（Ready・45s）: 未認証の /settings・/projects・POST /api/proofread すべて 307 → /login（フェイルクローズ維持）。PAT はユーザーが実運用用に再登録済み（DB共通なので本番でもそのまま有効）
+- **Sprint 4前半（PAT登録・GitCredentialProvider・原稿タブ・AI校正の縦通し）完了**。次: Sprint 4後半（提案の受入/拒否/保留・まとめてコミット・writing_progress 集計。SPEC §3.4 の方針に従う）

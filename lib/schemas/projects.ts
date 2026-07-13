@@ -13,8 +13,17 @@ export const projectInputSchema = z.object({
   target_pages: z.number().int().positive().nullish(),
   deadline: z.iso.date().nullish(),
   event_name: z.string().nullish(),
-  repo: z.string().nullish(),
-  base_path: z.string().nullish(),
+  // 原稿リポジトリ（owner/repo 形式）と配下の原稿フォルダ（空=ルート。SPEC-proofreading §4）
+  // owner は GitHub 実仕様（英数字とハイフン）。repo 名は . / .. 単体を拒否（URL正規化による別エンドポイント到達の防止）
+  repo: z
+    .string()
+    .regex(/^[A-Za-z0-9-]+\/(?!\.\.?$)[\w.-]+$/, 'リポジトリは owner/repo の形式で入力してください')
+    .nullish(),
+  base_path: z
+    .string()
+    .max(300)
+    .regex(/^(?!\/)(?!.*\.\.)[^\s]*[^\s/]$|^$/, '原稿フォルダは先頭・末尾の / なしで入力してください')
+    .nullish(),
 })
 export const projectUpdateSchema = projectInputSchema.partial()
 

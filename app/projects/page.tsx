@@ -13,7 +13,9 @@ export default async function ProjectsPage() {
   const [{ data: projects }, { data: workingTitleTags }] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, title, status, event_name, deadline, target_pages, proposals (status)")
+      .select(
+        "id, title, status, event_name, deadline, target_pages, repo, base_path, proposals (status)",
+      )
       .order("created_at", { ascending: false }),
     supabase.from("tags").select("id, name").eq("kind", "working_title").order("name"),
   ]);
@@ -25,6 +27,8 @@ export default async function ProjectsPage() {
     event_name: p.event_name,
     deadline: p.deadline,
     target_pages: p.target_pages,
+    repo: p.repo,
+    base_path: p.base_path,
     proposalStatus: (p.proposals?.status ?? null) as ProposalStatus | null,
   }));
 

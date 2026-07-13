@@ -28,6 +28,8 @@ export type ProjectFormValues = {
   event_name: string | null;
   deadline: string | null;
   target_pages: number | null;
+  repo: string | null;
+  base_path: string | null;
 };
 
 // Input と同じトーンの select（shadcn select 未導入のため。色はテーマ変数のみ）
@@ -218,6 +220,8 @@ export function EditProjectDialog({
   const [targetPages, setTargetPages] = useState(
     project.target_pages === null ? "" : String(project.target_pages),
   );
+  const [repo, setRepo] = useState(project.repo ?? "");
+  const [basePath, setBasePath] = useState(project.base_path ?? "");
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -231,6 +235,8 @@ export function EditProjectDialog({
         event_name: toNullable(eventName),
         deadline: toNullable(deadline),
         target_pages: targetPages.trim() === "" ? null : Number(targetPages),
+        repo: toNullable(repo),
+        base_path: toNullable(basePath),
       });
       if (!result.ok) {
         toast.error(result.error.message);
@@ -288,6 +294,22 @@ export function EditProjectDialog({
               />
             </label>
           </div>
+          <label className="flex flex-col gap-1 text-sm">
+            原稿リポジトリ（owner/repo）
+            <Input
+              value={repo}
+              onChange={(e) => setRepo(e.target.value)}
+              placeholder="例: yourname/manuscripts"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            原稿フォルダ（リポジトリ内のパス。空ならルート）
+            <Input
+              value={basePath}
+              onChange={(e) => setBasePath(e.target.value)}
+              placeholder="例: novel-title"
+            />
+          </label>
           <DialogFooter>
             <Button type="submit" disabled={submitting || title.trim() === ""}>
               保存する
