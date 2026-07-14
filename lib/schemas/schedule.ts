@@ -26,7 +26,10 @@ export const scheduleSchema = z.object({
   dailyTargetChars: z.number().int().positive().nullable(),
   /** 期日昇順・最大20件 */
   milestones: z.array(milestoneSchema).max(20),
-  /** ツール実行時にサーバーで付与するISO日時 */
+  /**
+   * サーバーで付与する最終書き込みISO日時。楽観ロックのリビジョンを兼ねるため、
+   * すべての書き込み経路（saveSchedule ツール・toggleMilestone）で必ず更新する
+   */
   savedAt: z.iso.datetime(),
 })
 

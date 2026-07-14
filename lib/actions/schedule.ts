@@ -51,9 +51,12 @@ export async function toggleMilestone(
       milestones: parsed.data.milestones.map((milestone) =>
         milestone.id === targetId ? { ...milestone, done: Boolean(done) } : milestone,
       ),
+      // savedAt は「最終書き込み日時」＝楽観ロックのリビジョンを兼ねるため、トグルでも進める
+      savedAt: new Date().toISOString(),
     }
-    // savedAt の楽観比較: select→update の間にチャット確定（上書き保存）が走った場合に
-    // 古い schedule で巻き戻さない（0件更新 = 別の保存が先行 → conflict）
+    // savedAt の楽観比較: select→update の間に別の書き込み（チャット確定の丸ごと上書き、
+    // 別タブ・別デバイスでのトグル）が走った場合に古い schedule で巻き戻さない
+    // （0件更新 = 別の書き込みが先行 → conflict）。全書き込み経路が savedAt を更新する前提
     const { data: updated, error: updateError } = await supabase
       .from('projects')
       .update({ schedule })
