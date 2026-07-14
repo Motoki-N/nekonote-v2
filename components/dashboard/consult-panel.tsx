@@ -68,24 +68,41 @@ type ToolOutput =
 /**
  * DB同期でメッセージを差し替える際、セッション内のツール結果カードを引き継ぐ
  * （chat_messages はテキストのみ保持のため、そのまま差し替えるとカードが即消える。
- * role＋テキスト一致の順方向マッチで tool part を新メッセージに移す。SPEC §5.2）
+ * role＋テキスト一致の順方向マッチで tool part を新メッセージに移す。SPEC §5.2）。
+ * 締めのテキストが空の応答は /api/chat の onEnd がDBに保存しない＝ next に
+ * 対応行が存在しないため、マッチしなかったカード保持メッセージは捨てずに
+ * 元の並び位置へ残す（捨てると保存成功したのにカードごと消えて見える）
  */
 function mergeToolParts(current: UIMessage[], next: UIMessage[]): UIMessage[] {
   const candidates = current.filter(
     (message) => message.role === "assistant" && message.parts.some(isStaticToolUIPart),
   );
   let cursor = 0;
-  return next.map((message) => {
-    if (message.role !== "assistant") return message;
-    for (let i = cursor; i < candidates.length; i++) {
-      if (textOf(candidates[i]) === textOf(message)) {
-        cursor = i + 1;
-        // 元メッセージと同じ並び（ツール実行→締めのテキスト）で先頭に置く
-        return { ...message, parts: [...candidates[i].parts.filter(isStaticToolUIPart), ...message.parts] };
-      }
+  const merged: UIMessage[] = [];
+  for (const message of next) {
+    if (message.role !== "assistant") {
+      merged.push(message);
+      continue;
     }
-    return message;
-  });
+    const index = candidates.findIndex(
+      (candidate, i) => i >= cursor && textOf(candidate) === textOf(message),
+    );
+    if (index === -1) {
+      merged.push(message);
+      continue;
+    }
+    // マッチ位置より手前で取り残されたカード保持メッセージ（DB未保存）を元の順で先に残す
+    merged.push(...candidates.slice(cursor, index));
+    cursor = index + 1;
+    // 元メッセージと同じ並び（ツール実行→締めのテキスト）で先頭に置く
+    merged.push({
+      ...message,
+      parts: [...candidates[index].parts.filter(isStaticToolUIPart), ...message.parts],
+    });
+  }
+  // 末尾までマッチしなかったカード保持メッセージも残す（締めテキストなしの典型ケース）
+  merged.push(...candidates.slice(cursor));
+  return merged;
 }
 
 /** ツール呼び出しの結果カード（セッション内表示のみ。リロード後は消える。SPEC §5.2） */
