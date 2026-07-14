@@ -44,7 +44,9 @@
 
 ### L-1. DB由来の `projects.repo` が使用時に再検証されていない
 
-- **状態**: 未対応
+- **状態**: 対応済み（2026-07-14。`repoSchema` を `lib/schemas/projects.ts` の共有スキーマとして切り出し、
+  `lib/git/github.ts` 内で repo をURLに連結する全箇所を `validRepo()` 経由に変更。GitHub API呼び出しは
+  すべてこのラッパーを通るため、使用時再検証を一箇所で担保する）
 - **該当**: `lib/git/github.ts` の `githubFetch(token, \`/repos/${repo}...\`)` 各所
 - **何が問題か**: `file_path` は「PostgREST直叩きで作られた不正な行への多層防御」として
   使用時に `manuscriptFilePathSchema` で再検証している（/api/proofread・commitAcceptedSuggestions）

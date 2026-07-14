@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { AppError } from '@/lib/errors'
+import { repoSchema } from '@/lib/schemas/projects'
 
 // GitHub REST API の薄いラッパー（SPEC-proofreading §5。octokit は入れない）。
 // エラーは AppError に正規化する: 401/403=PAT無効・権限不足、404=リポジトリ/ファイル不達
@@ -13,6 +14,16 @@ const MANUSCRIPT_EXTENSIONS = ['.md', '.txt']
 export type ManuscriptTreeEntry = {
   /** リポジトリルートからのパス */
   path: string
+}
+
+// DB由来の repo も使用時に再検証する（PostgREST直叩きで作られた不正な行への多層防御。
+// manuscriptFilePathSchema の再検証と対称）。repo を受け取る全公開関数の入口で呼ぶ
+function validRepo(repo: string): string {
+  const parsed = repoSchema.safeParse(repo)
+  if (!parsed.success) {
+    throw new AppError('validation', 'リポジトリ名が不正です。プロジェクト設定を確認してください')
+  }
+  return parsed.data
 }
 
 async function githubFetch(token: string, path: string): Promise<Response> {
@@ -55,7 +66,7 @@ export async function verifyToken(token: string): Promise<{ login: string }> {
 
 /** リポジトリのデフォルトブランチを取得する */
 export async function getDefaultBranch(token: string, repo: string): Promise<string> {
-  const res = await githubFetch(token, `/repos/${repo}`)
+  const res = await githubFetch(token, `/repos/${validRepo(repo)}`)
   if (!res.ok) {
     throw toGithubError(
       res,
@@ -79,7 +90,7 @@ export async function getManuscriptTree(
   const branch = await getDefaultBranch(token, repo)
   const res = await githubFetch(
     token,
-    `/repos/${repo}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
+    `/repos/${validRepo(repo)}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
   )
   if (!res.ok) throw toGithubError(res, `リポジトリ ${repo} のファイル一覧を取得できません`)
   const data = (await res.json()) as {
@@ -99,7 +110,7 @@ export async function getManuscriptTree(
 }
 
 function contentsApiPath(repo: string, filePath: string): string {
-  return `/repos/${repo}/contents/${filePath.split('/').map(encodeURIComponent).join('/')}`
+  return `/repos/${validRepo(repo)}/contents/${filePath.split('/').map(encodeURIComponent).join('/')}`
 }
 
 export type ManuscriptFile = {
@@ -177,7 +188,7 @@ export async function getLatestCommitSha(
 ): Promise<string> {
   const res = await githubFetch(
     token,
-    `/repos/${repo}/commits?path=${encodeURIComponent(filePath)}&per_page=1`,
+    `/repos/${validRepo(repo)}/commits?path=${encodeURIComponent(filePath)}&per_page=1`,
   )
   if (!res.ok) throw toGithubError(res, `ファイル ${filePath} のコミット履歴を取得できません`)
   const data = (await res.json()) as { sha?: string }[]

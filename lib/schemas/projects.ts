@@ -7,18 +7,21 @@ import {
   sceneParts,
 } from './enums'
 
+// 原稿リポジトリ（owner/repo 形式）の検証。
+// owner は GitHub 実仕様（英数字とハイフン）。repo 名は . / .. 単体を拒否（URL正規化による別エンドポイント到達の防止）。
+// 入力時（projectInputSchema）と使用時（lib/git/github.ts のDB由来値の再検証）で共用する
+export const repoSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9-]+\/(?!\.\.?$)[\w.-]+$/, 'リポジトリは owner/repo の形式で入力してください')
+
 export const projectInputSchema = z.object({
   title: z.string().min(1, 'タイトルを入力してください'),
   status: z.enum(projectStatuses).default('planning'),
   target_pages: z.number().int().positive().nullish(),
   deadline: z.iso.date().nullish(),
   event_name: z.string().nullish(),
-  // 原稿リポジトリ（owner/repo 形式）と配下の原稿フォルダ（空=ルート。SPEC-proofreading §4）
-  // owner は GitHub 実仕様（英数字とハイフン）。repo 名は . / .. 単体を拒否（URL正規化による別エンドポイント到達の防止）
-  repo: z
-    .string()
-    .regex(/^[A-Za-z0-9-]+\/(?!\.\.?$)[\w.-]+$/, 'リポジトリは owner/repo の形式で入力してください')
-    .nullish(),
+  // 原稿リポジトリと配下の原稿フォルダ（空=ルート。SPEC-proofreading §4）
+  repo: repoSchema.nullish(),
   base_path: z
     .string()
     .max(300)
