@@ -11,6 +11,7 @@ import {
   getManuscriptTree as fetchManuscriptTree,
   putFileContent,
 } from '@/lib/git/github'
+import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
 import { applySuggestions } from '@/lib/proofread-apply'
 import { suggestionStatuses } from '@/lib/schemas/enums'
 import type { SuggestionStatus } from '@/lib/schemas/enums'
@@ -18,11 +19,6 @@ import { manuscriptFilePathSchema } from '@/lib/schemas/manuscript'
 import { createClient } from '@/lib/supabase/server'
 
 const uuidSchema = z.uuid()
-
-/** 空白・改行を除いた文字数（表示・進捗集計で共通の数え方） */
-function countChars(content: string): number {
-  return content.replaceAll(/\s/g, '').length
-}
 
 /** 進捗記録の「当日」はJST基準（サーバーはUTCで動く） */
 function todayInJst(): string {
@@ -223,20 +219,13 @@ async function recordWritingProgress(
     openedFile: { path: string; content: string }
   },
 ): Promise<void> {
-  const files = await fetchManuscriptTree(params.token, params.repo, params.basePath)
-  // 同時リクエストを絞って取得する（無制限の並列は GitHub の secondary rate limit に触れうる）
-  let totalChars = 0
-  const CONCURRENCY = 10
-  for (let i = 0; i < files.length; i += CONCURRENCY) {
-    const contents = await Promise.all(
-      files.slice(i, i + CONCURRENCY).map((f) =>
-        f.path === params.openedFile.path
-          ? Promise.resolve(params.openedFile.content)
-          : getFileContent(params.token, params.repo, f.path).then((file) => file.content),
-      ),
-    )
-    totalChars += contents.reduce((sum, content) => sum + countChars(content), 0)
-  }
+  const contents = await fetchAllManuscriptContents(
+    params.token,
+    params.repo,
+    params.basePath,
+    params.openedFile,
+  )
+  const totalChars = contents.reduce((sum, file) => sum + countChars(file.content), 0)
 
   const { error } = await supabase.from('writing_progress').upsert(
     { project_id: params.projectId, date: todayInJst(), total_chars: totalChars },

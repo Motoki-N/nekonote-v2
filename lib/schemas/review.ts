@@ -64,6 +64,8 @@ export type ReviewFeedbackUpdate = z.infer<typeof reviewFeedbackUpdateSchema>
 /** POST /api/review のリクエストボディ（レビュー入力は保存済みDB値からサーバー側で組み立てる） */
 export const reviewRequestSchema = z.object({
   sessionId: z.uuid(),
+  // 講評のみ: 原稿が15万字を超えている旨をユーザーが了承済み（SPEC-dashboard-critique-settings §3.3）
+  confirmLong: z.boolean().optional(),
 })
 
 export type ReviewRequest = z.infer<typeof reviewRequestSchema>

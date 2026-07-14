@@ -182,6 +182,46 @@ export function buildSceneReviewInput({
   return lines.join('\n')
 }
 
+/** 講評の入力に含める企画書情報の範囲（ペルソナの reference_scope から決まる） */
+export type CritiqueProposalScope = 'none' | 'target_only' | 'full'
+
+/**
+ * 講評（作品全体）の user 入力（SPEC-dashboard-critique-settings §3.3）。
+ * base_path 配下の全原稿ファイルをパス辞書順に見出し付きで結合する。
+ * 企画書情報はペルソナの reference_scope で出し分ける:
+ * manuscript_only = none / manuscript_plus_target = target_only / all = full
+ */
+export function buildManuscriptCritiqueInput({
+  files,
+  proposalScope,
+  proposal,
+}: {
+  /** path は表示用の相対パス */
+  files: { path: string; content: string }[]
+  proposalScope: CritiqueProposalScope
+  proposal: ProposalContext | null
+}): string {
+  const lines: string[] = []
+
+  if (proposalScope === 'full' && proposal) {
+    lines.push(...proposalSection(proposal), '')
+  } else if (proposalScope === 'target_only' && proposal) {
+    lines.push(
+      '# 企画情報',
+      `ジャンル: ${proposal.genre || '（未記入）'}`,
+      `ターゲット層: ${proposal.targetAudience || '（未記入）'}`,
+      '',
+    )
+  }
+
+  lines.push('# 原稿（作品全体・構成順）')
+  for (const file of files) {
+    lines.push(`## ${file.path}`, '"""', file.content, '"""', '')
+  }
+
+  return lines.join('\n')
+}
+
 /**
  * 掘り下げ支援の system プロンプト。
  * ペルソナの口調（personas.description）＋役割指示＋対象ノートのコンテキストを組み立てる

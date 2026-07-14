@@ -54,6 +54,11 @@ export const proofreadRequestSchema = z.object({
   manuscriptLinkId: z.uuid(),
 })
 
+// 講評の文字数ガード（SPEC-dashboard-critique-settings §3.3。二段構え）。
+// クライアントの事前確認とサーバーの最終防衛で共用する
+export const CRITIQUE_CONFIRM_CHARS = 150_000 // 超えたら実行前に確認
+export const CRITIQUE_MAX_CHARS = 300_000 // 超えたら実行不可
+
 export const writingProgressInputSchema = z.object({
   project_id: z.uuid(),
   date: z.iso.date(),

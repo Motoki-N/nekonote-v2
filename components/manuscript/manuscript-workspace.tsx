@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, FileText, Info, Loader2, Settings, SpellCheck } from "lucide-react";
+import { ArrowLeft, BookOpenText, FileText, Info, Loader2, Settings, SpellCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -14,6 +14,7 @@ import {
 import type { SuggestionStatus } from "@/lib/schemas/enums";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { CritiquePanel } from "@/components/manuscript/critique-panel";
 import { ProofreadPanel } from "@/components/manuscript/proofread-panel";
 
 /**
@@ -36,6 +37,8 @@ export function ManuscriptWorkspace({
   const [loading, setLoading] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  // 講評パネル（作品全体対象。ファイルを開いていなくても使える）。校正パネルと排他表示
+  const [critiqueOpen, setCritiqueOpen] = useState(false);
 
   const openFile = useCallback(
     async (path: string) => {
@@ -134,7 +137,26 @@ export function ManuscriptWorkspace({
     tree.basePath === "" ? path : path.slice(tree.basePath.replace(/\/$/, "").length + 1);
 
   return (
-    <div className="flex min-h-0 flex-1">
+    <div className="flex min-h-0 flex-1 flex-col">
+      {/* 原稿タブのツールバー（講評はファイルを開いていなくても実行できる。SPEC-dashboard-critique-settings §3.3） */}
+      <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
+        <span className="text-xs text-muted-foreground">原稿 全{tree.files.length}ファイル</span>
+        <Button
+          size="sm"
+          variant="outline"
+          className="ml-auto"
+          disabled={tree.files.length === 0}
+          onClick={() => {
+            setPanelOpen(false);
+            setCritiqueOpen(true);
+          }}
+        >
+          <BookOpenText data-icon="inline-start" />
+          講評
+        </Button>
+      </div>
+
+      <div className="flex min-h-0 flex-1">
       {/* ファイル一覧（モバイルはファイル未選択時のみ表示） */}
       <nav
         aria-label="原稿ファイル一覧"
@@ -205,7 +227,14 @@ export function ManuscriptWorkspace({
                 <span className="text-xs text-muted-foreground">{file.charCount}字</span>
               )}
               <div className="ml-auto">
-                <Button size="sm" disabled={!file} onClick={() => setPanelOpen(true)}>
+                <Button
+                  size="sm"
+                  disabled={!file}
+                  onClick={() => {
+                    setCritiqueOpen(false);
+                    setPanelOpen(true);
+                  }}
+                >
                   <SpellCheck data-icon="inline-start" />
                   校正を受ける
                 </Button>
@@ -241,7 +270,7 @@ export function ManuscriptWorkspace({
         )}
       </main>
 
-      {panelOpen && file && (
+      {panelOpen && !critiqueOpen && file && (
         <ProofreadPanel
           key={file.linkId}
           linkId={file.linkId}
@@ -252,6 +281,9 @@ export function ManuscriptWorkspace({
           onClose={() => setPanelOpen(false)}
         />
       )}
+
+      {critiqueOpen && <CritiquePanel projectId={projectId} onClose={() => setCritiqueOpen(false)} />}
+      </div>
     </div>
   );
 }

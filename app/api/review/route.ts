@@ -3,17 +3,22 @@ import { z } from 'zod'
 
 import { resolveModel } from '@/lib/ai/models'
 import {
+  buildManuscriptCritiqueInput,
   buildProposalReviewInput,
   buildReviewSystemPrompt,
   buildSceneReviewInput,
   buildStructureReviewInput,
+  type CritiqueProposalScope,
   type FeedbackHistoryItem,
   type NoteContext,
   type ProposalContext,
 } from '@/lib/ai/prompts'
 import type { SceneRecord } from '@/lib/board'
 import { AppError, errorResponse } from '@/lib/errors'
-import type { AiCapability, ReviewVerdict } from '@/lib/schemas/enums'
+import { patCredentialProvider } from '@/lib/git/credentials'
+import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
+import type { AiCapability, ReferenceScope, ReviewVerdict } from '@/lib/schemas/enums'
+import { CRITIQUE_CONFIRM_CHARS, CRITIQUE_MAX_CHARS } from '@/lib/schemas/manuscript'
 import { reviewRequestSchema } from '@/lib/schemas/review'
 import { createClient } from '@/lib/supabase/server'
 
@@ -73,13 +78,13 @@ export async function POST(req: Request) {
 
     const parsed = reviewRequestSchema.safeParse(await req.json())
     if (!parsed.success) throw new AppError('validation', 'リクエストの形式が不正です')
-    const { sessionId } = parsed.data
+    const { sessionId, confirmLong } = parsed.data
 
     // RLS越しの取得＝所有確認を兼ねる。担当ペルソナとプロファイルも同時に引く
     const { data: session, error: sessionError } = await supabase
       .from('review_sessions')
       .select(
-        'id, status, target_ref, project_id, personas (description, ai_capability), review_profiles (prompt_template, target_phase)',
+        'id, status, target_ref, project_id, personas (description, ai_capability, reference_scope), review_profiles (prompt_template, target_phase)',
       )
       .eq('id', sessionId)
       .maybeSingle()
@@ -163,6 +168,70 @@ export async function POST(req: Request) {
       if (!scene) throw new AppError('not_found', 'シーンが見つかりません')
       const proposal = await fetchProposalContext(supabase, session.project_id)
       prompt = buildSceneReviewInput({ proposal, scene, scenes, history })
+    } else if (phase === 'manuscript') {
+      // 講評: target_ref = project id（SPEC-dashboard-critique-settings §3.3。作品全体が対象）
+      if (targetRef.data !== session.project_id) {
+        throw new AppError('not_found', 'レビュー対象が見つかりません')
+      }
+      const { data: project, error: projectError } = await supabase
+        .from('projects')
+        .select('id, repo, base_path')
+        .eq('id', session.project_id)
+        .maybeSingle()
+      if (projectError) throw new AppError('internal', projectError.message)
+      if (!project) throw new AppError('not_found', 'プロジェクトが見つかりません')
+      if (!project.repo) throw new AppError('validation', 'リポジトリが設定されていません')
+
+      const credential = await patCredentialProvider.getCredential(supabase)
+      if (!credential) throw new AppError('validation', 'GitHub PATが未登録です')
+
+      const basePath = project.base_path ?? ''
+      const files = await fetchAllManuscriptContents(credential.token, project.repo, basePath)
+      if (files.length === 0) {
+        throw new AppError('validation', '原稿ファイル（.md / .txt）が見つかりません')
+      }
+
+      // 文字数ガード二段構え: 30万字超は実行不可、15万字超は了承済みフラグ必須
+      const totalChars = files.reduce((sum, file) => sum + countChars(file.content), 0)
+      if (totalChars > CRITIQUE_MAX_CHARS) {
+        throw new AppError(
+          'validation',
+          `原稿が約${totalChars.toLocaleString('ja-JP')}字あり、講評の上限（${CRITIQUE_MAX_CHARS.toLocaleString('ja-JP')}字）を超えています。実行できません`,
+        )
+      }
+      if (totalChars > CRITIQUE_CONFIRM_CHARS && confirmLong !== true) {
+        throw new AppError(
+          'validation',
+          `原稿が約${totalChars.toLocaleString('ja-JP')}字あり、長編小説の上限相当（${CRITIQUE_CONFIRM_CHARS.toLocaleString('ja-JP')}字）を超えています。実行するには確認が必要です`,
+        )
+      }
+
+      // 入力の出し分け＝ペルソナの参照範囲（reference_scope をコードが解釈する初のケース）
+      const scope = session.personas.reference_scope as ReferenceScope
+      let proposalScope: CritiqueProposalScope = 'none'
+      let proposal: ProposalContext | null = null
+      if (scope === 'all') {
+        proposalScope = 'full'
+        proposal = await fetchProposalContext(supabase, session.project_id)
+      } else if (scope === 'manuscript_plus_target') {
+        proposalScope = 'target_only'
+        proposal = await fetchProposalContext(supabase, session.project_id)
+        // なりきり先がないと意味を成さないためフェイルクローズ（SPEC §3.3）
+        if (!proposal.genre || !proposal.targetAudience) {
+          throw new AppError(
+            'validation',
+            '企画書のジャンル・ターゲット層が未設定のため、この講評を実行できません。企画書タブで設定してください',
+          )
+        }
+      }
+
+      // 見出しはツリー表示と同じ相対パスにする
+      const prefixLength = basePath === '' ? 0 : basePath.replace(/\/$/, '').length + 1
+      prompt = buildManuscriptCritiqueInput({
+        files: files.map((f) => ({ path: f.path.slice(prefixLength), content: f.content })),
+        proposalScope,
+        proposal,
+      })
     } else {
       throw new AppError('validation', 'このレビュー種別には未対応です')
     }
@@ -178,18 +247,32 @@ export async function POST(req: Request) {
       prompt,
       // 生成完了時にフィードバックを保存する（stop によるクライアント切断時は保存しない）
       onFinish: async ({ text }) => {
-        if (!text) return
+        // 講評は読み切り型: 1実行1セッションで、成功時 completed / 失敗時 failed に確定する
+        const finalizeCritique = async (status: 'completed' | 'failed') => {
+          if (phase !== 'manuscript') return
+          const { error: statusError } = await supabase
+            .from('review_sessions')
+            .update({ status })
+            .eq('id', session.id)
+          if (statusError) console.error('講評セッションの確定に失敗:', statusError.message)
+        }
+        if (!text) {
+          await finalizeCritique('failed')
+          return
+        }
         try {
           const { error: insertError } = await supabase.from('review_feedbacks').insert({
             review_session_id: session.id,
-            // 構成・シーンレビューは都度フィードバック型で判定を持たない（SPEC-beat-board §2）
+            // 構成・シーンレビューは都度フィードバック型、講評は合否を持たないため判定は企画書のみ
             content: text,
             verdict: phase === 'proposal' ? parseVerdict(text) : null,
           })
           if (insertError) {
             console.error('フィードバックの保存に失敗:', insertError.message)
+            await finalizeCritique('failed')
             return
           }
+          await finalizeCritique('completed')
           // 初回レビュー実行で draft → in_review（企画書レビューのみ。SPEC-proposal-review §3.2）
           if (proposalIdForStatus) {
             const { error: statusError } = await supabase
@@ -201,6 +284,18 @@ export async function POST(req: Request) {
         } catch (error) {
           // 保存の失敗でストリーム自体は壊さない（クライアントは一覧の取り直しで気づける）
           console.error('フィードバックの保存に失敗:', error)
+          await finalizeCritique('failed')
+        }
+      },
+      onError: async ({ error }) => {
+        console.error('レビュー生成でエラー:', error)
+        // 講評セッションを running のまま残さない（読み切り型）
+        if (phase === 'manuscript') {
+          const { error: statusError } = await supabase
+            .from('review_sessions')
+            .update({ status: 'failed' })
+            .eq('id', session.id)
+          if (statusError) console.error('講評セッションの確定に失敗:', statusError.message)
         }
       },
     })
