@@ -265,7 +265,7 @@ export function BeatBoard({
           kind="scene"
           targetId={review.scene.id}
           title="シーンレビュー"
-          personaLabel={`担当編集 / ${review.scene.title || "（無題）"}`}
+          subtitle={review.scene.title || "（無題）"}
           emptyText="対象シーンを4観点（シチュエーション・出来事・感情の変化・葛藤）で見ます。"
           showVerdict={false}
           onClose={() => setReview(null)}

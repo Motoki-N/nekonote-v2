@@ -7,9 +7,12 @@ import { toast } from "sonner";
 
 import {
   getOrCreateReviewSession,
+  getReviewPanelBootstrap,
   getReviewSessionState,
   saveFeedbackResponse,
   type FeedbackRecord,
+  type ReviewPanelBootstrap,
+  type ReviewSessionState,
   type ReviewTargetKind,
 } from "@/lib/actions/review";
 import type { ReviewVerdict } from "@/lib/schemas/enums";
@@ -48,18 +51,22 @@ function VerdictBadge({ verdict }: { verdict: FeedbackRecord["verdict"] }) {
 export type ReviewFooterContext = {
   latestVerdict: ReviewVerdict | null;
   busy: boolean;
+  /** 表示中の running セッション（未作成なら null）。「企画を通す」等が対象を特定するのに使う */
+  sessionId: string | null;
 };
 
 /**
  * レビューパネル（企画書・構成・シーン共通。SPEC-beat-board §3.4）。
  * lg以上は右サイドパネル、lg未満はボトムシート。
+ * プロファイルごとにセッションが並存し、セレクタで切り替える（SPEC-dashboard-critique-settings §3.2）。
+ * セッション状態はプロファイル別にキャッシュし、担当ペルソナは新規セッション開始時のみ選択できる。
  * 対象（kind + targetId）を切り替えて使う場合は key={targetId} で使い分けること
  */
 export function ReviewPanel({
   kind,
   targetId,
   title,
-  personaLabel = "担当編集",
+  subtitle,
   emptyText,
   showVerdict,
   flushSave,
@@ -69,7 +76,8 @@ export function ReviewPanel({
   kind: ReviewTargetKind;
   targetId: string;
   title: string;
-  personaLabel?: string;
+  /** 対象名の補足表示（シーンレビューのシーン名等） */
+  subtitle?: string;
   emptyText: string;
   /** 判定バッジの表示（企画書レビューのみ true。構成・シーンは都度フィードバック型） */
   showVerdict: boolean;
@@ -80,8 +88,17 @@ export function ReviewPanel({
   renderFooter?: (context: ReviewFooterContext) => React.ReactNode;
 }) {
   const router = useRouter();
-  const [feedbacks, setFeedbacks] = useState<FeedbackRecord[]>([]);
-  const [loaded, setLoaded] = useState(false);
+  const [bootstrap, setBootstrap] = useState<ReviewPanelBootstrap | null>(null);
+  const [bootstrapDone, setBootstrapDone] = useState(false);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  // プロファイル別のセッションキャッシュ（undefined=未ロード / null=runningなし）
+  const [sessionByProfile, setSessionByProfile] = useState<
+    Record<string, ReviewSessionState | null>
+  >({});
+  // プロファイル別のユーザー選択（未選択時は default_persona にフォールバック）
+  const [personaChoice, setPersonaChoice] = useState<Record<string, string>>({});
+  // このパネルで新規作成したセッションのペルソナ名（作成後は固定表示）
+  const [createdPersonaName, setCreatedPersonaName] = useState<Record<string, string>>({});
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -89,39 +106,84 @@ export function ReviewPanel({
 
   const busy = streamingText !== null;
 
-  // 開いたときに running セッションの履歴を読む（開いただけではセッションを作らない）
+  // 開いたときにプロファイル・ペルソナ一覧と既定選択を読む
   useEffect(() => {
     let cancelled = false;
-    void getReviewSessionState(kind, targetId).then((result) => {
+    void getReviewPanelBootstrap(kind, targetId).then((result) => {
       if (cancelled) return;
-      if (result.ok) setFeedbacks(result.data?.feedbacks ?? []);
-      else setError(result.error.message);
-      setLoaded(true);
+      if (result.ok && result.data) {
+        setBootstrap(result.data);
+        setSelectedProfileId(result.data.initialProfileId);
+      } else {
+        setError(result.ok ? "レビュー設定の取得に失敗しました" : result.error.message);
+      }
+      setBootstrapDone(true);
     });
     return () => {
       cancelled = true;
     };
   }, [kind, targetId]);
 
+  // 選択中プロファイルのセッション状態が未ロードなら読む（キャッシュヒット時は何もしない）
+  useEffect(() => {
+    if (selectedProfileId === null || sessionByProfile[selectedProfileId] !== undefined) return;
+    const profileId = selectedProfileId;
+    let cancelled = false;
+    void getReviewSessionState(kind, targetId, profileId).then((result) => {
+      if (cancelled) return;
+      if (!result.ok) setError(result.error.message);
+      setSessionByProfile((prev) => ({
+        ...prev,
+        [profileId]: result.ok ? (result.data ?? null) : null,
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedProfileId, sessionByProfile, kind, targetId]);
+
+  // 表示用の導出値（プロファイル切り替えで自動的に切り替わる）
+  const profile = bootstrap?.profiles.find((p) => p.id === selectedProfileId) ?? null;
+  const sessionState = selectedProfileId !== null ? sessionByProfile[selectedProfileId] : null;
+  const loaded =
+    bootstrapDone && (selectedProfileId === null || sessionState !== undefined);
+  const sessionId = sessionState?.sessionId ?? null;
+  const feedbacks = sessionState?.feedbacks ?? [];
+  const effectivePersonaId =
+    selectedProfileId !== null
+      ? (personaChoice[selectedProfileId] ?? profile?.defaultPersonaId ?? null)
+      : null;
+  const personaFixedName =
+    selectedProfileId !== null
+      ? (createdPersonaName[selectedProfileId] ?? profile?.runningPersonaName ?? null)
+      : null;
+
   // ストリーミング中は追記に合わせて最下部へ追従
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
-  }, [feedbacks, streamingText]);
+  }, [sessionState, streamingText]);
 
   const runReview = useCallback(async () => {
-    if (busy) return;
+    if (busy || selectedProfileId === null || effectivePersonaId === null) return;
+    const profileId = selectedProfileId;
     setError(null);
 
     // 編集中の内容を保存してから、保存済みDB値でレビューする
     if (flushSave) await flushSave();
 
-    const session = await getOrCreateReviewSession(kind, targetId);
+    const session = await getOrCreateReviewSession(kind, targetId, profileId, effectivePersonaId);
     if (!session.ok || !session.data) {
       setError(session.ok ? "セッションの取得に失敗しました" : session.error.message);
       return;
     }
-    setFeedbacks(session.data.feedbacks);
+    const sessionData = session.data;
+    setSessionByProfile((prev) => ({ ...prev, [profileId]: sessionData }));
+    // セッションが立った時点でペルソナは固定される（途中変更不可）
+    const persona = bootstrap?.personas.find((p) => p.id === effectivePersonaId);
+    if (persona) {
+      setCreatedPersonaName((prev) => ({ ...prev, [profileId]: persona.name }));
+    }
 
     const controller = new AbortController();
     abortRef.current = controller;
@@ -130,7 +192,7 @@ export function ReviewPanel({
       const res = await fetch("/api/review", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: session.data.sessionId }),
+        body: JSON.stringify({ sessionId: sessionData.sessionId }),
         signal: controller.signal,
       });
       if (!res.ok || !res.body) {
@@ -146,8 +208,13 @@ export function ReviewPanel({
         setStreamingText((prev) => (prev ?? "") + chunk);
       }
       // 完了: 保存済みフィードバック（verdict込み）を取り直し、status バッジ等も更新する
-      const refreshed = await getReviewSessionState(kind, targetId);
-      if (refreshed.ok) setFeedbacks(refreshed.data?.feedbacks ?? []);
+      const refreshed = await getReviewSessionState(kind, targetId, profileId);
+      if (refreshed.ok) {
+        setSessionByProfile((prev) => ({
+          ...prev,
+          [profileId]: refreshed.data ?? sessionData,
+        }));
+      }
       router.refresh();
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
@@ -159,31 +226,87 @@ export function ReviewPanel({
       abortRef.current = null;
       setStreamingText(null);
     }
-  }, [busy, flushSave, kind, targetId, router]);
+  }, [busy, flushSave, kind, targetId, selectedProfileId, effectivePersonaId, bootstrap, router]);
 
   const latest = feedbacks.at(-1);
-  const footerExtra = renderFooter?.({ latestVerdict: latest?.verdict ?? null, busy }) ?? null;
+  const footerExtra =
+    renderFooter?.({ latestVerdict: latest?.verdict ?? null, busy, sessionId }) ?? null;
+
+  // 新規セッション（running なし）のときだけペルソナを選べる
+  const personaSelectable = loaded && sessionId === null && !busy;
+  const personaDisplayName =
+    personaFixedName ??
+    bootstrap?.personas.find((p) => p.id === effectivePersonaId)?.name ??
+    "";
 
   return (
     <aside
       aria-label={`${title}パネル`}
       className="fixed inset-x-0 bottom-0 z-30 flex h-[65dvh] flex-col border-t border-border bg-background lg:static lg:z-auto lg:h-full lg:w-96 lg:shrink-0 lg:border-l lg:border-t-0"
     >
-      <header className="flex items-center gap-2 border-b border-border px-3 py-2">
-        <ClipboardCheck className="size-4 text-muted-foreground" />
-        <span className="text-sm font-medium">{title}</span>
-        <span className="text-xs text-muted-foreground">{personaLabel}</span>
-        <div className="ml-auto flex items-center gap-0.5">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="パネルを閉じる"
-            className="text-muted-foreground"
-            onClick={onClose}
-          >
-            <X />
-          </Button>
+      <header className="flex flex-col gap-2 border-b border-border px-3 py-2">
+        <div className="flex items-center gap-2">
+          <ClipboardCheck className="size-4 shrink-0 text-muted-foreground" />
+          <span className="text-sm font-medium">{title}</span>
+          {subtitle && (
+            <span className="min-w-0 truncate text-xs text-muted-foreground">{subtitle}</span>
+          )}
+          <div className="ml-auto flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="パネルを閉じる"
+              className="text-muted-foreground"
+              onClick={onClose}
+            >
+              <X />
+            </Button>
+          </div>
         </div>
+        {bootstrap && bootstrap.profiles.length > 0 && (
+          <div className="flex items-center gap-2">
+            <select
+              aria-label="レビュープロファイル"
+              className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+              value={selectedProfileId ?? ""}
+              disabled={busy}
+              onChange={(e) => {
+                setError(null);
+                setSelectedProfileId(e.target.value);
+              }}
+            >
+              {bootstrap.profiles.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            {personaSelectable ? (
+              <select
+                aria-label="担当ペルソナ"
+                className="h-8 min-w-0 flex-1 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                value={effectivePersonaId ?? ""}
+                onChange={(e) => {
+                  const profileId = selectedProfileId;
+                  const value = e.target.value;
+                  if (profileId === null || value === "") return;
+                  setPersonaChoice((prev) => ({ ...prev, [profileId]: value }));
+                }}
+              >
+                {effectivePersonaId === null && <option value="">担当を選択…</option>}
+                {bootstrap.personas.map((persona) => (
+                  <option key={persona.id} value={persona.id}>
+                    {persona.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="min-w-0 truncate text-xs text-muted-foreground">
+                {personaDisplayName}
+              </span>
+            )}
+          </div>
+        )}
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3">
@@ -234,7 +357,11 @@ export function ReviewPanel({
           </Button>
         ) : (
           // フッター拡張（企画を通す等）があるときはそちらを主役にする
-          <Button variant={footerExtra ? "outline" : "default"} onClick={() => void runReview()}>
+          <Button
+            variant={footerExtra ? "outline" : "default"}
+            onClick={() => void runReview()}
+            disabled={!loaded || selectedProfileId === null || effectivePersonaId === null}
+          >
             {feedbacks.length === 0 ? "レビューを受ける" : "再レビューを受ける"}
           </Button>
         )}

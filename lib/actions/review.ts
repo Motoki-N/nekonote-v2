@@ -3,28 +3,18 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
-import {
-  EDITOR_PERSONA_ID,
-  PROPOSAL_REVIEW_PROFILE_ID,
-  SCENE_REVIEW_PROFILE_ID,
-  STRUCTURE_REVIEW_PROFILE_ID,
-} from '@/lib/ai/personas'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
+import { resolveProfileForPhase, resolveReviewerPersona } from '@/lib/review-validation'
 import type { ReviewVerdict } from '@/lib/schemas/enums'
 import { createClient } from '@/lib/supabase/server'
 
 const uuidSchema = z.uuid()
 
-// レビュー対象の種別（SPEC-beat-board §3.4。target_ref に入る id の意味が変わる）
+// レビュー対象の種別（SPEC-beat-board §3.4。target_ref に入る id の意味が変わる）。
+// 値は review_profiles.target_phase と一致させている（プロファイル検証に使う）
 export type ReviewTargetKind = 'proposal' | 'structure' | 'scene'
 const reviewTargetKindSchema = z.enum(['proposal', 'structure', 'scene'])
-
-const PROFILE_BY_KIND: Record<ReviewTargetKind, string> = {
-  proposal: PROPOSAL_REVIEW_PROFILE_ID,
-  structure: STRUCTURE_REVIEW_PROFILE_ID,
-  scene: SCENE_REVIEW_PROFILE_ID,
-}
 
 export type FeedbackRecord = {
   id: string
@@ -37,6 +27,28 @@ export type FeedbackRecord = {
 export type ReviewSessionState = {
   sessionId: string
   feedbacks: FeedbackRecord[]
+}
+
+/** プロファイルセレクタの1項目（SPEC-dashboard-critique-settings §3.2） */
+export type ProfileOption = {
+  id: string
+  name: string
+  defaultPersonaId: string | null
+  /** この対象× このプロファイルの running セッションに記録済みのペルソナ名（なければ null） */
+  runningPersonaName: string | null
+}
+
+export type PersonaOption = {
+  id: string
+  name: string
+}
+
+export type ReviewPanelBootstrap = {
+  profiles: ProfileOption[]
+  /** 起用できるペルソナ（reviewer 型のみ） */
+  personas: PersonaOption[]
+  /** 既定選択: running セッションが最新のプロファイル → なければ標準（is_default） */
+  initialProfileId: string | null
 }
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
@@ -90,22 +102,98 @@ async function fetchFeedbacks(supabase: Supabase, sessionId: string): Promise<Fe
   return (data ?? []) as FeedbackRecord[]
 }
 
-/** パネル表示用の読み取り: running セッションがなければ null（開いただけでは行を作らない） */
+/**
+ * パネル初期表示用の一括読み取り（SPEC-dashboard-critique-settings §3.2）。
+ * 対象フェーズの「標準＋自分の」プロファイル一覧・reviewer ペルソナ一覧・既定選択を返す
+ */
+export async function getReviewPanelBootstrap(
+  kind: ReviewTargetKind,
+  targetId: string,
+): Promise<ActionResult<ReviewPanelBootstrap>> {
+  try {
+    const parsedKind = reviewTargetKindSchema.parse(kind)
+    const tid = uuidSchema.parse(targetId)
+    const supabase = await createClient()
+
+    const [profilesResult, personasResult, runningResult] = await Promise.all([
+      supabase
+        .from('review_profiles')
+        .select('id, name, is_default, default_persona_id')
+        .eq('target_phase', parsedKind)
+        .order('is_default', { ascending: false })
+        .order('created_at'),
+      supabase
+        .from('personas')
+        .select('id, name')
+        .eq('persona_type', 'reviewer')
+        .order('is_default', { ascending: false })
+        .order('created_at'),
+      supabase
+        .from('review_sessions')
+        .select('review_profile_id, created_at, personas (name)')
+        .eq('target_ref', tid)
+        .eq('status', 'running')
+        .order('created_at', { ascending: false }),
+    ])
+    if (profilesResult.error) throw new AppError('internal', profilesResult.error.message)
+    if (personasResult.error) throw new AppError('internal', personasResult.error.message)
+    if (runningResult.error) throw new AppError('internal', runningResult.error.message)
+
+    // プロファイルごとの running セッション（新しい順なので最初の1件が最新）
+    const runningByProfile = new Map<string, { personaName: string | null }>()
+    for (const session of runningResult.data ?? []) {
+      if (session.review_profile_id && !runningByProfile.has(session.review_profile_id)) {
+        runningByProfile.set(session.review_profile_id, {
+          personaName: session.personas?.name ?? null,
+        })
+      }
+    }
+
+    const profiles: ProfileOption[] = (profilesResult.data ?? []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      defaultPersonaId: p.default_persona_id,
+      runningPersonaName: runningByProfile.get(p.id)?.personaName ?? null,
+    }))
+
+    // 既定選択: running セッションが最新のプロファイル → 標準 → 先頭
+    const latestRunningProfileId = (runningResult.data ?? []).find(
+      (s) => s.review_profile_id && profiles.some((p) => p.id === s.review_profile_id),
+    )?.review_profile_id
+    const defaultProfile = (profilesResult.data ?? []).find((p) => p.is_default)
+    const initialProfileId = latestRunningProfileId ?? defaultProfile?.id ?? profiles[0]?.id ?? null
+
+    return {
+      ok: true,
+      data: {
+        profiles,
+        personas: (personasResult.data ?? []).map((p) => ({ id: p.id, name: p.name })),
+        initialProfileId,
+      },
+    }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/** パネル表示用の読み取り: 対象×プロファイルの running セッションがなければ null（開いただけでは行を作らない） */
 export async function getReviewSessionState(
   kind: ReviewTargetKind,
   targetId: string,
+  profileId: string,
 ): Promise<ActionResult<ReviewSessionState | null>> {
   try {
     reviewTargetKindSchema.parse(kind)
     const tid = uuidSchema.parse(targetId)
+    const pid = uuidSchema.parse(profileId)
     const supabase = await createClient()
 
     const { data: session, error: selectError } = await supabase
       .from('review_sessions')
       .select('id')
       .eq('target_ref', tid)
-      // kind とプロファイルの対応ずれ防止（target_ref のセマンティクスはDB制約がないため多層防御）
-      .eq('review_profile_id', PROFILE_BY_KIND[kind])
+      // 対象×プロファイルごとにセッションが並存する（SPEC-dashboard-critique-settings §3.2）
+      .eq('review_profile_id', pid)
       .eq('status', 'running')
       .order('created_at', { ascending: false })
       .limit(1)
@@ -124,25 +212,31 @@ export async function getReviewSessionState(
 
 /**
  * running レビューセッション（反復スレッド）を get-or-create し、フィードバック履歴を返す。
- * running セッションは対象ごとに高々1本（SPEC-proposal-review §4.1。アプリロジックで担保）
+ * running セッションは対象×プロファイルごとに高々1本（アプリロジックで担保）。
+ * profileId / personaId はクライアント指定値なのでサーバー側で再検証する（フェーズ一致・reviewer 型）。
+ * personaId は新規セッション作成時のみ効く（既存 running のペルソナは変更しない=会話の一貫性）
  */
 export async function getOrCreateReviewSession(
   kind: ReviewTargetKind,
   targetId: string,
+  profileId: string,
+  personaId?: string,
 ): Promise<ActionResult<ReviewSessionState>> {
   try {
     const parsedKind = reviewTargetKindSchema.parse(kind)
     const tid = uuidSchema.parse(targetId)
+    const pid = uuidSchema.parse(profileId)
+    const requestedPersonaId = personaId === undefined ? undefined : uuidSchema.parse(personaId)
     const supabase = await createClient()
 
     const { projectId } = await resolveTarget(supabase, parsedKind, tid)
+    const profile = await resolveProfileForPhase(supabase, pid, parsedKind)
 
     const { data: existing, error: selectError } = await supabase
       .from('review_sessions')
       .select('id')
       .eq('target_ref', tid)
-      // kind とプロファイルの対応ずれ防止（getReviewSessionState と同じ多層防御）
-      .eq('review_profile_id', PROFILE_BY_KIND[kind])
+      .eq('review_profile_id', pid)
       .eq('status', 'running')
       .order('created_at', { ascending: false })
       .limit(1)
@@ -151,12 +245,18 @@ export async function getOrCreateReviewSession(
 
     let sessionId = existing?.id
     if (!sessionId) {
+      const effectivePersonaId = requestedPersonaId ?? profile.defaultPersonaId
+      if (!effectivePersonaId) {
+        throw new AppError('validation', '担当ペルソナを選択してください')
+      }
+      const persona = await resolveReviewerPersona(supabase, effectivePersonaId)
+
       const { data: created, error: insertError } = await supabase
         .from('review_sessions')
         .insert({
           project_id: projectId,
-          review_profile_id: PROFILE_BY_KIND[parsedKind],
-          persona_id: EDITOR_PERSONA_ID,
+          review_profile_id: profile.id,
+          persona_id: persona.id,
           target_ref: tid,
           status: 'running',
         })
@@ -201,24 +301,33 @@ export async function saveFeedbackResponse(
 
 /**
  * 「企画を通す」確定（SPEC-proposal-review §3.2）。
+ * プロファイル並存で「対象の最新 running」が一意でなくなったため、
+ * パネルが表示中のセッション id を明示的に受け取る（SPEC-dashboard-critique-settings §3.2）。
  * 最新フィードバックの判定が承認であることをサーバー側でも検証したうえで、
  * proposals.status = approved ＋セッション completed にする
  */
-export async function approveProposal(proposalId: string): Promise<ActionResult> {
+export async function approveProposal(sessionId: string): Promise<ActionResult> {
   try {
-    const pid = uuidSchema.parse(proposalId)
+    const sid = uuidSchema.parse(sessionId)
     const supabase = await createClient()
 
+    // RLS越しの取得＝所有確認を兼ねる
     const { data: session, error: sessionError } = await supabase
       .from('review_sessions')
-      .select('id, project_id')
-      .eq('target_ref', pid)
-      .eq('status', 'running')
-      .order('created_at', { ascending: false })
-      .limit(1)
+      .select('id, project_id, target_ref, status, review_profiles (target_phase)')
+      .eq('id', sid)
       .maybeSingle()
     if (sessionError) throw new AppError('internal', sessionError.message)
-    if (!session) throw new AppError('not_found', '進行中のレビューセッションがありません')
+    if (!session) throw new AppError('not_found', 'レビューセッションが見つかりません')
+    if (session.status !== 'running') {
+      throw new AppError('validation', 'このレビューセッションは終了しています')
+    }
+    // 企画書レビューのセッションであること（他フェーズのセッションで企画を通させない）
+    if (session.review_profiles?.target_phase !== 'proposal') {
+      throw new AppError('validation', '企画書レビューのセッションではありません')
+    }
+    const proposalId = uuidSchema.safeParse(session.target_ref)
+    if (!proposalId.success) throw new AppError('internal', 'レビュー対象が不正です')
 
     const { data: latest, error: latestError } = await supabase
       .from('review_feedbacks')
@@ -235,7 +344,8 @@ export async function approveProposal(proposalId: string): Promise<ActionResult>
     const { data: updated, error: proposalError } = await supabase
       .from('proposals')
       .update({ status: 'approved' })
-      .eq('id', pid)
+      .eq('id', proposalId.data)
+      .eq('project_id', session.project_id) // セッションと企画書の対応を担保
       .select('id')
     if (proposalError) throw new AppError('internal', proposalError.message)
     if (!updated || updated.length === 0) throw new AppError('not_found', '企画書が見つかりません')

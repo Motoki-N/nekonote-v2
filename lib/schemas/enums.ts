@@ -42,6 +42,7 @@ export const targetPhases = [
   'structure',
   'scene',
   'proofreading',
+  'manuscript', // 作品全体への講評（20260714000001 で追加）
 ] as const
 export type TargetPhase = (typeof targetPhases)[number]
 

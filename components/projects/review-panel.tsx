@@ -29,11 +29,12 @@ export function ProposalReviewPanel({
   const router = useRouter();
   const [approving, setApproving] = useState(false);
 
-  async function handleApprove() {
+  // 承認はセッション単位（プロファイル並存のため、表示中のセッションを明示して確定する）
+  async function handleApprove(sessionId: string) {
     if (approving) return;
     setApproving(true);
     try {
-      const result = await approveProposal(proposalId);
+      const result = await approveProposal(sessionId);
       if (!result.ok) {
         toast.error(result.error.message);
         return;
@@ -54,10 +55,15 @@ export function ProposalReviewPanel({
       showVerdict
       flushSave={flushSave}
       onClose={onClose}
-      renderFooter={({ latestVerdict, busy }) => {
-        if (latestVerdict === "approved" && proposalStatus !== "approved" && !busy) {
+      renderFooter={({ latestVerdict, busy, sessionId }) => {
+        if (
+          latestVerdict === "approved" &&
+          proposalStatus !== "approved" &&
+          !busy &&
+          sessionId !== null
+        ) {
           return (
-            <Button onClick={handleApprove} disabled={approving}>
+            <Button onClick={() => void handleApprove(sessionId)} disabled={approving}>
               <BadgeCheck data-icon="inline-start" />
               企画を通す
             </Button>
