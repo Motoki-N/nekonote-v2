@@ -1,0 +1,25 @@
+name: 要望・改善提案
+description: 新しい機能や、既存機能・文言の改善を提案する
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: やりたいこと
+      description: 何がどうなってほしいかを具体的に書く（対象の画面・文言があれば明記）
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: 背景・理由
+      description: なぜそれが欲しいのか。困っていること・現状の不満
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: 補足
+      description: 参考イメージ・代替案など（任意）
+    validations:
+      required: false

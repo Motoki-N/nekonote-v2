@@ -1,0 +1,43 @@
+name: 不具合報告
+description: 動作がおかしい・エラーが出るなどの問題を報告する
+labels: ["bug"]
+body:
+  - type: input
+    id: location
+    attributes:
+      label: 発生している画面・機能
+      description: 例：ログイン画面、企画書エディタ、ダッシュボードの相談パネル
+      placeholder: どこで起きたか
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 再現手順
+      description: 番号付きで、その状態に至る操作を書く
+      placeholder: |
+        1. ○○を開く
+        2. ○○をクリックする
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期待する挙動
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 実際の挙動
+      description: エラーメッセージが出ている場合はそのまま貼る
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: 補足
+      description: スクリーンショット・発生頻度・気づいたことなど（任意）
+    validations:
+      required: false
