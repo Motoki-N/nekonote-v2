@@ -61,7 +61,8 @@
 
 ### L-2. `lib/ai/models.ts` に `import 'server-only'` がない
 
-- **状態**: 未対応
+- **状態**: 対応済み（2026-07-14。1行目に `import 'server-only'` を追加。
+  クライアントからの誤importをビルド時に検知できるようになった）
 - **該当**: `lib/ai/models.ts:1`
 - **何が問題か**: `crypto.ts`・`git/github.ts`・`git/credentials.ts` は `server-only` で
   ガードされているが、APIキーを直接読む `models.ts` だけ未指定。現状クライアントからの
