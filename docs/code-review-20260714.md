@@ -41,7 +41,7 @@
 
 ### M-3. `ToolOutput` の契約がサーバーとクライアントで手動二重定義
 
-- **状態**: 未対応
+- **状態**: 対応済み（`SaveMemoNoteOutput` / `SaveScheduleOutput` を lib/schemas/schedule.ts に定義し、route.ts の execute 戻り値注釈とクライアントの結果カードの両方で参照。zod化はツール出力が実際に複雑化するまで見送り＝アサーション1箇所は残る）
 - **該当**: `components/dashboard/consult-panel.tsx` の `ToolOutput` 型（64行付近）と `app/api/chat/route.ts` の execute 戻り値（117〜178行付近）
 - **何が問題か**: クライアント側は「route.ts と対応」というコメント頼みの手書き型＋ `part.output as ToolOutput` のアサーションで、サーバー側の戻り値を変えても型エラーで検知できない。
 - **なぜ問題か**: ツールは今後増える方針（今回が初導入）なので、フィールド追加・rename時にカード表示が静かに壊れる（`undefined` 表示）リスクがある。

@@ -24,6 +24,8 @@ import {
   saveMemoNoteInputSchema,
   saveScheduleInputSchema,
   scheduleSchema,
+  type SaveMemoNoteOutput,
+  type SaveScheduleOutput,
   type Schedule,
 } from '@/lib/schemas/schedule'
 import { createClient } from '@/lib/supabase/server'
@@ -123,7 +125,8 @@ function buildDashboardTools(
       description:
         '会話の内容を短いメモ（Markdown）にまとめて、作者のノートとして保存する。作者がメモ化・保存を明確に頼んだときだけ使う',
       inputSchema: saveMemoNoteInputSchema,
-      execute: async ({ content }) => {
+      // 戻り値注釈＝クライアントの結果カードとの共有契約（lib/schemas/schedule.ts）
+      execute: async ({ content }): Promise<SaveMemoNoteOutput> => {
         // user_id は DB デフォルト（auth.uid()）＝本人のノートとしてのみ作られる
         const { data: note, error } = await supabase
           .from('notes')
@@ -146,7 +149,8 @@ function buildDashboardTools(
       description:
         '確定した執筆スケジュール（マイルストーンと1日あたり文字数目標）を対象プロジェクトに保存する。既存のスケジュールは丸ごと上書きされる。作者が確定・保存を明確に頼んだときだけ使う',
       inputSchema: saveScheduleInputSchema,
-      execute: async (input) => {
+      // 戻り値注釈＝クライアントの結果カードとの共有契約（lib/schemas/schedule.ts）
+      execute: async (input): Promise<SaveScheduleOutput> => {
         // id はサーバー採番・done はリセット・期日昇順に整列（SPEC §3）。
         // 器のスキーマ検証は safeParse＝失敗も ok: false で返す（throw だと errorText に乗る）
         const parsed = scheduleSchema.safeParse({

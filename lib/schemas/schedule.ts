@@ -65,6 +65,15 @@ export const saveMemoNoteInputSchema = z.object({
 export type SaveMemoNoteInput = z.infer<typeof saveMemoNoteInputSchema>
 
 /**
+ * ツール execute の戻り値の共有契約。
+ * サーバー（app/api/chat/route.ts の execute 戻り値注釈）とクライアント
+ * （consult-panel.tsx の結果カード）の両方でこれを参照し、二重定義のずれを型で検知する
+ */
+export type ToolFailureOutput = { ok: false; message: string }
+export type SaveMemoNoteOutput = { ok: true; noteId: string; title: string } | ToolFailureOutput
+export type SaveScheduleOutput = { ok: true; milestoneCount: number } | ToolFailureOutput
+
+/**
  * マイルストーンの達成表示（SPEC §3）:
  * 手動チェック済み、または目標総文字数があり最新の総文字数が到達していれば達成
  */

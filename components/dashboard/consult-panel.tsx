@@ -27,6 +27,7 @@ import {
   type ChatMessageRecord,
 } from "@/lib/actions/chat";
 import { ASSISTANT_PERSONA_ID, CAFE_MASTER_PERSONA_ID } from "@/lib/ai/personas";
+import type { SaveMemoNoteOutput, SaveScheduleOutput } from "@/lib/schemas/schedule";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -59,11 +60,6 @@ function textOf(message: UIMessage): string {
     .map((part) => part.text)
     .join("");
 }
-
-/** ツール execute の戻り値（app/api/chat/route.ts と対応） */
-type ToolOutput =
-  | { ok: true; noteId?: string; milestoneCount?: number }
-  | { ok: false; message?: string };
 
 /**
  * DB同期でメッセージを差し替える際、セッション内のツール結果カードを引き継ぐ
@@ -124,31 +120,30 @@ function ToolCard({ part }: { part: ToolUIPart }) {
     );
   }
 
-  const output = part.output as ToolOutput | undefined;
+  // 出力型はサーバーの execute 戻り値と共有（lib/schemas/schedule.ts）
+  const output = part.output as (SaveScheduleOutput | SaveMemoNoteOutput) | undefined;
   if (!output?.ok) {
     return <p className="mr-4 self-start text-sm text-destructive">{output?.message ?? failedText}</p>;
   }
   return (
     <div className="mr-4 flex flex-wrap items-center gap-2 self-start rounded-lg border border-border bg-card px-3 py-2 text-xs text-card-foreground">
-      {isSchedule ? (
+      {"milestoneCount" in output ? (
         <>
           <CalendarCheck className="size-3.5 text-muted-foreground" />
           スケジュールを保存しました
-          {typeof output.milestoneCount === "number" && `（マイルストーン${output.milestoneCount}件）`}
+          {`（マイルストーン${output.milestoneCount}件）`}
         </>
       ) : (
         <>
           <Check className="size-3.5 text-muted-foreground" />
           ノートに保存しました
-          {output.noteId && (
-            <Link
-              href={`/notes/${output.noteId}`}
-              className="flex items-center gap-1 text-primary underline-offset-2 hover:underline"
-            >
-              <ExternalLink className="size-3" />
-              ノートをひらく
-            </Link>
-          )}
+          <Link
+            href={`/notes/${output.noteId}`}
+            className="flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+          >
+            <ExternalLink className="size-3" />
+            ノートをひらく
+          </Link>
         </>
       )}
     </div>
