@@ -117,10 +117,12 @@ function buildDashboardTools(
       inputSchema: saveMemoNoteInputSchema,
       // 戻り値注釈＝クライアントの結果カードとの共有契約（lib/schemas/schedule.ts）
       execute: async ({ content }): Promise<SaveMemoNoteOutput> => {
+        // 先頭行がMarkdown記号のみだと chatTitleFrom が空文字を返すため、日付でフォールバック
+        const title = chatTitleFrom(content) || `メモ ${jstDate(new Date())}`
         // user_id は DB デフォルト（auth.uid()）＝本人のノートとしてのみ作られる
         const { data: note, error } = await supabase
           .from('notes')
-          .insert({ title: chatTitleFrom(content), content })
+          .insert({ title, content })
           .select('id, title')
           .single()
         if (error || !note) {

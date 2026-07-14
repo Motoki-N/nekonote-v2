@@ -77,7 +77,7 @@
 
 ### L-5. `saveMemoNote` のタイトルが空文字になり得る
 
-- **状態**: 未対応
+- **状態**: 対応済み（空なら「メモ YYYY-MM-DD」（JST）にフォールバック）
 - **該当**: `app/api/chat/route.ts` の `saveMemoNote` execute（130行付近）＋ `lib/chat-title.ts`
 - **何が問題か**: `chatTitleFrom` は先頭行がMarkdown記号のみ（例: `---`）だと空文字を返す。スレッドタイトル側は `if (title)` でガードしているが、`saveMemoNote` は無条件でinsertするため空タイトルのノートが作られ得る（DBは `default ''` で許容）。
 - **修正方針**: 空なら「メモ YYYY-MM-DD」等のフォールバックを一段挟む。
