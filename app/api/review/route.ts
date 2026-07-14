@@ -57,6 +57,38 @@ async function fetchProposalContext(
   return { genre: data.genre, targetAudience: data.target_audience, content: data.content }
 }
 
+/**
+ * 企画書（RLS越し取得＋セッションのプロジェクト一致検証）と紐づけノート全文（ごみ箱中は除外）。
+ * 企画書レビューとキャラクターレビューは資料一式が同一なので共用する（SPEC-character-review §5.2）
+ */
+async function fetchProposalWithNotes(supabase: Supabase, proposalId: string, projectId: string) {
+  const { data: proposal, error: proposalError } = await supabase
+    .from('proposals')
+    .select('id, project_id, genre, target_audience, content, status')
+    .eq('id', proposalId)
+    .maybeSingle()
+  if (proposalError) throw new AppError('internal', proposalError.message)
+  if (!proposal || proposal.project_id !== projectId) {
+    throw new AppError('not_found', '企画書が見つかりません')
+  }
+
+  const { data: links, error: linksError } = await supabase
+    .from('proposal_notes')
+    .select('notes (title, content, deleted_at, note_tags (tags (name)))')
+    .eq('proposal_id', proposal.id)
+  if (linksError) throw new AppError('internal', linksError.message)
+  const notes: NoteContext[] = (links ?? [])
+    .flatMap((row) => (row.notes ? [row.notes] : []))
+    .filter((note) => note.deleted_at === null)
+    .map((note) => ({
+      title: note.title,
+      content: note.content,
+      tags: note.note_tags.flatMap((nt) => (nt.tags ? [nt.tags.name] : [])),
+    }))
+
+  return { proposal, notes }
+}
+
 /** プロジェクトの全シーンを構成順で取得（RLS越し） */
 async function fetchScenes(supabase: Supabase, projectId: string): Promise<SceneRecord[]> {
   const { data, error } = await supabase
@@ -117,32 +149,14 @@ export async function POST(req: Request) {
     let prompt: string
     let proposalIdForStatus: string | null = null // 企画書レビューのみ: draft→in_review 遷移用
 
-    if (phase === 'proposal') {
-      const { data: proposal, error: proposalError } = await supabase
-        .from('proposals')
-        .select('id, project_id, genre, target_audience, content, status')
-        .eq('id', targetRef.data)
-        .maybeSingle()
-      if (proposalError) throw new AppError('internal', proposalError.message)
-      if (!proposal || proposal.project_id !== session.project_id) {
-        throw new AppError('not_found', '企画書が見つかりません')
-      }
-
-      // 紐づけノート全文（ごみ箱中は除外。SPEC-proposal-review §3.3）
-      const { data: links, error: linksError } = await supabase
-        .from('proposal_notes')
-        .select('notes (title, content, deleted_at, note_tags (tags (name)))')
-        .eq('proposal_id', proposal.id)
-      if (linksError) throw new AppError('internal', linksError.message)
-      const notes: NoteContext[] = (links ?? [])
-        .flatMap((row) => (row.notes ? [row.notes] : []))
-        .filter((note) => note.deleted_at === null)
-        .map((note) => ({
-          title: note.title,
-          content: note.content,
-          tags: note.note_tags.flatMap((nt) => (nt.tags ? [nt.tags.name] : [])),
-        }))
-
+    if (phase === 'proposal' || phase === 'character') {
+      // 企画書・キャラクターレビュー: target_ref = 企画書id。資料一式（企画書＋紐づけノート）は同一で、
+      // 観点はプロファイルのプロンプトが絞る（SPEC-proposal-review §3.3 / SPEC-character-review §5.2）
+      const { proposal, notes } = await fetchProposalWithNotes(
+        supabase,
+        targetRef.data,
+        session.project_id,
+      )
       prompt = buildProposalReviewInput({
         proposal: {
           genre: proposal.genre,
@@ -152,7 +166,8 @@ export async function POST(req: Request) {
         notes,
         history,
       })
-      if (proposal.status === 'draft') proposalIdForStatus = proposal.id
+      // draft→in_review 遷移は企画書レビュー専用（キャラクターレビューはステータスに触れない）
+      if (phase === 'proposal' && proposal.status === 'draft') proposalIdForStatus = proposal.id
     } else if (phase === 'structure') {
       // 構成レビュー: target_ref = project id（セッションのプロジェクトと一致していること）
       if (targetRef.data !== session.project_id) {

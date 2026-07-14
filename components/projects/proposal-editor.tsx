@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorContent, type Editor } from "@tiptap/react";
-import { ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, UsersRound } from "lucide-react";
 
 import { updateProposal, type LinkedNote } from "@/lib/actions/projects";
 import type { ProposalStatus } from "@/lib/schemas/enums";
@@ -17,6 +17,7 @@ import {
 } from "@/components/editor/use-autosave";
 import { LinkedNotes } from "@/components/projects/linked-notes";
 import { ProposalReviewPanel } from "@/components/projects/review-panel";
+import { ReviewPanel } from "@/components/review/review-panel";
 import { ProposalStatusBadge } from "@/components/projects/status-badges";
 
 type ProposalPayload = { genre: string | null; target_audience: string | null; content: string };
@@ -42,7 +43,8 @@ export function ProposalEditor({
   const [genre, setGenre] = useState(proposal.genre ?? "");
   const [targetAudience, setTargetAudience] = useState(proposal.target_audience ?? "");
   const [restorableDraft, setRestorableDraft] = useState<ProposalPayload | null>(null);
-  const [showReview, setShowReview] = useState(false);
+  // レビューパネルは排他表示（企画書レビュー / キャラクターレビューのどちらか一方。SPEC-character-review §3.1）
+  const [openPanel, setOpenPanel] = useState<"proposal" | "character" | null>(null);
 
   const genreRef = useRef(proposal.genre ?? "");
   const targetAudienceRef = useRef(proposal.target_audience ?? "");
@@ -179,13 +181,22 @@ export function ProposalEditor({
             {editor && <EditorToolbar editor={editor} />}
             <div className="ml-auto flex items-center gap-1">
               <Button
-                variant={showReview ? "secondary" : "outline"}
+                variant={openPanel === "proposal" ? "secondary" : "outline"}
                 size="sm"
-                aria-pressed={showReview}
-                onClick={() => setShowReview((v) => !v)}
+                aria-pressed={openPanel === "proposal"}
+                onClick={() => setOpenPanel((v) => (v === "proposal" ? null : "proposal"))}
               >
                 <ClipboardCheck data-icon="inline-start" />
                 レビュー
+              </Button>
+              <Button
+                variant={openPanel === "character" ? "secondary" : "outline"}
+                size="sm"
+                aria-pressed={openPanel === "character"}
+                onClick={() => setOpenPanel((v) => (v === "character" ? null : "character"))}
+              >
+                <UsersRound data-icon="inline-start" />
+                キャラクター
               </Button>
             </div>
           </div>
@@ -193,12 +204,23 @@ export function ProposalEditor({
           <EditorContent editor={editor} className="flex flex-1 flex-col" />
         </main>
 
-        {showReview && (
+        {openPanel === "proposal" && (
           <ProposalReviewPanel
             proposalId={proposal.id}
             proposalStatus={proposal.status}
             flushSave={flush}
-            onClose={() => setShowReview(false)}
+            onClose={() => setOpenPanel(null)}
+          />
+        )}
+        {openPanel === "character" && (
+          <ReviewPanel
+            kind="character"
+            targetId={proposal.id}
+            title="キャラクターレビュー"
+            emptyText="5つの問い（誰が・何を・なぜ・失敗の代償・どう変わるか）でキャラクター設計を見てもらいましょう。キャラクターノートを企画書に紐づけると、レビューの材料になります。"
+            showVerdict={false}
+            flushSave={flush}
+            onClose={() => setOpenPanel(null)}
           />
         )}
       </div>

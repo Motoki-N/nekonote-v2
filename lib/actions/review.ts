@@ -13,8 +13,8 @@ const uuidSchema = z.uuid()
 
 // レビュー対象の種別（SPEC-beat-board §3.4。target_ref に入る id の意味が変わる）。
 // 値は review_profiles.target_phase と一致させている（プロファイル検証に使う）
-export type ReviewTargetKind = 'proposal' | 'structure' | 'scene'
-const reviewTargetKindSchema = z.enum(['proposal', 'structure', 'scene'])
+export type ReviewTargetKind = 'proposal' | 'structure' | 'scene' | 'character'
+const reviewTargetKindSchema = z.enum(['proposal', 'structure', 'scene', 'character'])
 
 export type FeedbackRecord = {
   id: string
@@ -55,14 +55,15 @@ type Supabase = Awaited<ReturnType<typeof createClient>>
 
 /**
  * 対象の RLS 越し所有確認と、セッション作成に使う project_id の解決。
- * target_ref: proposal = 企画書id / structure = プロジェクトid / scene = シーンid
+ * target_ref: proposal / character = 企画書id / structure = プロジェクトid / scene = シーンid
+ * （キャラクターレビューの資料は企画書一式なので proposal と同じ解決。SPEC-character-review §5.1）
  */
 async function resolveTarget(
   supabase: Supabase,
   kind: ReviewTargetKind,
   targetId: string,
 ): Promise<{ projectId: string }> {
-  if (kind === 'proposal') {
+  if (kind === 'proposal' || kind === 'character') {
     const { data, error } = await supabase
       .from('proposals')
       .select('id, project_id')

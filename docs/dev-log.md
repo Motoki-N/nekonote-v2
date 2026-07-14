@@ -354,3 +354,18 @@
 - **security-reviewer ゲート**: **Critical〜Medium ゼロ・Low 3件→全て修正済み**——①toggleMilestone の select→update 間 TOCTOU（チャット確定と競合すると巻き戻る）→ `savedAt` の楽観比較を UPDATE 条件に追加・0件は conflict ②uuid 検証失敗が internal に化ける→ safeParse＋validation に ③execute 内 scheduleSchema.parse の throw が errorText に乗りうる→ safeParse＋`{ok:false}` に統一。確認済み観点: RLS 所有境界（buildScheduleContext 先行遮断＋UPDATE 0件の二重）・projectId はサーバー側クロージャ固定=モデルは書き込み先を選べない・内部エラー文言の固定化・service_role 不使用
 - E2Eの副産物: 竜の巣に検証スケジュール（8/2各章の要点・8/11提出版完成・1日1,000字）が保存済み＝実運用の初期値としてそのまま使える。メモノート3件も手帳に残置
 - 次: 本番デプロイ→Sprint 6 の残り＝キャラクターレビュー実行UI（…1002）の要否検討 → middleware→proxy 移行。R2期日 8/11 まで磨き込み
+
+### セッション㉔: SPEC-character-review 策定＋実装（Sprint 6 その3・キャラクターレビュー実行UI）
+
+- SPECインタビュー2巡→策定・確定→実装→E2E→security-reviewer を1セッションで縦通し。**標準プロファイル5種すべてに起用経路が通った**
+  - 1巡目（方針）: 対象単位→**企画書に紐づく資料一式**（target_ref = 企画書id。プロファイルの「渡された資料から主要キャラクター（特に主人公）」と整合）／置き場所→**企画書画面に統合**／セッション型→**反復フィードバック型**（構成・シーンと同じ）／資料範囲→**企画書＋紐づけノート全部**（担当編集の reference_scope: all と整合・キャラ観点はプロファイルが絞る）
+  - 2巡目（落とし穴）: 入り口→**ツールバーにボタン2つ（「レビュー」「キャラクター」）・パネル排他表示**（共通 ReviewPanel 無改造）／企画書ステータス→**完全に無関係**（draft→in_review 遷移は企画書レビュー専用のまま・approved 後も実行可・判定なし）／紐づけノート0件→**実行可・ガードなし**（資料不足はプロファイル自身が指摘する設計）
+- docs/SPEC-character-review.md 策定 → ユーザーレビューで指摘なし → **確定**（2026-07-14）
+- **実装（マイグレーションなし・3ファイルのみ）**:
+  - `lib/actions/review.ts`: ReviewTargetKind / スキーマに `'character'` 追加。resolveTarget は proposal 分岐に相乗り（`kind === 'proposal' || kind === 'character'`）
+  - `app/api/review/route.ts`: 企画書＋紐づけノート取得を `fetchProposalWithNotes` に抽出し proposal / character の共通分岐に。verdict は `phase === 'proposal'` のみ parseVerdict（character は常に null）・`proposalIdForStatus` も proposal のみ
+  - `components/projects/proposal-editor.tsx`: `showReview` boolean を `openPanel: 'proposal' | 'character' | null` に置き換えて排他表示。キャラクター側は共通 ReviewPanel 直使用（showVerdict なし・フッターなし・flushSave 共用）
+- **E2E検証（SPEC §8 全10項目・ブラウザペイン＋DB直接確認）**: 2ボタン排他表示（aria-pressed 切替・パネル1枚のみ）／実行→担当編集の口調で5つの問いに沿った講評ストリーミング（1,954字・DB verdict NULL・target_phase character）／返答メモ→再実行で「前回指摘の改善確認」から開始（企画書が一字一句同じことまで見抜いた）／同一企画書で proposal・character の running セッション並存（DB確認・structure とも3本並存）／proposals.status 不変（in_review のまま）／紐づけノート0件で実行→「あらすじレベルに留まっている」と資料不足を指摘／プロファイルselectは character フェーズのみ表示／企画書レビュー回帰（判定バッジ・既存セッション健在）／未認証 POST→307 /login（returnTo付き）・架空 sessionId→404 not_found／モバイル375px（ボタン収まり・ボトムシート・フィードバック表示）。コンソール・サーバーログにエラーなし
+- **security-reviewer ゲート**: **指摘ゼロ（Critical〜Low なし）**。確認済み観点: resolveTarget character 分岐の RLS 所有確認（proposals_owner_via_project・WITH CHECK 二重）／fetchProposalWithNotes 抽出後も project_id 一致検証が両フェーズで保持／character セッションで企画を通す抜け道なし（approveProposal の target_phase 検証＋verdict null の二重で不成立）／resolveProfileForPhase のフェーズ一致強制／既存4フェーズの認可境界に弱化なし
+- E2Eの副産物: 竜の巣のキャラクターレビューセッション（第1回・第2回＋返答メモ）は実データとして残置。※返答メモの文面（欠点・代償を追記予定）は検証用にClaude が書いたもの——実際の改稿方針は作者が上書きしてよい
+- 次: 本番デプロイ→Sprint 6 の残り＝middleware→proxy 移行。R2期日 8/11 まで磨き込み
