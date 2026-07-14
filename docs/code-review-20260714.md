@@ -84,7 +84,7 @@
 
 ### L-6. 細かい消し忘れ・冗長（まとめて1件扱い）
 
-- **状態**: 未対応
+- **状態**: 対応済み（onEnd はタイトル設定UPDATEが走った経路ではトリガーにバンプを任せて2本目を省略。描画条件は `textOf(message) !== ""` に明示化。`dailyTargetChars` は独立定義に変更）
 - `app/api/chat/route.ts` `onEnd`（280〜293行付近）: タイトル設定時は `set_updated_at` トリガーで `updated_at` も更新されるため、直後の updated_at バンプUPDATEがその経路では冗長（2往復）。1本のUPDATEに統合可能
 - `components/dashboard/consult-panel.tsx` のメッセージ描画: `{(message.role === "user" || textOf(message)) && (...)}` は空文字を返す短絡で動作はするが、`textOf(message) !== ""` と書く方が意図が読める
 - `lib/schemas/schedule.ts`: `dailyTargetChars: milestoneInputFields.targetChars` の流用は「たまたま同じ制約」の共有で、片方の制約変更がもう片方に波及する。独立に定義する方が安全

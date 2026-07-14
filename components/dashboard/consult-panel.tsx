@@ -623,7 +623,7 @@ function ConsultChat({
                 message.parts
                   .filter(isStaticToolUIPart)
                   .map((part) => <ToolCard key={part.toolCallId} part={part} />)}
-              {(message.role === "user" || textOf(message)) && (
+              {(message.role === "user" || textOf(message) !== "") && (
                 <div
                   className={
                     message.role === "user"

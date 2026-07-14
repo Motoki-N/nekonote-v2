@@ -39,9 +39,13 @@ export type Schedule = z.infer<typeof scheduleSchema>
 /** saveSchedule ツールの入力（AI由来。id・done・savedAt は受け取らずサーバーで付与する） */
 export const saveScheduleInputSchema = z
   .object({
-    dailyTargetChars: milestoneInputFields.targetChars.describe(
-      '1日あたりの目標文字数（決めない場合は null）',
-    ),
+    // targetChars と制約がたまたま同じだけなので流用せず独立に定義する
+    dailyTargetChars: z
+      .number()
+      .int()
+      .positive()
+      .nullable()
+      .describe('1日あたりの目標文字数（決めない場合は null）'),
     milestones: z
       .array(z.object(milestoneInputFields))
       .max(20)
