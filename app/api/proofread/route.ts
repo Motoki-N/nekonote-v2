@@ -5,6 +5,7 @@ import { PROOFREADING_PROFILE_ID } from '@/lib/ai/personas'
 import { buildReviewSystemPrompt } from '@/lib/ai/prompts'
 import { AppError, errorResponse } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
+import { enforceRateLimit } from '@/lib/rate-limit'
 import { getFileContent, getLatestCommitSha } from '@/lib/git/github'
 import type { AiCapability } from '@/lib/schemas/enums'
 import {
@@ -30,6 +31,9 @@ export async function POST(req: Request) {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) throw new AppError('unauthorized', 'ログインが必要です')
+
+    // APIコスト暴走の抑止（security-audit-20260714 M-1）。校正は原稿全文を投げるため厳しめ
+    enforceRateLimit(user.id, 'proofread', { perMinute: 3, perDay: 60 })
 
     const parsed = proofreadRequestSchema.safeParse(await req.json())
     if (!parsed.success) throw new AppError('validation', 'リクエストの形式が不正です')

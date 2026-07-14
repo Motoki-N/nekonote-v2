@@ -17,6 +17,7 @@ import type { SceneRecord } from '@/lib/board'
 import { AppError, errorResponse } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
 import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
+import { enforceRateLimit } from '@/lib/rate-limit'
 import type { AiCapability, ReferenceScope, ReviewVerdict } from '@/lib/schemas/enums'
 import { CRITIQUE_CONFIRM_CHARS, CRITIQUE_MAX_CHARS } from '@/lib/schemas/manuscript'
 import { reviewRequestSchema } from '@/lib/schemas/review'
@@ -107,6 +108,9 @@ export async function POST(req: Request) {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) throw new AppError('unauthorized', 'ログインが必要です')
+
+    // APIコスト暴走の抑止（security-audit-20260714 M-1）。講評は1回で最大30万字を投げるため厳しめ
+    enforceRateLimit(user.id, 'review', { perMinute: 3, perDay: 60 })
 
     const parsed = reviewRequestSchema.safeParse(await req.json())
     if (!parsed.success) throw new AppError('validation', 'リクエストの形式が不正です')

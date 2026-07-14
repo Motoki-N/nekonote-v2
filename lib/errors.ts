@@ -6,6 +6,7 @@ export type AppErrorCode =
   | "not_found"
   | "validation"
   | "conflict"
+  | "rate_limited"
   | "internal";
 
 const STATUS_BY_CODE: Record<AppErrorCode, number> = {
@@ -14,6 +15,7 @@ const STATUS_BY_CODE: Record<AppErrorCode, number> = {
   not_found: 404,
   validation: 400,
   conflict: 409,
+  rate_limited: 429,
   internal: 500,
 };
 

@@ -24,7 +24,9 @@
 
 ### M-1. AI呼び出しエンドポイントにレートリミットがない
 
-- **状態**: 未対応
+- **状態**: 対応済み（2026-07-14。`lib/rate-limit.ts` のインメモリ固定ウィンドウ方式を3エンドポイントに適用。
+  chat 10回/分・300回/日、review / proofread 各3回/分・60回/日。`AppError` に `rate_limited`（429）を追加。
+  対策1のプロバイダ側スペンド上限はダッシュボード作業のため別途実施すること）
 - **該当**: `app/api/chat/route.ts`・`app/api/review/route.ts`・`app/api/proofread/route.ts`
 - **何が問題か**: 認証チェックはあるが、呼び出し回数・頻度の制限が一切ない。特に講評は
   1リクエストで最大30万字（`CRITIQUE_MAX_CHARS`）を `maxDuration: 120` でLLMに投げられる。

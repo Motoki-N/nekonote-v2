@@ -18,6 +18,7 @@ import {
   type ScheduleContext,
 } from '@/lib/ai/prompts'
 import { AppError, errorResponse } from '@/lib/errors'
+import { enforceRateLimit } from '@/lib/rate-limit'
 import { chatRequestSchema } from '@/lib/schemas/chat'
 import type { AiCapability, ProjectStatus } from '@/lib/schemas/enums'
 import {
@@ -180,6 +181,9 @@ export async function POST(req: Request) {
       data: { user },
     } = await supabase.auth.getUser()
     if (!user) throw new AppError('unauthorized', 'ログインが必要です')
+
+    // APIコスト暴走の抑止（security-audit-20260714 M-1）。会話は対話ペースを想定した上限
+    enforceRateLimit(user.id, 'chat', { perMinute: 10, perDay: 300 })
 
     const parsed = chatRequestSchema.safeParse(await req.json())
     if (!parsed.success) throw new AppError('validation', 'リクエストの形式が不正です')
