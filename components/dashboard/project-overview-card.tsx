@@ -19,6 +19,7 @@ import { refreshWritingProgress } from "@/lib/actions/manuscripts";
 import { deleteSchedule, toggleMilestone } from "@/lib/actions/schedule";
 import type { ProposalStatus } from "@/lib/schemas/enums";
 import { isMilestoneAchieved, type Milestone, type Schedule } from "@/lib/schemas/schedule";
+import { deltaSince } from "@/lib/writing-progress";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -85,13 +86,8 @@ function dueLabel(dueDate: string, today: string): string {
 
 /** 直近7日境界を跨いだ実ペース（字/日）。基準になる過去の記録がなければ null */
 function recentPace(series: ProgressPoint[], today: string): number | null {
-  const latest = series.at(-1);
-  if (!latest) return null;
-  const boundary = new Date(Date.parse(today) - 7 * 86_400_000).toISOString().slice(0, 10);
-  const baseline = series.filter((point) => point.date <= boundary).at(-1);
-  if (!baseline || baseline.date === latest.date) return null;
-  const days = Math.round((Date.parse(latest.date) - Date.parse(baseline.date)) / 86_400_000);
-  return Math.round((latest.totalChars - baseline.totalChars) / days);
+  const delta = deltaSince(series, today, 7);
+  return delta ? Math.round(delta.chars / delta.days) : null;
 }
 
 /**

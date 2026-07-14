@@ -29,6 +29,7 @@ import {
   type Schedule,
 } from '@/lib/schemas/schedule'
 import { createClient } from '@/lib/supabase/server'
+import { deltaSince } from '@/lib/writing-progress'
 
 // ストリーミング応答のため Vercel Functions の実行上限を延長
 export const maxDuration = 60
@@ -74,23 +75,12 @@ async function buildScheduleContext(
     .order('date')
   if (progressError) throw new AppError('internal', progressError.message)
 
-  const rows = progressRows ?? []
+  const rows = (progressRows ?? []).map((row) => ({
+    date: row.date,
+    totalChars: row.total_chars,
+  }))
   const latest = rows.at(-1) ?? null
-  const now = new Date()
-  const today = jstDate(now)
-
-  // 境界日以前の直近の記録を基準にした増分。記録が疎な場合に備え、
-  // ペース計算用の実スパン（基準→最新の実日数）も返す
-  const deltaSince = (days: number): { chars: number; days: number } | null => {
-    if (!latest) return null
-    const boundary = jstDate(new Date(now.getTime() - days * 86_400_000))
-    const baseline = rows.filter((row) => row.date <= boundary).at(-1)
-    if (!baseline || baseline.date === latest.date) return null
-    return {
-      chars: latest.total_chars - baseline.total_chars,
-      days: Math.round((Date.parse(latest.date) - Date.parse(baseline.date)) / 86_400_000),
-    }
-  }
+  const today = jstDate(new Date())
 
   // 保存済みスケジュール（jsonb）は zod を通し、不正データは未保存として扱う
   const savedSchedule = scheduleSchema.safeParse(project.schedule)
@@ -104,9 +94,9 @@ async function buildScheduleContext(
       ? Math.round((Date.parse(project.deadline) - Date.parse(today)) / 86_400_000)
       : null,
     targetPages: project.target_pages,
-    latest: latest ? { date: latest.date, totalChars: latest.total_chars } : null,
-    delta7: deltaSince(7),
-    delta30: deltaSince(30),
+    latest,
+    delta7: deltaSince(rows, today, 7),
+    delta30: deltaSince(rows, today, 30),
     savedSchedule: savedSchedule.success ? savedSchedule.data : null,
   }
 }

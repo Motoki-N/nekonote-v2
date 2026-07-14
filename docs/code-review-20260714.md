@@ -64,7 +64,7 @@
 
 ### L-3. 7日ペース計算のロジック重複
 
-- **状態**: 未対応
+- **状態**: 対応済み（`lib/writing-progress.ts` に純関数 `deltaSince(rows, today, days)` を新設し、route.ts の delta7/delta30 とカードの `recentPace` を両方これに乗せ替え。境界日計算は today 文字列基準に統一＝JSTはDSTなしのため従来と同値）
 - **該当**: `components/dashboard/project-overview-card.tsx` の `recentPace`（83行付近）と `app/api/chat/route.ts` の `deltaSince`（82〜91行付近）
 - **何が問題か**: 「境界日以前の直近記録を基準に実スパンで割る」という同一アルゴリズムがクライアント/サーバーで別実装。片方だけ仕様変更すると、AIが語る数字とカードの数字が食い違う。
 - **修正方針**: `lib/` の純関数として共通化が理想。少なくとも相互参照コメントを入れる。
