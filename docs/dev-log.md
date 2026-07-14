@@ -337,3 +337,20 @@
 - インタビューで聞かずに設計原則で決めた点（レビューで確認済み）: **新テーブルなし・`projects.schedule` jsonb 1列のみ**（手帳→浄書の「システム管理の構造は最小」に従い、丸ごと上書きのデータをテーブル分解しない。RLS/cascade は projects のまま）／ツール登録は dashboard 分岐のみ（掘り下げ回帰ゼロ）・saveSchedule は**アシスタント×プロジェクト選択時のみモデルに見える**／マイルストーン id サーバー採番・上書きで done リセット／**ツール結果カードはセッション内表示のみ**（chat_messages はテキストのみ保持のまま。プロンプトで「保存後は締めの文で要約」を義務化し履歴に痕跡を残す）／保存済みスケジュールをスケジュールコンテキストに同梱（改訂提案の土台）／達成表示 = done || 文字数達成／削除は概況カードから（チャット削除ツールなし）。AI SDK v7 の `tools`＋`stopWhen` を本アプリ初導入
 - docs/SPEC-schedule-and-memo-tools.md 策定 → ユーザーレビューで指摘なし → **確定**（2026-07-14）
 - 次: 新規セッションで実装。マイグレーション（`projects.schedule` jsonb 追加）のプランモード承認から。**security-reviewer 必須ゲート**（マイグレーション・ツール execute の RLS 書き込み/zod/インジェクション耐性・toggleMilestone / deleteSchedule の所有境界）。Sprint 6 の残り: キャラクターレビュー実行UI（…1002）→ middleware→proxy 移行
+
+### セッション㉓: Sprint 6 実装（SPEC-schedule-and-memo-tools 構造化スケジュール保存・メモの自動ノート化）
+
+- プランモード承認→マイグレーション→実装→E2E→security-reviewer→Low修正の縦通し。**Sprint 6 残置分その2完了**。AI SDK v7 の `tools`＋`stopWhen: stepCountIs(3)` を本アプリ初導入
+- **マイグレーション `20260714000004_project_schedule.sql`**（AskUserQuestion 承認後に db push）: `projects.schedule` jsonb 追加のみ。nullable 列追加=旧コード非破壊なのでデプロイ前適用で安全（セッション㉑の教訓と整合）
+- **実装**:
+  - `lib/schemas/schedule.ts` 新設: `scheduleSchema`（dailyTargetChars・milestones 最大20件・savedAt）／ツール入力 `saveScheduleInputSchema`（id/done/savedAt は受け取らない・`z.iso.date()`・refine で日次目標かマイルストーン必須）／`saveMemoNoteInputSchema`（1〜10,000字）／達成判定 `isMilestoneAchieved`（done || targetChars≦最新総文字数）をプロンプト整形とUIで共用
+  - `app/api/chat/route.ts`: dashboard 分岐に `buildDashboardTools`——**saveMemoNote**（両ペルソナ。notes insert・user_id はDBデフォルト auth.uid()）＋**saveSchedule**（アシスタント×projectId 選択時のみ登録=それ以外はモデルからツール自体が見えない構造的ガード）。execute は RLS 越し supabase をクロージャで掴み、失敗は throw せず `{ok:false}` で返してモデルに正直に言わせる。id サーバー採番・done リセット・期日昇順整列。note 分岐は tools undefined=掘り下げ回帰ゼロ
+  - `lib/ai/prompts.ts`: ツール使用指示（**「提案して」は提案止まり・確定の言葉を待つ**／saveSchedule が使えない状況でメモ代替せずプロジェクト選択を促す——どちらもE2Eで実際に踏んだ穴への対処）＋「# 保存済みの執筆スケジュール」ブロック（達成状況込み・未保存は（未保存））
+  - `lib/actions/schedule.ts` 新設: `toggleMilestone`（zod safeParse→done のみ書き換え）／`deleteSchedule`（schedule=null）。RLS 越し 0件→not_found の流儀
+  - `components/dashboard/consult-panel.tsx`: tool part を `isStaticToolUIPart` で判定しテキストと別カード表示（実行中スピナー→保存カード。saveMemoNote は `/notes/<id>` リンク付き）。**DB履歴同期がテキストのみで差し替えるとカードが即消える問題**→ role＋テキスト一致の順方向マッチで tool part を引き継ぐ `mergeToolParts` を同期に挟む（SPEC どおりリロード後は消える）。saveSchedule 成功時は `router.refresh()` で背後の概況カードを即時更新
+  - `components/dashboard/project-overview-card.tsx`＋`app/page.tsx`: schedule があるときだけスケジュールブロック（日次目標＋series からの直近7日実ペース並記／マイルストーン一覧=チェックボックス・期日カウントダウン・残り字数 or 達成／ゴミ箱→AlertDialog→削除）。jsonb は読み出し全経路で safeParse・不正データは未保存扱い
+- **E2E検証（SPEC §8 全14項目・ブラウザペイン＋DB直接確認）**: 提案→「確定して」で保存カード＋締めの文／DB に採番済み schedule／別内容で上書き（世代増えず・**手動チェック済み done もリセット**）／チェック→リロード保持／targetChars≦総文字数で自動達成表示／概況カードから削除→DB null／マスター・アシスタント両方の「メモにまとめて保存して」→整形メモがノート化（title=1行目50字）＋リンク／素の相談ではツール不発／「指定なし」で確定を頼んでも保存されない（ツール未登録）／手動「ノートに保存」ボタン回帰／掘り下げでツール一切なし／未認証→307 /login・架空 projectId→404 not_found／モバイル375px（カード・ブロック・チェック・削除成立）
+- E2E中に2回プロンプトを調整: ①初回実装では「提案してください」だけで即保存された→「提案は提案止まり」を明示 ②「指定なし」で確定を頼むと saveMemoNote で代替保存した→「メモ代替せずプロジェクト選択を促す」を明示。**ツールの見える/見えないは構造で守り、振る舞いの機微はプロンプトで矯正**という分担がはっきりした
+- **security-reviewer ゲート**: **Critical〜Medium ゼロ・Low 3件→全て修正済み**——①toggleMilestone の select→update 間 TOCTOU（チャット確定と競合すると巻き戻る）→ `savedAt` の楽観比較を UPDATE 条件に追加・0件は conflict ②uuid 検証失敗が internal に化ける→ safeParse＋validation に ③execute 内 scheduleSchema.parse の throw が errorText に乗りうる→ safeParse＋`{ok:false}` に統一。確認済み観点: RLS 所有境界（buildScheduleContext 先行遮断＋UPDATE 0件の二重）・projectId はサーバー側クロージャ固定=モデルは書き込み先を選べない・内部エラー文言の固定化・service_role 不使用
+- E2Eの副産物: 竜の巣に検証スケジュール（8/2各章の要点・8/11提出版完成・1日1,000字）が保存済み＝実運用の初期値としてそのまま使える。メモノート3件も手帳に残置
+- 次: 本番デプロイ→Sprint 6 の残り＝キャラクターレビュー実行UI（…1002）の要否検討 → middleware→proxy 移行。R2期日 8/11 まで磨き込み

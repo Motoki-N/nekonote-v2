@@ -1,8 +1,11 @@
 import {
   convertToModelMessages,
   createUIMessageStreamResponse,
+  stepCountIs,
   streamText,
+  tool,
   toUIMessageStream,
+  type ToolSet,
   type UIMessage,
 } from 'ai'
 
@@ -17,6 +20,12 @@ import {
 import { AppError, errorResponse } from '@/lib/errors'
 import { chatRequestSchema } from '@/lib/schemas/chat'
 import type { AiCapability, ProjectStatus } from '@/lib/schemas/enums'
+import {
+  saveMemoNoteInputSchema,
+  saveScheduleInputSchema,
+  scheduleSchema,
+  type Schedule,
+} from '@/lib/schemas/schedule'
 import { createClient } from '@/lib/supabase/server'
 
 // ストリーミング応答のため Vercel Functions の実行上限を延長
@@ -49,7 +58,7 @@ async function buildScheduleContext(
 ): Promise<ScheduleContext> {
   const { data: project, error: projectError } = await supabase
     .from('projects')
-    .select('title, status, event_name, deadline, target_pages')
+    .select('title, status, event_name, deadline, target_pages, schedule')
     .eq('id', projectId)
     .maybeSingle()
   if (projectError) throw new AppError('internal', projectError.message)
@@ -81,6 +90,9 @@ async function buildScheduleContext(
     }
   }
 
+  // 保存済みスケジュール（jsonb）は zod を通し、不正データは未保存として扱う
+  const savedSchedule = scheduleSchema.safeParse(project.schedule)
+
   return {
     projectTitle: project.title,
     status: project.status as ProjectStatus,
@@ -93,7 +105,76 @@ async function buildScheduleContext(
     latest: latest ? { date: latest.date, totalChars: latest.total_chars } : null,
     delta7: deltaSince(7),
     delta30: deltaSince(30),
+    savedSchedule: savedSchedule.success ? savedSchedule.data : null,
   }
+}
+
+/**
+ * ダッシュボード相談のAIツール（SPEC-schedule-and-memo-tools §5.1）。
+ * execute は RLS 越しの supabase クライアントをクロージャで掴む＝所有確認は RLS が担う。
+ * 失敗は throw せず ok: false で返し、モデルに締めの文で正直に伝えさせる
+ */
+function buildDashboardTools(
+  supabase: SupabaseServerClient,
+  options: { canSaveSchedule: boolean; projectId?: string },
+): ToolSet {
+  const tools: ToolSet = {
+    saveMemoNote: tool({
+      description:
+        '会話の内容を短いメモ（Markdown）にまとめて、作者のノートとして保存する。作者がメモ化・保存を明確に頼んだときだけ使う',
+      inputSchema: saveMemoNoteInputSchema,
+      execute: async ({ content }) => {
+        // user_id は DB デフォルト（auth.uid()）＝本人のノートとしてのみ作られる
+        const { data: note, error } = await supabase
+          .from('notes')
+          .insert({ title: chatTitleFrom(content), content })
+          .select('id, title')
+          .single()
+        if (error || !note) {
+          console.error('saveMemoNote 失敗:', error?.message)
+          return { ok: false as const, message: 'ノートの作成に失敗しました' }
+        }
+        return { ok: true as const, noteId: note.id, title: note.title }
+      },
+    }),
+  }
+
+  // アシスタント×プロジェクト選択時のみ登録（それ以外はモデルからツール自体が見えない。SPEC §3）
+  if (options.canSaveSchedule && options.projectId) {
+    const projectId = options.projectId
+    tools.saveSchedule = tool({
+      description:
+        '確定した執筆スケジュール（マイルストーンと1日あたり文字数目標）を対象プロジェクトに保存する。既存のスケジュールは丸ごと上書きされる。作者が確定・保存を明確に頼んだときだけ使う',
+      inputSchema: saveScheduleInputSchema,
+      execute: async (input) => {
+        // id はサーバー採番・done はリセット・期日昇順に整列（SPEC §3）。
+        // 器のスキーマ検証は safeParse＝失敗も ok: false で返す（throw だと errorText に乗る）
+        const parsed = scheduleSchema.safeParse({
+          dailyTargetChars: input.dailyTargetChars,
+          milestones: [...input.milestones]
+            .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+            .map((milestone) => ({ ...milestone, id: crypto.randomUUID(), done: false })),
+          savedAt: new Date().toISOString(),
+        })
+        if (!parsed.success) {
+          return { ok: false as const, message: 'スケジュールの形式が不正です' }
+        }
+        const schedule: Schedule = parsed.data
+        const { data: updated, error } = await supabase
+          .from('projects')
+          .update({ schedule })
+          .eq('id', projectId)
+          .select('id')
+        if (error || !updated || updated.length === 0) {
+          console.error('saveSchedule 失敗:', error?.message)
+          return { ok: false as const, message: 'スケジュールの保存に失敗しました' }
+        }
+        return { ok: true as const, milestoneCount: schedule.milestones.length }
+      },
+    })
+  }
+
+  return tools
 }
 
 export async function POST(req: Request) {
@@ -127,6 +208,7 @@ export async function POST(req: Request) {
     }
 
     let system: string
+    let tools: ToolSet | undefined
     if (context.kind === 'note') {
       if (thread.notes?.deleted_at) {
         throw new AppError('not_found', 'ノートがごみ箱に入っています。復元してから掘り下げてください')
@@ -150,6 +232,12 @@ export async function POST(req: Request) {
         personaDescription: thread.personas.description,
         schedule,
       })
+      // ツールは dashboard 分岐のみ（note スレッドは従来どおりツールなし＝回帰ゼロ）
+      tools = buildDashboardTools(supabase, {
+        canSaveSchedule:
+          thread.persona_id === ASSISTANT_PERSONA_ID && Boolean(context.projectId),
+        projectId: context.projectId,
+      })
     }
 
     const model = await resolveModel(supabase, thread.personas.ai_capability as AiCapability)
@@ -159,6 +247,9 @@ export async function POST(req: Request) {
       model,
       system,
       messages: await convertToModelMessages(recent),
+      tools,
+      // ツール実行後に締めのテキストを続けて生成させる（SPEC §5.1）
+      stopWhen: stepCountIs(3),
     })
 
     return createUIMessageStreamResponse({

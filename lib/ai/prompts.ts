@@ -1,5 +1,6 @@
 import { ANCHOR_LABEL, EMOTION_LABEL, PART_LABEL, type SceneRecord } from '@/lib/board'
 import type { Emotion, ProjectStatus, SceneAnchor } from '@/lib/schemas/enums'
+import { isMilestoneAchieved, type Schedule } from '@/lib/schemas/schedule'
 
 export type NoteContext = {
   title: string
@@ -242,6 +243,8 @@ export type ScheduleContext = {
   /** 直近N日境界を跨いだ増分（基準になる過去の記録がなければ null） */
   delta7: ProgressDelta | null
   delta30: ProgressDelta | null
+  /** 保存済みの執筆スケジュール（SPEC-schedule-and-memo-tools §5.5。未保存・不正データは null） */
+  savedSchedule: Schedule | null
 }
 
 // プロンプト内で使うプロジェクトステータスの日本語ラベル
@@ -258,6 +261,32 @@ function deltaLine(label: string, delta: ProgressDelta | null): string {
   const sign = delta.chars >= 0 ? '+' : ''
   const pace = Math.round(delta.chars / delta.days).toLocaleString('ja-JP')
   return `${label}: ${sign}${delta.chars.toLocaleString('ja-JP')}字（実際の記録間隔${delta.days}日・約${pace}字/日）`
+}
+
+/** 保存済みスケジュールのプロンプト整形（SPEC-schedule-and-memo-tools §5.5） */
+function savedScheduleLines(schedule: Schedule | null, latestTotalChars: number | null): string[] {
+  const lines = ['', '# 保存済みの執筆スケジュール']
+  if (!schedule) {
+    lines.push('（未保存）')
+    return lines
+  }
+  lines.push(
+    `1日あたり目標: ${schedule.dailyTargetChars !== null ? `${schedule.dailyTargetChars.toLocaleString('ja-JP')}字` : '（未設定）'}`,
+  )
+  if (schedule.milestones.length === 0) {
+    lines.push('マイルストーン: （なし）')
+  } else {
+    lines.push('マイルストーン:')
+    for (const milestone of schedule.milestones) {
+      const target =
+        milestone.targetChars !== null
+          ? `目標${milestone.targetChars.toLocaleString('ja-JP')}字`
+          : '目標字数なし'
+      const achieved = isMilestoneAchieved(milestone, latestTotalChars) ? '達成済み' : '未達成'
+      lines.push(`- ${milestone.dueDate}までに「${milestone.label}」（${target}・${achieved}）`)
+    }
+  }
+  return lines
 }
 
 /**
@@ -279,6 +308,13 @@ export function buildDashboardChatPrompt({
     '- 日本語で応答する',
     '- 応答は簡潔に（目安200〜400字）。モバイルでも読める分量にする',
     '- 地の文と箇条書きのみで書き、見出しは使わない',
+    '',
+    '# ツールの使い方（SPEC-schedule-and-memo-tools §5.1）',
+    '- ツールは作者が「確定して」「保存して」「メモにまとめて」のように保存を明確に頼んだときだけ使う。勝手に保存しない',
+    '- 「提案して」「考えて」「相談したい」は提案止まり。まずテキストで提案を示し、作者の確定の言葉を待つ',
+    '- saveMemoNote はメモ化を頼まれたときだけ使う。スケジュールの確定を頼まれたのに saveSchedule ツールが使えない状況（対象プロジェクト未選択など）では、代わりにメモ保存せず、対象プロジェクトを選んでもらうよう促す',
+    '- 保存に成功したら、必ず短い締めの文で保存した内容を要約して返す',
+    '- 保存に失敗したら、失敗したことと理由を正直に伝える',
   ]
 
   if (schedule) {
@@ -300,8 +336,10 @@ export function buildDashboardChatPrompt({
         : `最新の総文字数: ${schedule.latest.totalChars.toLocaleString('ja-JP')}字（${schedule.latest.date}時点）`,
       deltaLine('直近7日境界からの増分', schedule.delta7),
       deltaLine('直近30日境界からの増分', schedule.delta30),
+      ...savedScheduleLines(schedule.savedSchedule, schedule.latest?.totalChars ?? null),
       '',
       'スケジュールやペース配分の相談には、上記の実データ（残日数・現在ペース・残り目標）を使って具体的な数字で助言すること。データが欠けている項目は正直に「記録がない」と伝え、推測で数字を作らない。',
+      'スケジュール提案はマイルストーン（期日・目標）と1日あたり文字数で具体的に示し、作者が確定を求めたら saveSchedule ツールで保存する（保存済みスケジュールがある場合は丸ごと上書きされる）。',
     )
   }
 

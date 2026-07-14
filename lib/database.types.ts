@@ -291,6 +291,7 @@ export type Database = {
           event_name: string | null
           id: string
           repo: string | null
+          schedule: Json | null
           status: string
           target_pages: number | null
           title: string
@@ -304,6 +305,7 @@ export type Database = {
           event_name?: string | null
           id?: string
           repo?: string | null
+          schedule?: Json | null
           status?: string
           target_pages?: number | null
           title: string
@@ -317,6 +319,7 @@ export type Database = {
           event_name?: string | null
           id?: string
           repo?: string | null
+          schedule?: Json | null
           status?: string
           target_pages?: number | null
           title?: string

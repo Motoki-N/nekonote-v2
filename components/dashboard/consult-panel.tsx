@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useChat } from "@ai-sdk/react";
-import type { UIMessage } from "ai";
+import { isStaticToolUIPart, type ToolUIPart, type UIMessage } from "ai";
 import {
+  CalendarCheck,
   Check,
   CircleStop,
   ExternalLink,
@@ -56,6 +58,84 @@ function textOf(message: UIMessage): string {
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("");
+}
+
+/** ツール execute の戻り値（app/api/chat/route.ts と対応） */
+type ToolOutput =
+  | { ok: true; noteId?: string; milestoneCount?: number }
+  | { ok: false; message?: string };
+
+/**
+ * DB同期でメッセージを差し替える際、セッション内のツール結果カードを引き継ぐ
+ * （chat_messages はテキストのみ保持のため、そのまま差し替えるとカードが即消える。
+ * role＋テキスト一致の順方向マッチで tool part を新メッセージに移す。SPEC §5.2）
+ */
+function mergeToolParts(current: UIMessage[], next: UIMessage[]): UIMessage[] {
+  const candidates = current.filter(
+    (message) => message.role === "assistant" && message.parts.some(isStaticToolUIPart),
+  );
+  let cursor = 0;
+  return next.map((message) => {
+    if (message.role !== "assistant") return message;
+    for (let i = cursor; i < candidates.length; i++) {
+      if (textOf(candidates[i]) === textOf(message)) {
+        cursor = i + 1;
+        // 元メッセージと同じ並び（ツール実行→締めのテキスト）で先頭に置く
+        return { ...message, parts: [...candidates[i].parts.filter(isStaticToolUIPart), ...message.parts] };
+      }
+    }
+    return message;
+  });
+}
+
+/** ツール呼び出しの結果カード（セッション内表示のみ。リロード後は消える。SPEC §5.2） */
+function ToolCard({ part }: { part: ToolUIPart }) {
+  const isSchedule = part.type === "tool-saveSchedule";
+  const failedText = isSchedule
+    ? "スケジュールの保存に失敗しました"
+    : "ノートへの保存に失敗しました";
+
+  if (part.state === "output-error") {
+    return <p className="mr-4 self-start text-sm text-destructive">{failedText}</p>;
+  }
+  if (part.state !== "output-available") {
+    return (
+      <div className="mr-4 flex items-center gap-2 self-start rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        {isSchedule ? "スケジュールを保存しています…" : "ノートに保存しています…"}
+      </div>
+    );
+  }
+
+  const output = part.output as ToolOutput | undefined;
+  if (!output?.ok) {
+    return <p className="mr-4 self-start text-sm text-destructive">{output?.message ?? failedText}</p>;
+  }
+  return (
+    <div className="mr-4 flex flex-wrap items-center gap-2 self-start rounded-lg border border-border bg-card px-3 py-2 text-xs text-card-foreground">
+      {isSchedule ? (
+        <>
+          <CalendarCheck className="size-3.5 text-muted-foreground" />
+          スケジュールを保存しました
+          {typeof output.milestoneCount === "number" && `（マイルストーン${output.milestoneCount}件）`}
+        </>
+      ) : (
+        <>
+          <Check className="size-3.5 text-muted-foreground" />
+          ノートに保存しました
+          {output.noteId && (
+            <Link
+              href={`/notes/${output.noteId}`}
+              className="flex items-center gap-1 text-primary underline-offset-2 hover:underline"
+            >
+              <ExternalLink className="size-3" />
+              ノートをひらく
+            </Link>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 /** /api/chat の errorResponse（JSON）からユーザー向けメッセージを取り出す */
@@ -385,13 +465,25 @@ function ConsultChat({
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const syncTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
+  const router = useRouter();
   const { messages, sendMessage, status, stop, error, setMessages } = useChat({
     messages: initialMessages,
-    onFinish: () => {
+    onFinish: ({ message }) => {
       // /api/chat の onEnd（DB保存）はストリーム終了後に完了するため、
       // 少し遅らせた二段取り直しでレースを吸収する（proofread-panel と同じ流儀）
       scheduleSync(300);
       scheduleSync(1500);
+      // スケジュール保存に成功したら概況カード（server component）を更新する
+      if (
+        message.parts.some(
+          (part) =>
+            isStaticToolUIPart(part) &&
+            part.type === "tool-saveSchedule" &&
+            part.state === "output-available",
+        )
+      ) {
+        router.refresh();
+      }
     },
   });
 
@@ -412,7 +504,9 @@ function ConsultChat({
           if (!result.ok || !result.data) return;
           if (statusRef.current === "submitted" || statusRef.current === "streaming") return;
           if (result.data.threadId !== threadIdRef.current) return;
-          setMessages(result.data.messages.map(toUIMessage));
+          // ツール結果カードはDBに残らないため、差し替え時に現在のメッセージから引き継ぐ
+          const next = result.data.messages.map(toUIMessage);
+          setMessages((current) => mergeToolParts(current, next));
           setDbIds(new Set(result.data.messages.map((m) => m.id)));
         });
       }, delayMs),
@@ -510,15 +604,22 @@ function ConsultChat({
         <ul className="flex flex-col gap-3">
           {messages.map((message) => (
             <li key={message.id} className="flex flex-col gap-1">
-              <div
-                className={
-                  message.role === "user"
-                    ? "ml-8 self-end rounded-lg bg-primary px-3 py-2 text-sm whitespace-pre-wrap text-primary-foreground"
-                    : "mr-4 self-start rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap text-foreground"
-                }
-              >
-                {textOf(message)}
-              </div>
+              {/* ツール結果カードは本文（締めのテキスト）より前＝実行順に表示する */}
+              {message.role === "assistant" &&
+                message.parts
+                  .filter(isStaticToolUIPart)
+                  .map((part) => <ToolCard key={part.toolCallId} part={part} />)}
+              {(message.role === "user" || textOf(message)) && (
+                <div
+                  className={
+                    message.role === "user"
+                      ? "ml-8 self-end rounded-lg bg-primary px-3 py-2 text-sm whitespace-pre-wrap text-primary-foreground"
+                      : "mr-4 self-start rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap text-foreground"
+                  }
+                >
+                  {textOf(message)}
+                </div>
+              )}
               {message.role === "assistant" && textOf(message) && (
                 <div className="flex items-center gap-1 self-start">
                   {savedNotes[message.id] ? (

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Settings } from "lucide-react";
 
 import type { ProposalStatus } from "@/lib/schemas/enums";
+import { scheduleSchema } from "@/lib/schemas/schedule";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -33,7 +34,7 @@ export default async function Home({
   const [{ data: projects }, { data: settingsRow }] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, title, event_name, deadline, repo, proposals (status)")
+      .select("id, title, event_name, deadline, repo, schedule, proposals (status)")
       .order("updated_at", { ascending: false }),
     supabase.from("user_settings").select("github_pat_ciphertext").maybeSingle(),
   ]);
@@ -65,6 +66,8 @@ export default async function Home({
     const rows: ProgressPoint[] = (progressRows ?? [])
       .filter((row) => row.project_id === project.id)
       .map((row) => ({ date: row.date, totalChars: row.total_chars }));
+    // jsonb は器のみ＝読み出し時に必ずスキーマを通す（不正データは未保存として扱う）
+    const schedule = scheduleSchema.safeParse(project.schedule);
     return {
       id: project.id,
       title: project.title,
@@ -74,6 +77,7 @@ export default async function Home({
       canCollect: Boolean(project.repo) && patRegistered,
       latest: rows.at(-1) ?? null,
       series: rows.filter((row) => row.date >= cutoff),
+      schedule: schedule.success ? schedule.data : null,
     };
   });
 
