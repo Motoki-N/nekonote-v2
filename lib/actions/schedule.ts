@@ -77,7 +77,10 @@ export async function toggleMilestone(
 
 /**
  * スケジュールの削除（概況カードの確認ダイアログから。SPEC §5.4）。
- * schedule = null に更新する。RLS 越し＝他人の projectId は 0件で not_found
+ * schedule = null に更新する。RLS 越し＝他人の projectId は 0件で not_found。
+ * toggleMilestone と違い savedAt の楽観比較は意図的に行わない（設計判断）:
+ * 削除＝「今あるものを消す」意図なので、ダイアログを開いている間にチャット側で
+ * 保存し直されていても削除を優先してよい（作り直しはアシスタントに頼めば済む）
  */
 export async function deleteSchedule(projectId: string): Promise<ActionResult> {
   try {
