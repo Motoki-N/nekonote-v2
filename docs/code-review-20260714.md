@@ -51,7 +51,7 @@
 
 ### L-1. 期日の日付表示がタイムゾーン依存（判定ロジックと不整合）
 
-- **状態**: 未対応
+- **状態**: 対応済み（`dateFormat`・`dueLabel` の両フォーマッタに `timeZone: "UTC"` を明示。YYYY-MM-DD＝UTC深夜をそのまま整形する方式で、DeadlineCountdown・最新文字数の日付表示もまとめて解消）
 - **該当**: `components/dashboard/project-overview-card.tsx` の `dueLabel`（74〜79行付近）。既存の `DeadlineCountdown` も同様
 - **何が問題か**: `daysUntil` は文字列同士の比較でTZ非依存と明記されている一方、表示側は `new Date("YYYY-MM-DD")`（UTC深夜として解釈）を端末ローカルTZで整形する。UTCより西のTZでは日付が1日前に表示される。サーバー側は `jstDate` でJST固定しており方針が揃っていない。
 - **修正方針**: `dueDate.split("-")` から表示文字列を組むか、`Intl.DateTimeFormat` に `timeZone: "UTC"` を渡す。実利用者がJSTのみなら優先度は低いが、直すコストも極小。

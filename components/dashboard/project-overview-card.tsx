@@ -49,7 +49,9 @@ export type DashboardProject = {
   schedule: Schedule | null;
 };
 
-const dateFormat = new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium" });
+// YYYY-MM-DD は new Date() でUTC深夜になるため、UTCのまま整形して端末TZの影響を受けない
+// （日数判定 daysUntil の文字列比較とも整合。UTCより西のTZで1日前に表示される問題の回避）
+const dateFormat = new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeZone: "UTC" });
 
 /** 日付文字列（YYYY-MM-DD）同士の差（日数）。時刻・タイムゾーンの影響を受けない */
 function daysUntil(deadline: string, today: string): number {
@@ -73,9 +75,11 @@ function DeadlineCountdown({ deadline, today }: { deadline: string; today: strin
 /** 期日の短い表示（「7/20（あと6日）」の形。締切超過は呼び出し側で色分け） */
 function dueLabel(dueDate: string, today: string): string {
   const days = daysUntil(dueDate, today);
-  const date = new Intl.DateTimeFormat("ja-JP", { month: "numeric", day: "numeric" }).format(
-    new Date(dueDate),
-  );
+  const date = new Intl.DateTimeFormat("ja-JP", {
+    month: "numeric",
+    day: "numeric",
+    timeZone: "UTC", // dateFormat と同じ理由（YYYY-MM-DD＝UTC深夜をそのまま整形）
+  }).format(new Date(dueDate));
   return `${date}（${days < 0 ? `${-days}日超過` : days === 0 ? "今日" : `あと${days}日`}）`;
 }
 
