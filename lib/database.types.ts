@@ -107,6 +107,7 @@ export type Database = {
           id: string
           note_id: string | null
           persona_id: string | null
+          title: string | null
           updated_at: string
           user_id: string
         }
@@ -115,6 +116,7 @@ export type Database = {
           id?: string
           note_id?: string | null
           persona_id?: string | null
+          title?: string | null
           updated_at?: string
           user_id?: string
         }
@@ -123,6 +125,7 @@ export type Database = {
           id?: string
           note_id?: string | null
           persona_id?: string | null
+          title?: string | null
           updated_at?: string
           user_id?: string
         }

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import { ASSISTANT_PERSONA_ID } from '@/lib/ai/personas'
+import { chatTitleFrom } from '@/lib/chat-title'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
 import type { ChatRole } from '@/lib/schemas/enums'
@@ -13,6 +14,13 @@ export type ChatMessageRecord = {
   id: string
   role: ChatRole
   content: string
+}
+
+export type ConsultThreadListItem = {
+  id: string
+  title: string | null
+  personaName: string | null
+  updatedAt: string
 }
 
 const uuidSchema = z.uuid()
@@ -31,6 +39,26 @@ async function loadThreadMessages(
     .order('created_at')
   if (error) throw new AppError('internal', error.message)
   return (rows ?? []) as ChatMessageRecord[]
+}
+
+/**
+ * conversational 型かをサーバー側で再検証する（reviewer 型のスレッドを作らせない。
+ * 標準 or 自分のペルソナかの所有チェックはRLSが担う＝他人のものは0件で not_found）
+ */
+async function assertConversationalPersona(
+  supabase: SupabaseServerClient,
+  personaId: string,
+): Promise<void> {
+  const { data: persona, error } = await supabase
+    .from('personas')
+    .select('id, persona_type')
+    .eq('id', personaId)
+    .maybeSingle()
+  if (error) throw new AppError('internal', error.message)
+  if (!persona) throw new AppError('not_found', 'ペルソナが見つかりません')
+  if (persona.persona_type !== 'conversational') {
+    throw new AppError('validation', 'このペルソナとは会話できません')
+  }
 }
 
 /** ノートの掘り下げスレッドを get-or-create し、保存済み履歴を返す */
@@ -81,75 +109,173 @@ export async function getOrCreateDeepDiveThread(
 }
 
 /**
- * ダッシュボード相談スレッド（note_id null・ペルソナごとに1本）を get-or-create し、
- * 保存済み履歴を返す（SPEC-conversational-personas §5.1）
+ * ダッシュボード相談の最新スレッド（note_id null・updated_at 降順1件）＋履歴を返す。
+ * なければ作らず threadId null を返す＝パネルは新規会話状態になり、
+ * スレッドは最初の送信時に作成する（SPEC-chat-thread-list §3.1・空スレッドを溜めない）
  */
-export async function getOrCreateDashboardThread(
+export async function getLatestDashboardThread(
   personaId: string,
-): Promise<ActionResult<{ threadId: string; messages: ChatMessageRecord[] }>> {
+): Promise<ActionResult<{ threadId: string | null; messages: ChatMessageRecord[] }>> {
   try {
     const id = uuidSchema.parse(personaId)
     const supabase = await createClient()
+    await assertConversationalPersona(supabase, id)
 
-    // conversational 型かをサーバー側で再検証（reviewer 型のスレッドを作らせない。
-    // 標準 or 自分のペルソナかの所有チェックはRLSが担う＝他人のものは0件で not_found）
-    const { data: persona, error: personaError } = await supabase
-      .from('personas')
-      .select('id, persona_type')
-      .eq('id', id)
-      .maybeSingle()
-    if (personaError) throw new AppError('internal', personaError.message)
-    if (!persona) throw new AppError('not_found', 'ペルソナが見つかりません')
-    if (persona.persona_type !== 'conversational') {
-      throw new AppError('validation', 'このペルソナとは会話できません')
-    }
-
-    const { data: existing, error: selectError } = await supabase
+    const { data: latest, error: selectError } = await supabase
       .from('chat_threads')
       .select('id')
       .eq('persona_id', id)
       .is('note_id', null)
+      .order('updated_at', { ascending: false })
+      .limit(1)
       .maybeSingle()
     if (selectError) throw new AppError('internal', selectError.message)
 
-    let threadId = existing?.id
-    if (!threadId) {
-      const { data: created, error: insertError } = await supabase
-        .from('chat_threads')
-        .insert({ persona_id: id })
-        .select('id')
-        .single()
-      if (insertError) {
-        // 端末間の同時作成で部分unique（chat_threads_user_persona_dashboard_uniq）に
-        // 弾かれた場合は既存行を取り直す
-        if (insertError.code === '23505') {
-          const { data: raced } = await supabase
-            .from('chat_threads')
-            .select('id')
-            .eq('persona_id', id)
-            .is('note_id', null)
-            .maybeSingle()
-          threadId = raced?.id
-        }
-        if (!threadId) throw new AppError('internal', insertError.message)
-      } else {
-        threadId = created.id
-      }
-    }
-
+    if (!latest) return { ok: true, data: { threadId: null, messages: [] } }
     return {
       ok: true,
-      data: { threadId, messages: await loadThreadMessages(supabase, threadId) },
+      data: { threadId: latest.id, messages: await loadThreadMessages(supabase, latest.id) },
     }
   } catch (error) {
     return toActionError(error)
   }
 }
 
-/** AI応答の1行目からノートタイトルを作る（Markdown記号を除去して最大50字） */
-function noteTitleFrom(content: string): string {
-  const firstLine = content.split('\n').find((line) => line.trim() !== '') ?? ''
-  return firstLine.replace(/^[#>\-*+\s]+/, '').trim().slice(0, 50)
+/** ダッシュボード相談スレッドの新規作成（初回送信時にクライアントが呼ぶ） */
+export async function createDashboardThread(
+  personaId: string,
+): Promise<ActionResult<{ threadId: string }>> {
+  try {
+    const id = uuidSchema.parse(personaId)
+    const supabase = await createClient()
+    await assertConversationalPersona(supabase, id)
+
+    const { data: created, error: insertError } = await supabase
+      .from('chat_threads')
+      .insert({ persona_id: id })
+      .select('id')
+      .single()
+    if (insertError || !created) {
+      throw new AppError('internal', insertError?.message ?? 'スレッドの作成に失敗しました')
+    }
+    return { ok: true, data: { threadId: created.id } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * ダッシュボード相談スレッドをidで取得する（`/?consult=` 導線＋応答後の履歴同期用）。
+ * RLS越し取得＝他人のidは0件で not_found。note_id null を検証し、
+ * 掘り下げスレッドを相談パネルで開かせない（SPEC-chat-thread-list §5.1）
+ */
+export async function getDashboardThreadById(
+  threadId: string,
+): Promise<
+  ActionResult<{ threadId: string; personaId: string | null; messages: ChatMessageRecord[] }>
+> {
+  try {
+    const id = uuidSchema.parse(threadId)
+    const supabase = await createClient()
+
+    const { data: thread, error: selectError } = await supabase
+      .from('chat_threads')
+      .select('id, note_id, persona_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (selectError) throw new AppError('internal', selectError.message)
+    if (!thread || thread.note_id !== null) {
+      throw new AppError('not_found', 'スレッドが見つかりません')
+    }
+
+    return {
+      ok: true,
+      data: {
+        threadId: thread.id,
+        personaId: thread.persona_id,
+        messages: await loadThreadMessages(supabase, thread.id),
+      },
+    }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/** ダッシュボード相談スレッドの一覧（/chats 用。note_id null のみ・updated_at 降順） */
+export async function listConsultThreads(): Promise<ActionResult<ConsultThreadListItem[]>> {
+  try {
+    const supabase = await createClient()
+    const { data: rows, error } = await supabase
+      .from('chat_threads')
+      .select('id, title, updated_at, personas (name)')
+      .is('note_id', null)
+      .order('updated_at', { ascending: false })
+    if (error) throw new AppError('internal', error.message)
+
+    return {
+      ok: true,
+      data: (rows ?? []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        personaName: row.personas?.name ?? null,
+        updatedAt: row.updated_at,
+      })),
+    }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+const threadTitleSchema = z.string().trim().min(1, 'タイトルを入力してください').max(100, 'タイトルは100文字以内で入力してください')
+
+/** スレッドのリネーム（/chats 用）。RLS越し UPDATE＝他人のidは0件で not_found */
+export async function renameThread(
+  threadId: string,
+  title: string,
+): Promise<ActionResult> {
+  try {
+    const id = uuidSchema.parse(threadId)
+    const parsedTitle = threadTitleSchema.parse(title)
+    const supabase = await createClient()
+
+    const { data: updated, error } = await supabase
+      .from('chat_threads')
+      .update({ title: parsedTitle })
+      .eq('id', id)
+      .is('note_id', null)
+      .select('id')
+    if (error) throw new AppError('internal', error.message)
+    if (!updated || updated.length === 0) {
+      throw new AppError('not_found', 'スレッドが見つかりません')
+    }
+    return { ok: true }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * スレッドの完全削除（cascade でメッセージも消える）。
+ * /chats の削除と掘り下げの「会話をリセット」で共用。
+ * RLS越し DELETE＝他人のidは0件で not_found
+ */
+export async function deleteThread(threadId: string): Promise<ActionResult> {
+  try {
+    const id = uuidSchema.parse(threadId)
+    const supabase = await createClient()
+    const { data: deleted, error } = await supabase
+      .from('chat_threads')
+      .delete()
+      .eq('id', id)
+      .select('id')
+    if (error) throw new AppError('internal', error.message)
+    if (!deleted || deleted.length === 0) {
+      throw new AppError('not_found', 'スレッドが見つかりません')
+    }
+    return { ok: true }
+  } catch (error) {
+    return toActionError(error)
+  }
 }
 
 /**
@@ -177,7 +303,7 @@ export async function saveChatMessageAsNote(
 
     const { data: note, error: insertError } = await supabase
       .from('notes')
-      .insert({ title: noteTitleFrom(message.content), content: message.content })
+      .insert({ title: chatTitleFrom(message.content), content: message.content })
       .select('id')
       .single()
     if (insertError || !note) {
@@ -186,19 +312,6 @@ export async function saveChatMessageAsNote(
 
     revalidatePath('/notes')
     return { ok: true, data: { noteId: note.id } }
-  } catch (error) {
-    return toActionError(error)
-  }
-}
-
-/** 会話をリセット: スレッドごと削除する（cascade でメッセージも消える。次回開いたとき再作成） */
-export async function resetThread(threadId: string): Promise<ActionResult> {
-  try {
-    const id = uuidSchema.parse(threadId)
-    const supabase = await createClient()
-    const { error } = await supabase.from('chat_threads').delete().eq('id', id)
-    if (error) throw new AppError('internal', error.message)
-    return { ok: true }
   } catch (error) {
     return toActionError(error)
   }

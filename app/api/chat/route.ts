@@ -8,6 +8,7 @@ import {
 
 import { resolveModel } from '@/lib/ai/models'
 import { ASSISTANT_PERSONA_ID } from '@/lib/ai/personas'
+import { chatTitleFrom } from '@/lib/chat-title'
 import {
   buildDashboardChatPrompt,
   buildDeepDivePrompt,
@@ -180,6 +181,24 @@ export async function POST(req: Request) {
             if (rows.length > 0) {
               const { error } = await supabase.from('chat_messages').insert(rows)
               if (error) console.error('チャット履歴の保存に失敗:', error.message)
+            }
+            // ダッシュボード相談のみ: タイトル未設定なら今回の user 発言から自動設定し
+            // （サーバー側で本文から生成＝クライアント注入不可・リネーム済みは is null で守る）、
+            // UPDATE で updated_at をバンプ（実値は set_updated_at トリガーが上書き。
+            // 「最後に更新したスレッドを継続」「一覧の更新日時降順」の基盤。SPEC-chat-thread-list §5.2）
+            if (context.kind === 'dashboard') {
+              const title = lastUser ? chatTitleFrom(textOf(lastUser)) : ''
+              if (title) {
+                await supabase
+                  .from('chat_threads')
+                  .update({ title })
+                  .eq('id', threadId)
+                  .is('title', null)
+              }
+              await supabase
+                .from('chat_threads')
+                .update({ updated_at: new Date().toISOString() })
+                .eq('id', threadId)
             }
           } catch (error) {
             // 履歴保存の失敗で応答自体は壊さない（次回送信時に履歴から欠けるのみ）

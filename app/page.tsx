@@ -21,7 +21,13 @@ function jstDate(at: Date): string {
 }
 
 /** ダッシュボード（SPEC-dashboard-critique-settings §3.1）。進捗＋プロジェクト概況の「作業基地」 */
-export default async function Home() {
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ consult?: string }>;
+}) {
+  // `/chats` の行クリック導線: 相談パネルを該当スレッドで自動オープンする（SPEC-chat-thread-list §3.1）
+  const { consult } = await searchParams;
   const supabase = await createClient();
 
   const [{ data: projects }, { data: settingsRow }] = await Promise.all([
@@ -101,7 +107,7 @@ export default async function Home() {
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-base font-semibold text-foreground">プロジェクト概況</h2>
           <div className="ml-auto flex items-center gap-2">
-            <ConsultLauncher projects={consultProjects} />
+            <ConsultLauncher projects={consultProjects} initialThreadId={consult} />
             <Button
               size="sm"
               variant="outline"

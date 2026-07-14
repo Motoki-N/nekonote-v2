@@ -6,8 +6,8 @@ import type { UIMessage } from "ai";
 import { Check, CircleStop, FilePlus2, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
 
 import {
+  deleteThread,
   getOrCreateDeepDiveThread,
-  resetThread,
   type ChatMessageRecord,
 } from "@/lib/actions/chat";
 import type { NoteContext } from "@/lib/ai/prompts";
@@ -97,7 +97,7 @@ export function DeepDivePanel({
 
   async function handleReset() {
     if (!thread) return;
-    const result = await resetThread(thread.threadId);
+    const result = await deleteThread(thread.threadId);
     if (!result.ok) {
       setLoadError(result.error.message);
       return;

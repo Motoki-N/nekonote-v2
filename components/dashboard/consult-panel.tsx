@@ -9,31 +9,22 @@ import {
   CircleStop,
   ExternalLink,
   FilePlus2,
+  History,
   Loader2,
   MessagesSquare,
-  RotateCcw,
   Send,
+  SquarePen,
   X,
 } from "lucide-react";
 
 import {
-  getOrCreateDashboardThread,
-  resetThread,
+  createDashboardThread,
+  getDashboardThreadById,
+  getLatestDashboardThread,
   saveChatMessageAsNote,
   type ChatMessageRecord,
 } from "@/lib/actions/chat";
 import { ASSISTANT_PERSONA_ID, CAFE_MASTER_PERSONA_ID } from "@/lib/ai/personas";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -86,16 +77,47 @@ function defaultProjectId(projects: ConsultProject[]): string {
   return withDeadline[0]?.id ?? projects[0]?.id ?? "";
 }
 
-/** ダッシュボードの「相談する」導線＋相談パネル。トリガーのJSXはクライアント側で組み立てる */
-export function ConsultLauncher({ projects }: { projects: ConsultProject[] }) {
-  const [open, setOpen] = useState(false);
+/** 読み込み済みスレッド（threadId null = 未作成の新規会話状態） */
+type LoadedThread = {
+  threadId: string | null;
+  messages: ChatMessageRecord[];
+};
+
+/**
+ * ダッシュボードの「相談する」導線＋相談パネル。
+ * `initialThreadId`（`/?consult=` 由来）があれば自動オープンして該当スレッドを開く
+ */
+export function ConsultLauncher({
+  projects,
+  initialThreadId,
+}: {
+  projects: ConsultProject[];
+  initialThreadId?: string;
+}) {
+  const [open, setOpen] = useState(() => Boolean(initialThreadId));
+
+  // /chats の行クリックで別スレッドの `/?consult=` に遷移した場合も開き直す
+  // （render中のprop派生setState＝エフェクト不要のReact推奨パターン）
+  const [lastThreadId, setLastThreadId] = useState(initialThreadId);
+  if (initialThreadId !== lastThreadId) {
+    setLastThreadId(initialThreadId);
+    if (initialThreadId) setOpen(true);
+  }
+
   return (
     <>
       <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
         <MessagesSquare data-icon="inline-start" />
         相談する
       </Button>
-      {open && <ConsultPanel projects={projects} onClose={() => setOpen(false)} />}
+      {open && (
+        <ConsultPanel
+          key={initialThreadId ?? "default"}
+          projects={projects}
+          initialThreadId={initialThreadId}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -103,12 +125,50 @@ export function ConsultLauncher({ projects }: { projects: ConsultProject[] }) {
 /** 相談パネル本体。lg以上は右サイドパネル、lg未満はボトムシート */
 function ConsultPanel({
   projects,
+  initialThreadId,
   onClose,
 }: {
   projects: ConsultProject[];
+  initialThreadId?: string;
   onClose: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<string>(TABS[0].personaId);
+  // `?consult=` 指定時の初期スレッド解決: loading → 担当タブへシード or エラー表示
+  const [consult, setConsult] = useState<
+    | { state: "loading" }
+    | { state: "error"; message: string }
+    | { state: "ready"; personaId: string; thread: LoadedThread }
+    | { state: "none" }
+  >(() => (initialThreadId ? { state: "loading" } : { state: "none" }));
+
+  useEffect(() => {
+    if (!initialThreadId) return;
+    let cancelled = false;
+    void getDashboardThreadById(initialThreadId).then((result) => {
+      if (cancelled) return;
+      if (!result.ok || !result.data) {
+        setConsult({
+          state: "error",
+          message: result.ok ? "スレッドが見つかりません" : result.error.message,
+        });
+        return;
+      }
+      const personaId = result.data.personaId;
+      if (!personaId || !TABS.some((tab) => tab.personaId === personaId)) {
+        setConsult({ state: "error", message: "このスレッドは相談パネルでは開けません" });
+        return;
+      }
+      setActiveTab(personaId);
+      setConsult({
+        state: "ready",
+        personaId,
+        thread: { threadId: result.data.threadId, messages: result.data.messages },
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialThreadId]);
 
   return (
     <aside
@@ -118,108 +178,140 @@ function ConsultPanel({
       <header className="flex items-center gap-2 border-b border-border px-3 py-2">
         <MessagesSquare className="size-4 text-muted-foreground" />
         <span className="text-sm font-medium">相談</span>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="パネルを閉じる"
-          className="ml-auto text-muted-foreground"
-          onClick={onClose}
-        >
-          <X />
-        </Button>
+        <div className="ml-auto flex items-center gap-0.5">
+          <Link
+            href="/chats"
+            className="flex items-center gap-1 px-2 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          >
+            <History className="size-3.5" />
+            履歴
+          </Link>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="パネルを閉じる"
+            className="text-muted-foreground"
+            onClick={onClose}
+          >
+            <X />
+          </Button>
+        </div>
       </header>
 
-      <div role="tablist" aria-label="相談相手" className="flex border-b border-border">
-        {TABS.map((tab) => (
-          <button
-            key={tab.personaId}
-            role="tab"
-            aria-selected={activeTab === tab.personaId}
-            className={`flex-1 border-b-2 px-2 py-2 text-sm ${
-              activeTab === tab.personaId
-                ? "border-primary font-medium text-foreground"
-                : "border-transparent text-muted-foreground"
-            }`}
-            onClick={() => setActiveTab(tab.personaId)}
-          >
-            {tab.name}
-          </button>
-        ))}
-      </div>
-
-      {/* タブは両方マウントしたまま表示を切り替える＝切替で会話状態が消えない */}
-      {TABS.map((tab) => (
-        <div
-          key={tab.personaId}
-          className={
-            activeTab === tab.personaId ? "flex min-h-0 flex-1 flex-col" : "hidden"
-          }
-        >
-          <ConsultThread
-            personaId={tab.personaId}
-            projects={tab.personaId === ASSISTANT_PERSONA_ID ? projects : null}
-          />
+      {consult.state === "loading" ? (
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="読み込み中" />
         </div>
-      ))}
+      ) : consult.state === "error" ? (
+        <div className="flex flex-1 items-center justify-center p-4">
+          <p className="text-sm text-destructive">{consult.message}</p>
+        </div>
+      ) : (
+        <>
+          <div role="tablist" aria-label="相談相手" className="flex border-b border-border">
+            {TABS.map((tab) => (
+              <button
+                key={tab.personaId}
+                role="tab"
+                aria-selected={activeTab === tab.personaId}
+                className={`flex-1 border-b-2 px-2 py-2 text-sm ${
+                  activeTab === tab.personaId
+                    ? "border-primary font-medium text-foreground"
+                    : "border-transparent text-muted-foreground"
+                }`}
+                onClick={() => setActiveTab(tab.personaId)}
+              >
+                {tab.name}
+              </button>
+            ))}
+          </div>
+
+          {/* タブは両方マウントしたまま表示を切り替える＝切替で会話状態が消えない */}
+          {TABS.map((tab) => (
+            <div
+              key={tab.personaId}
+              className={
+                activeTab === tab.personaId ? "flex min-h-0 flex-1 flex-col" : "hidden"
+              }
+            >
+              <ConsultThread
+                personaId={tab.personaId}
+                projects={tab.personaId === ASSISTANT_PERSONA_ID ? projects : null}
+                preloaded={
+                  consult.state === "ready" && consult.personaId === tab.personaId
+                    ? consult.thread
+                    : null
+                }
+              />
+            </div>
+          ))}
+        </>
+      )}
     </aside>
   );
 }
 
-/** 1ペルソナ分のスレッド（get-or-create → チャット）。リセットで作り直す */
+/**
+ * 1ペルソナ分のスレッド。初期表示は最後に更新したスレッドの継続
+ * （なければ未作成の新規会話状態）。「新しい会話」でローカルに空状態へ切り替える
+ * （DB行は作らない＝スレッドは最初の送信時に作成。SPEC-chat-thread-list §3.1）
+ */
 function ConsultThread({
   personaId,
   projects,
+  preloaded,
 }: {
   personaId: string;
   /** プロジェクトセレクタを出すタブ（アシスタント）のみ非null */
   projects: ConsultProject[] | null;
+  /** `?consult=` で指定されたスレッド（担当タブのみ非null） */
+  preloaded: LoadedThread | null;
 }) {
-  const [thread, setThread] = useState<{
-    threadId: string;
-    initialMessages: UIMessage[];
-    initialDbIds: string[];
-  } | null>(null);
+  const [thread, setThread] = useState<(LoadedThread & { chatKey: string }) | null>(() =>
+    preloaded ? { ...preloaded, chatKey: preloaded.threadId ?? "new" } : null,
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  const applyResult = useCallback(
-    (result: Awaited<ReturnType<typeof getOrCreateDashboardThread>>) => {
+  const load = useCallback(async () => {
+    const result = await getLatestDashboardThread(personaId);
+    if (result.ok && result.data) {
+      setThread({
+        threadId: result.data.threadId,
+        messages: result.data.messages,
+        chatKey: result.data.threadId ?? "new",
+      });
+    } else if (!result.ok) {
+      setLoadError(result.error.message);
+    }
+  }, [personaId]);
+
+  useEffect(() => {
+    if (preloaded) return;
+    let cancelled = false;
+    void getLatestDashboardThread(personaId).then((result) => {
+      if (cancelled) return;
       if (result.ok && result.data) {
         setThread({
           threadId: result.data.threadId,
-          initialMessages: result.data.messages.map(toUIMessage),
-          initialDbIds: result.data.messages.map((m) => m.id),
+          messages: result.data.messages,
+          chatKey: result.data.threadId ?? "new",
         });
       } else if (!result.ok) {
         setLoadError(result.error.message);
       }
-    },
-    [],
-  );
-
-  const load = useCallback(async () => {
-    applyResult(await getOrCreateDashboardThread(personaId));
-  }, [personaId, applyResult]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void getOrCreateDashboardThread(personaId).then((result) => {
-      if (!cancelled) applyResult(result);
     });
     return () => {
       cancelled = true;
     };
-  }, [personaId, applyResult]);
+  }, [personaId, preloaded]);
 
-  async function handleReset() {
-    if (!thread) return;
-    const result = await resetThread(thread.threadId);
-    if (!result.ok) {
-      setLoadError(result.error.message);
-      return;
-    }
-    setThread(null);
-    setLoadError(null);
-    await load();
+  /** 「新しい会話」: 空の新規会話状態へ（何も消えないため確認ダイアログ不要） */
+  function handleNewConversation() {
+    setThread({
+      threadId: null,
+      messages: [],
+      chatKey: `new-${Date.now()}`,
+    });
   }
 
   return (
@@ -240,13 +332,13 @@ function ConsultThread({
         </div>
       ) : thread ? (
         <ConsultChat
-          key={thread.threadId}
+          key={thread.chatKey}
           personaId={personaId}
-          threadId={thread.threadId}
-          initialMessages={thread.initialMessages}
-          initialDbIds={thread.initialDbIds}
+          initialThreadId={thread.threadId}
+          initialMessages={thread.messages.map(toUIMessage)}
+          initialDbIds={thread.messages.map((m) => m.id)}
           projects={projects}
-          onReset={handleReset}
+          onNewConversation={handleNewConversation}
         />
       ) : (
         <div className="flex flex-1 items-center justify-center">
@@ -259,23 +351,29 @@ function ConsultThread({
 
 function ConsultChat({
   personaId,
-  threadId,
+  initialThreadId,
   initialMessages,
   initialDbIds,
   projects,
-  onReset,
+  onNewConversation,
 }: {
   personaId: string;
-  threadId: string;
+  /** null = 未作成（最初の送信時に createDashboardThread で作る） */
+  initialThreadId: string | null;
   initialMessages: UIMessage[];
   initialDbIds: string[];
   projects: ConsultProject[] | null;
-  onReset: () => Promise<void>;
+  onNewConversation: () => void;
 }) {
   const [input, setInput] = useState("");
   const [projectId, setProjectId] = useState<string>(() =>
     projects ? defaultProjectId(projects) : "",
   );
+  // スレッドは初回送信時に作成されるため、送信処理と同期タイマーの双方から
+  // 最新のidを参照できるよう state と ref の二重持ちにする
+  const [threadId, setThreadId] = useState<string | null>(initialThreadId);
+  const threadIdRef = useRef<string | null>(initialThreadId);
+  const [sendError, setSendError] = useState<string | null>(null);
   // DBに保存済みのメッセージid（＝「ノートに保存」を押せるもの）。
   // ストリーミング直後の応答はクライアント採番のidでDBと一致しないため、
   // 応答完了後にDBから履歴を取り直して差し替える
@@ -283,11 +381,11 @@ function ConsultChat({
   const [savedNotes, setSavedNotes] = useState<Readonly<Record<string, string>>>({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const syncTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   const { messages, sendMessage, status, stop, error, setMessages } = useChat({
-    id: threadId,
     messages: initialMessages,
     onFinish: () => {
       // /api/chat の onEnd（DB保存）はストリーム終了後に完了するため、
@@ -297,7 +395,7 @@ function ConsultChat({
     },
   });
 
-  const busy = status === "submitted" || status === "streaming";
+  const busy = creating || status === "submitted" || status === "streaming";
   const statusRef = useRef(status);
   useEffect(() => {
     statusRef.current = status;
@@ -308,10 +406,12 @@ function ConsultChat({
       setTimeout(() => {
         // 次の送信が始まっていたら差し替えない（onFinish 時に改めて同期される）
         if (statusRef.current === "submitted" || statusRef.current === "streaming") return;
-        void getOrCreateDashboardThread(personaId).then((result) => {
+        const syncThreadId = threadIdRef.current;
+        if (!syncThreadId) return;
+        void getDashboardThreadById(syncThreadId).then((result) => {
           if (!result.ok || !result.data) return;
           if (statusRef.current === "submitted" || statusRef.current === "streaming") return;
-          if (result.data.threadId !== threadId) return;
+          if (result.data.threadId !== threadIdRef.current) return;
           setMessages(result.data.messages.map(toUIMessage));
           setDbIds(new Set(result.data.messages.map((m) => m.id)));
         });
@@ -330,17 +430,37 @@ function ConsultChat({
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const text = input.trim();
     if (!text || busy) return;
+    setSendError(null);
+
+    // 未作成の新規会話状態なら、最初の送信時にスレッドを作る（§3.1）
+    let currentThreadId = threadId;
+    if (!currentThreadId) {
+      setCreating(true);
+      try {
+        const result = await createDashboardThread(personaId);
+        if (!result.ok || !result.data) {
+          setSendError(result.ok ? "スレッドの作成に失敗しました" : result.error.message);
+          return;
+        }
+        currentThreadId = result.data.threadId;
+        setThreadId(currentThreadId);
+        threadIdRef.current = currentThreadId;
+      } finally {
+        setCreating(false);
+      }
+    }
+
     setInput("");
     // 対象プロジェクトはリクエスト単位のコンテキスト（スレッドとは独立。SPEC §3.2）
     void sendMessage(
       { text },
       {
         body: {
-          threadId,
+          threadId: currentThreadId,
           context: { kind: "dashboard", ...(projectId ? { projectId } : {}) },
         },
       },
@@ -443,38 +563,22 @@ function ConsultChat({
           />
         )}
         {error && <p className="mt-3 text-sm text-destructive">{toDisplayError(error)}</p>}
+        {sendError && <p className="mt-3 text-sm text-destructive">{sendError}</p>}
         {saveError && <p className="mt-3 text-sm text-destructive">{saveError}</p>}
       </div>
 
       <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t border-border p-3">
-        <AlertDialog>
-          <AlertDialogTrigger
-            render={
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon"
-                aria-label="会話をリセット"
-                className="text-muted-foreground"
-                disabled={busy}
-              >
-                <RotateCcw />
-              </Button>
-            }
-          />
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>会話をリセットしますか？</AlertDialogTitle>
-              <AlertDialogDescription>
-                この相手との会話履歴がすべて削除されます。この操作は元に戻せません。
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>キャンセル</AlertDialogCancel>
-              <AlertDialogAction onClick={() => void onReset()}>リセットする</AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label="新しい会話"
+          className="text-muted-foreground"
+          disabled={busy || messages.length === 0}
+          onClick={onNewConversation}
+        >
+          <SquarePen />
+        </Button>
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
