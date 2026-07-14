@@ -23,7 +23,8 @@ export const DEFAULT_MODEL_MAP: Record<
   low: { provider: 'google', model_id: 'gemini-3.1-flash-lite' },
 }
 
-const PROVIDER_ENV_KEY: Record<AiProvider, string> = {
+// 設定画面の「APIキー未設定」警告バッジの判定にも使う（キー値は絶対に返さない。有無のみ）
+export const PROVIDER_ENV_KEY: Record<AiProvider, string> = {
   anthropic: 'ANTHROPIC_API_KEY',
   openai: 'OPENAI_API_KEY',
   google: 'GOOGLE_GENERATIVE_AI_API_KEY',
