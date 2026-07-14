@@ -206,7 +206,7 @@ export async function getSuggestions(
 
 /**
  * base_path 配下の全原稿ファイルの総文字数を集計し、当日分として upsert する
- * （SPEC-proofreading §3.4。可視化はダッシュボード=Sprint 5）。
+ * （SPEC-proofreading §3.4。原稿を開いたときの自動記録とダッシュボードの手動集計が共用）。
  * 開いているファイルの本文は取得済みのものを使い、再取得しない
  */
 async function recordWritingProgress(
@@ -216,9 +216,9 @@ async function recordWritingProgress(
     repo: string
     basePath: string
     token: string
-    openedFile: { path: string; content: string }
+    openedFile?: { path: string; content: string }
   },
-): Promise<void> {
+): Promise<number> {
   const contents = await fetchAllManuscriptContents(
     params.token,
     params.repo,
@@ -232,6 +232,43 @@ async function recordWritingProgress(
     { onConflict: 'project_id,date' },
   )
   if (error) throw new AppError('internal', error.message)
+  return totalChars
+}
+
+/**
+ * ダッシュボードの「今すぐ集計」（SPEC-dashboard-critique-settings §3.1）。
+ * repo/PAT 設定済みプロジェクトのみ。集計内容は原稿を開いたときの自動記録と同一
+ */
+export async function refreshWritingProgress(
+  projectId: string,
+): Promise<ActionResult<{ totalChars: number }>> {
+  try {
+    const pid = uuidSchema.parse(projectId)
+    const supabase = await createClient()
+
+    // RLS越しの取得＝所有確認を兼ねる
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('id, repo, base_path')
+      .eq('id', pid)
+      .maybeSingle()
+    if (error) throw new AppError('internal', error.message)
+    if (!project) throw new AppError('not_found', 'プロジェクトが見つかりません')
+    if (!project.repo) throw new AppError('validation', 'リポジトリが設定されていません')
+
+    const credential = await patCredentialProvider.getCredential(supabase)
+    if (!credential) throw new AppError('validation', 'GitHub PATが未登録です')
+
+    const totalChars = await recordWritingProgress(supabase, {
+      projectId: pid,
+      repo: project.repo,
+      basePath: project.base_path ?? '',
+      token: credential.token,
+    })
+    return { ok: true, data: { totalChars } }
+  } catch (error) {
+    return toActionError(error)
+  }
 }
 
 const suggestionStatusSchema = z.enum(suggestionStatuses)
