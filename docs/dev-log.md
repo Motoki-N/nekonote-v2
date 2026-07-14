@@ -369,3 +369,13 @@
 - **security-reviewer ゲート**: **指摘ゼロ（Critical〜Low なし）**。確認済み観点: resolveTarget character 分岐の RLS 所有確認（proposals_owner_via_project・WITH CHECK 二重）／fetchProposalWithNotes 抽出後も project_id 一致検証が両フェーズで保持／character セッションで企画を通す抜け道なし（approveProposal の target_phase 検証＋verdict null の二重で不成立）／resolveProfileForPhase のフェーズ一致強制／既存4フェーズの認可境界に弱化なし
 - E2Eの副産物: 竜の巣のキャラクターレビューセッション（第1回・第2回＋返答メモ）は実データとして残置。※返答メモの文面（欠点・代償を追記予定）は検証用にClaude が書いたもの——実際の改稿方針は作者が上書きしてよい
 - 次: 本番デプロイ→Sprint 6 の残り＝middleware→proxy 移行。R2期日 8/11 まで磨き込み
+
+### セッション㉕: Sprint 6 その4（middleware→proxy 移行の本番反映）＋環境変化の確認
+
+- **middleware→proxy 移行完了・本番反映済み**。移行自体はセッション㉔後の別ブランチ作業（コミット f9baf6e・7/13）で実施済みだったが、ブランチ `claude/friendly-tesla-45ca32` に取り残されて main 未反映だったことが判明 → main へ cherry-pick（コミット 6d973f3）
+  - 変更はリネーム＋関数名変更のみ（`middleware.ts` → `proxy.ts`・`middleware` → `proxy`・SPEC-auth の参照5箇所更新）。config.matcher と updateSession のロジックは無変更
+  - typecheck / lint パス。**security-reviewer ゲート通過（指摘ゼロ）**: Next 16.2.10 実装で proxy 規約準拠を裏取り（`PROXY_FILENAME`・`isProxy ? mod.proxy : mod.middleware`・src なし構成でルート直下が正）・実ビルドで `ƒ Proxy (Middleware)` 組み込み確認・旧 middleware.ts 残存なし・参照切れなし（`lib/supabase/middleware.ts` は内部ライブラリなのでファイル名そのままで正しい）
+  - 片付け: ブランチ `claude/friendly-tesla-45ca32` と worktree `.claude/worktrees/friendly-tesla-45ca32/` を削除
+- **環境変化: Vercel の Git 連携が接続された**（main への push で本番へ自動デプロイ。6d973f3 の push で自動ビルド・Ready・非推奨警告 middleware-to-proxy の消滅をビルドログで確認）。手動 `npx vercel deploy --prod --yes` は不要になった＝フェーズ4フローの⑧CI/CD の土台が完成
+- **Sprint 6 の残置機能4項目がすべて消化完了**。Sprint 6 の残りは「GitHub Issue 駆動の修正自動化フロー構築」のみ（アプリのソースコードにはほぼ手が入らない作業＝CLAUDE.md への③判断基準明記・Issueテンプレート等のGitHub側整備・フローの試運転1件）
+- 次セッションの方針（本セッションで合意）: **全体コードレビューを先に実施**（コードベースが静止状態の今が好機。認証・RLSは毎回ゲート済みなので品質・保守性寄りの観点に重心）→ 指摘を Issue 起票 → 自動化フロー構築 → **起票済み Issue を題材にフローを一度通す**（Sprint 6 完了条件の消化と一石二鳥）。その後 7/17〜20 ドッグフーディング。R2期日 8/11
