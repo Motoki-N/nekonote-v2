@@ -25,7 +25,7 @@ export default async function LoginPage({
     <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
       <h1 className="text-2xl font-bold text-foreground">🐱 ネコノテAI</h1>
       <p className="text-sm text-muted-foreground">
-        小説は人間が書き、AIはネタ出し・レビュー・校正で伴走する。
+        小説は人間が書き、AIはネタ出し・レビュー・校正で伴走する。ニャ
       </p>
       {errorMessage && (
         <p role="alert" className="text-sm text-destructive">
