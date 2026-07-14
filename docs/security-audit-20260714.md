@@ -73,7 +73,10 @@
 
 ### L-3. `notes.content` 等にサイズ上限がなく、LLM入力が無制限に肥大化しうる
 
-- **状態**: 未対応
+- **状態**: 対応済み（2026-07-14。`noteInputSchema` の content に10万字（チャットのノートコンテキストと
+  同値）・title に500字、ペルソナ description に1万字・`prompt_template` に2万字・各 name に100字の
+  max を追加。企画書・キャラクターレビューの入力組み立て時にも合計文字数ガード
+  （`CRITIQUE_MAX_CHARS` 流用の30万字）を追加）
 - **該当**: `lib/schemas/notes.ts`（content 無上限）・`lib/schemas/review.ts` の
   `description` / `prompt_template`（min のみ）
 - **何が問題か**: チャットのノートコンテキストは10万字、シーンは2万字で上限があるのに対し、

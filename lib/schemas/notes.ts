@@ -4,8 +4,10 @@ import { tagKinds } from './enums'
 // user_id はクライアントから受け取らず、DBの default auth.uid() に任せる（全スキーマ共通）
 
 export const noteInputSchema = z.object({
-  title: z.string().default(''),
-  content: z.string().default(''), // Markdown 生データ
+  title: z.string().max(500, 'タイトルが長すぎます').default(''),
+  // Markdown 生データ。上限はチャットのノートコンテキスト（noteContextSchema）と同じ10万字
+  // （企画書レビューが紐づけノート全文をLLMに渡すため、無上限だとコスト増幅の経路になる）
+  content: z.string().max(100_000, 'ノート本文が長すぎます（上限10万字）').default(''),
 })
 export const noteUpdateSchema = noteInputSchema.partial()
 

@@ -161,6 +161,16 @@ export async function POST(req: Request) {
         targetRef.data,
         session.project_id,
       )
+      // 紐づけノート経由のLLM入力肥大化ガード（監査L-3。上限は講評の実行不可ラインを流用）
+      const inputChars =
+        countChars(proposal.content) +
+        notes.reduce((sum, note) => sum + countChars(note.content), 0)
+      if (inputChars > CRITIQUE_MAX_CHARS) {
+        throw new AppError(
+          'validation',
+          `企画書と紐づけノートの合計が約${inputChars.toLocaleString('ja-JP')}字あり、レビューの上限（${CRITIQUE_MAX_CHARS.toLocaleString('ja-JP')}字）を超えています。紐づけノートを減らしてください`,
+        )
+      }
       prompt = buildProposalReviewInput({
         proposal: {
           genre: proposal.genre,

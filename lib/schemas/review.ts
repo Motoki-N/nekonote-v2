@@ -12,8 +12,12 @@ import {
 // 標準同梱行はマイグレーション（Sprint 2 のシード）でのみ作成する
 
 export const personaInputSchema = z.object({
-  name: z.string().min(1, '名前を入力してください'),
-  description: z.string().min(1, '性格・口調・スタンスを入力してください'),
+  name: z.string().min(1, '名前を入力してください').max(100, '名前が長すぎます'),
+  // description / prompt_template はシステムプロンプトに直結するため、LLM入力の肥大化を上限で防ぐ
+  description: z
+    .string()
+    .min(1, '性格・口調・スタンスを入力してください')
+    .max(10_000, '説明が長すぎます（上限1万字）'),
   ai_capability: z.enum(aiCapabilities),
   reference_scope: z.enum(referenceScopes),
   persona_type: z.enum(personaTypes),
@@ -24,9 +28,12 @@ export type PersonaInput = z.infer<typeof personaInputSchema>
 export type PersonaUpdate = z.infer<typeof personaUpdateSchema>
 
 export const reviewProfileInputSchema = z.object({
-  name: z.string().min(1, '名前を入力してください'),
+  name: z.string().min(1, '名前を入力してください').max(100, '名前が長すぎます'),
   target_phase: z.enum(targetPhases),
-  prompt_template: z.string().min(1, 'プロンプトを入力してください'),
+  prompt_template: z
+    .string()
+    .min(1, 'プロンプトを入力してください')
+    .max(20_000, 'プロンプトが長すぎます（上限2万字）'),
   default_persona_id: z.uuid().nullish(),
 })
 export const reviewProfileUpdateSchema = reviewProfileInputSchema.partial()
