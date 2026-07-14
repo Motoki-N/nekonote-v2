@@ -7,7 +7,7 @@ import { Check, CircleStop, FilePlus2, Loader2, RotateCcw, Send, Sparkles, X } f
 
 import {
   getOrCreateDeepDiveThread,
-  resetDeepDiveThread,
+  resetThread,
   type ChatMessageRecord,
 } from "@/lib/actions/chat";
 import type { NoteContext } from "@/lib/ai/prompts";
@@ -97,7 +97,7 @@ export function DeepDivePanel({
 
   async function handleReset() {
     if (!thread) return;
-    const result = await resetDeepDiveThread(thread.threadId);
+    const result = await resetThread(thread.threadId);
     if (!result.ok) {
       setLoadError(result.error.message);
       return;
@@ -213,7 +213,10 @@ function DeepDiveChat({
     if (!text || busy) return;
     setInput("");
     // 送信時点のエディタ現在値（title / content / tags）をリクエストボディに同梱する
-    void sendMessage({ text }, { body: { threadId, note: getNoteContext() } });
+    void sendMessage(
+      { text },
+      { body: { threadId, context: { kind: "note", note: getNoteContext() } } },
+    );
   }
 
   function handleInsert(message: UIMessage) {

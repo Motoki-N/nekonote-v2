@@ -6,6 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import {
+  ConsultLauncher,
+  type ConsultProject,
+} from "@/components/dashboard/consult-panel";
+import {
   ProjectOverviewCard,
   type DashboardProject,
 } from "@/components/dashboard/project-overview-card";
@@ -39,6 +43,13 @@ export default async function Home() {
           .in("project_id", projectIds)
           .order("date")
       : { data: [] as { project_id: string; date: string; total_chars: number }[] };
+
+  // 相談パネル（アシスタントタブのプロジェクトセレクタ）に渡す最小情報
+  const consultProjects: ConsultProject[] = (projects ?? []).map((project) => ({
+    id: project.id,
+    title: project.title,
+    deadline: project.deadline,
+  }));
 
   const now = new Date();
   const today = jstDate(now);
@@ -90,6 +101,7 @@ export default async function Home() {
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-base font-semibold text-foreground">プロジェクト概況</h2>
           <div className="ml-auto flex items-center gap-2">
+            <ConsultLauncher projects={consultProjects} />
             <Button
               size="sm"
               variant="outline"

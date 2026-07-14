@@ -1,5 +1,5 @@
 import { ANCHOR_LABEL, EMOTION_LABEL, PART_LABEL, type SceneRecord } from '@/lib/board'
-import type { Emotion, SceneAnchor } from '@/lib/schemas/enums'
+import type { Emotion, ProjectStatus, SceneAnchor } from '@/lib/schemas/enums'
 
 export type NoteContext = {
   title: string
@@ -217,6 +217,92 @@ export function buildManuscriptCritiqueInput({
   lines.push('# 原稿（作品全体・構成順）')
   for (const file of files) {
     lines.push(`## ${file.path}`, '"""', file.content, '"""', '')
+  }
+
+  return lines.join('\n')
+}
+
+/** 増分の実測値。記録が疎な場合に備え、ペース計算は固定の7/30日でなく実スパンで行う */
+export type ProgressDelta = {
+  chars: number
+  /** 基準の記録→最新の記録の実日数 */
+  days: number
+}
+
+/** スケジュールコンテキスト（サーバー集計。SPEC-conversational-personas §5.2） */
+export type ScheduleContext = {
+  projectTitle: string
+  status: ProjectStatus
+  eventName: string | null
+  deadline: string | null
+  /** 締切までの残日数（JST基準。締切なしは null。負数=超過） */
+  daysRemaining: number | null
+  targetPages: number | null
+  latest: { date: string; totalChars: number } | null
+  /** 直近N日境界を跨いだ増分（基準になる過去の記録がなければ null） */
+  delta7: ProgressDelta | null
+  delta30: ProgressDelta | null
+}
+
+// プロンプト内で使うプロジェクトステータスの日本語ラベル
+// （components/projects/status-badges.tsx はクライアント用のため持ち込まない）
+const STATUS_LABEL: Record<ProjectStatus, string> = {
+  planning: '企画中',
+  writing: '執筆中',
+  editing: '推敲中',
+  completed: '完成',
+}
+
+function deltaLine(label: string, delta: ProgressDelta | null): string {
+  if (delta === null) return `${label}: （比較できる過去の記録なし）`
+  const sign = delta.chars >= 0 ? '+' : ''
+  const pace = Math.round(delta.chars / delta.days).toLocaleString('ja-JP')
+  return `${label}: ${sign}${delta.chars.toLocaleString('ja-JP')}字（実際の記録間隔${delta.days}日・約${pace}字/日）`
+}
+
+/**
+ * ダッシュボード相談の system プロンプト（SPEC-conversational-personas §5.2）。
+ * ペルソナの口調（personas.description）＋共通の役割指示＋スケジュールブロック（あれば）
+ */
+export function buildDashboardChatPrompt({
+  personaDescription,
+  schedule,
+}: {
+  personaDescription: string
+  schedule?: ScheduleContext | null
+}): string {
+  const lines: string[] = [
+    personaDescription,
+    '',
+    '# 今回の仕事: 執筆の相談相手',
+    '作者（ユーザー）との会話の場。執筆にまつわる相談ごとに付き合う。',
+    '- 日本語で応答する',
+    '- 応答は簡潔に（目安200〜400字）。モバイルでも読める分量にする',
+    '- 地の文と箇条書きのみで書き、見出しは使わない',
+  ]
+
+  if (schedule) {
+    lines.push(
+      '',
+      '# 対象プロジェクトの進捗データ（サーバー集計の実データ・現在値）',
+      `プロジェクト: ${schedule.projectTitle}（${STATUS_LABEL[schedule.status]}）`,
+      `イベント: ${schedule.eventName || '（未設定）'}`,
+      schedule.deadline === null
+        ? '締切: （未設定）'
+        : `締切: ${schedule.deadline}（${
+            schedule.daysRemaining !== null && schedule.daysRemaining < 0
+              ? `${-schedule.daysRemaining}日超過`
+              : `残り${schedule.daysRemaining}日`
+          }）`,
+      `目標ページ数: ${schedule.targetPages !== null ? `${schedule.targetPages}ページ` : '（未設定）'}`,
+      schedule.latest === null
+        ? '総文字数: （まだ記録がない）'
+        : `最新の総文字数: ${schedule.latest.totalChars.toLocaleString('ja-JP')}字（${schedule.latest.date}時点）`,
+      deltaLine('直近7日境界からの増分', schedule.delta7),
+      deltaLine('直近30日境界からの増分', schedule.delta30),
+      '',
+      'スケジュールやペース配分の相談には、上記の実データ（残日数・現在ペース・残り目標）を使って具体的な数字で助言すること。データが欠けている項目は正直に「記録がない」と伝え、推測で数字を作らない。',
+    )
   }
 
   return lines.join('\n')
