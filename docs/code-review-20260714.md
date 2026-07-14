@@ -71,7 +71,7 @@
 
 ### L-4. 保存失敗時にも `router.refresh()` が走る
 
-- **状態**: 未対応
+- **状態**: 対応済み（`onFinish` の判定に `output.ok` を追加。M-3で共有化した `SaveScheduleOutput` を利用）
 - **該当**: `components/dashboard/consult-panel.tsx` の `useChat` `onFinish`
 - **何が問題か**: `state === "output-available"` だけを見ており、`output.ok === false`（execute内で握ったDB失敗）でもrefreshする。実害はほぼない冗長refetchだが、「保存成功時に概況カードを更新」という意図とコードがずれている。`ok` まで見るのが正確。
 

@@ -486,12 +486,14 @@ function ConsultChat({
       scheduleSync(300);
       scheduleSync(1500);
       // スケジュール保存に成功したら概況カード（server component）を更新する
+      // （output-available でも ok: false＝execute 内で握ったDB失敗があるため ok まで見る）
       if (
         message.parts.some(
           (part) =>
             isStaticToolUIPart(part) &&
             part.type === "tool-saveSchedule" &&
-            part.state === "output-available",
+            part.state === "output-available" &&
+            (part.output as SaveScheduleOutput).ok,
         )
       ) {
         router.refresh();
