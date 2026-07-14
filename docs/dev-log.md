@@ -288,3 +288,18 @@
 - 既存基盤の再利用が効いた: chat_threads/chat_messages は SPEC-ai-deep-dive の汎用設計（note_id null 予約済み）どおりで新テーブル不要。conversational ペルソナ2人もシード済み（マスターの description が既にメモ化を指示）
 - docs/SPEC-conversational-personas.md 策定 → ユーザーレビューで指摘なし → **確定**（2026-07-14）
 - 次: 新規セッションで実装。マイグレーション（部分ユニークインデックス）のプランモード承認から。**security-reviewer 必須ゲート**（マイグレーション・/api/chat 拡張=projectId の所有確認とコンテキスト組み立て・saveChatMessageAsNote の所有確認）。スコープ外に残置: スレッド一覧・構造化スケジュール保存・メモの自動ノート化・キャラクターレビュー実行UI（…1002・引き続き別途検討）
+
+### セッション⑲: Sprint 5後半 実装（SPEC-conversational-personas 対話型ペルソナ）
+
+- マイグレーション（プランモード承認）→実装→security-reviewer→E2E→デプロイの縦通し。**Sprint 5後半（対話型ペルソナ）完了＝実装計画の全機能が本番に揃った**
+- **マイグレーション `20260714000002_dashboard_chat_thread_uniq.sql`**（コミット 6209fa0・単体で security-reviewer **指摘ゼロ**）: 部分ユニークインデックス1本 `chat_threads (user_id, persona_id) where note_id is null`。SPEC §4.1 のSQLそのまま。本番DB適用は AskUserQuestion 承認後に `supabase db push` → pg_indexes で partial 付き存在と既存インデックス無傷を確認。レビューで確認済み: persona_id null 行が NULLS DISTINCT でユニーク対象外になるのはRLS上ゴミ行が自分に増えるだけで越境不可／`on delete set null` でユニークから外れても get-or-create は persona_id 検索なので衝突しない
+- **実装**（コミット 93ab2a6）:
+  - `lib/schemas/chat.ts`: `/api/chat` の context を**判別union化**（`{kind:'note', note}` / `{kind:'dashboard', projectId?}`）。既存クライアント（掘り下げパネル）も新形式に追従
+  - `lib/actions/chat.ts`: `getOrCreateDashboardThread`（**conversational 型をサーバー側で再検証**・23505は取り直し・履歴読みは `loadThreadMessages` に共通化）／`saveChatMessageAsNote`（messageId 方式・**本文をDBから読み直し**・role='assistant' 検証・タイトル=1行目のMarkdown記号除去50字）／`resetDeepDiveThread` → `resetThread` に一般化
+  - `app/api/chat/route.ts`: dashboard 分岐——スレッド実態とコンテキスト種類の照合（`note_id null` ⇔ kind の食い違いは validation）／`buildScheduleContext` で projects・writing_progress を**RLS越し取得**しサーバー組み立て（残日数JST・直近7日/30日境界の増分）／スケジュール同梱は `thread.persona_id === ASSISTANT_PERSONA_ID` のみ（マスターは chat_only 厳密適用）
+  - `lib/ai/prompts.ts`: `buildDashboardChatPrompt`（ペルソナ description＋共通役割指示＋schedule ブロック。「データが欠けている項目は正直に伝え推測で数字を作らない」を明示）
+  - `components/dashboard/consult-panel.tsx`: 相談パネル（右サイド/ボトムシートは既存流儀の fixed オーバーレイ）。**タブ2人は両方マウントしたまま表示切替**＝切替で状態が消えない。プロジェクトセレクタ（既定=締切最近傍・リクエスト単位）。「ノートに保存」は**DB保存済みメッセージidのみ有効**——ストリーミング直後はクライアント採番idでDBと不一致のため、onFinish 後に300ms/1500msの二段取り直しで履歴を差し替えて有効化（proofread-panel のレース吸収と同じ流儀）
+- **security-reviewer ゲート**（実装一括）: **Critical〜Medium ゼロ・Low 2件→両方修正済み**——①/api/chat の dashboard 分岐にも persona_type 再検証を追加（PostgREST直叩きで作った reviewer 型スレッドの多層防御。正規経路は Server Action 検証済み）②進捗記録が疎な場合のペース計算を固定7/30日割りから**実記録間隔割り**に変更（`ProgressDelta {chars, days}`。過大な字/日をAIに渡さない）。確認済み観点: projectId の IDOR（RLS 0件→not_found）・自由文コンテキスト注入なし（dashboard 側は uuid のみ）・saveChatMessageAsNote の親スレッドRLS・resetThread の認可境界不変
+- **E2E検証（SPEC §8 全12項目・アプリ内ブラウザペイン＋DB直接確認）**: パネル開閉（1280px=右サイド／852px・375px=ボトムシート）／タブ切替で別スレッド・別口調・**双方の状態保持**／リロード復元＋DBに note_id null のペルソナ別2スレッド／スケジュール相談で**実データが応答に**（総文字数37,488字を引用し、締切未設定は「記録がない」と正直に回答→締切日を質問）／セレクタ「指定なし」切替で「進捗データは見えていません」に変化／マスターの壁打ち（受け止め→深掘り質問1つ→常体まじり口調）→「メモにまとめて」で箇条書きメモ／ノートに保存→/notes に title=1行目50字で出現・「保存済み」＋リンク・DB確認／会話リセット（確認ダイアログ→全消去→もう一方のタブ無傷）／否定系: 未認証 fetch→/login リダイレクト・他人（架空）projectId→404 not_found・dashboard スレッドに note コンテキスト→400 validation／掘り下げパネル回帰（新 context 形式で従来どおり）／コンソール・サーバーログにエラーなし
+- E2Eの副産物ノート2件（アシスタント応答・マスターのメモ）は実データとして残置（ユーザーの手帳に合流済み）
+- 検証時の注意点（再現した既知事象）: Next.js dev バッジがボトムシート左下のリセットボタンに重なる（本番には存在しないオーバーレイ。E2EはJSクリックで回避）
