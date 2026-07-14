@@ -312,3 +312,19 @@
 - インタビューで聞かずに設計原則で決めた点（レビューで確認済み）: マイグレーション1本のみ（部分ユニークインデックス `chat_threads_user_persona_dashboard_uniq` の撤去=SPEC-conversational-personas §4.1 の予告どおり＋ `title` 列追加＋既存スレッドのタイトルバックフィル。新テーブルなし）／「新しい会話」はDB行を作らない（スレッドは初回送信時に作成=空スレッドを構造的に溜めない。インデックス撤去後は23505ハンドリング不要）／updated_at 問題の同時解決（メッセージ保存がスレッド行を触らず「最終更新」が動かない → /api/chat の onEnd に `title = coalesce(title, 先頭発言から整形)` のUPDATE 1本でタイトル自動設定と updated_at バンプを兼ねる。リネーム済みは coalesce で保護）／タイトルはサーバー側で本文から生成（noteTitleFrom を共通化・クライアント注入不可）／getOrCreateDashboardThread → getLatestDashboardThread + createDashboardThread に分割／`?consult=` は note_id null 検証（掘り下げスレッドを相談パネルで開かせない）／グローバルナビに /chats は足さない（導線はパネルヘッダーの「履歴」リンク）／一覧用の専用インデックス・ページネーション・検索は追加しない（一人利用の件数規模）
 - docs/SPEC-chat-thread-list.md 策定 → ユーザーレビューで指摘なし → **確定**（2026-07-14）
 - 次: 新規セッションで実装。マイグレーション（インデックス撤去＋title列＋バックフィル）のプランモード承認から。**security-reviewer 必須ゲート**（マイグレーション・`?consult=` 経由スレッド読み込みのIDOR・renameThread / deleteThread の所有境界・タイトル自動設定のサーバー側生成）。Sprint 6 の残り: 構造化スケジュール保存・メモの自動ノート化 → キャラクターレビュー実行UI → middleware→proxy移行
+
+### セッション㉑: Sprint 6 実装（SPEC-chat-thread-list スレッド一覧UI）
+
+- プランモード承認→マイグレーション→実装→E2E→security-reviewer→デプロイの縦通し。**Sprint 6 残置分その1（スレッド一覧・複数スレッド化）完了・本番反映済み**
+- **マイグレーション `20260714000003_chat_thread_list.sql`**（AskUserQuestion 承認後に db push）: `chat_threads_user_persona_dashboard_uniq` 撤去＋`title text` 追加＋既存ダッシュボードスレッドのタイトルバックフィル（最初の user 発言の最初の非空行→先頭Markdown記号除去→50字。`regexp_match` の式は事前に `db query --linked` の SELECT で単体検証してから適用）。メッセージ0件の既存スレッドは title null のまま=「無題の会話」表示で正しい挙動
+- **実装**（コミット 4aa7d74）:
+  - `lib/chat-title.ts` 新設: noteTitleFrom を `chatTitleFrom` として共通化（'use server' ファイルは非アクション関数を export できないため別モジュール必須）。ノート保存タイトルとスレッド自動タイトルで共用
+  - `lib/actions/chat.ts`: getOrCreateDashboardThread を **getLatestDashboardThread**（なければ作らず threadId null）＋ **createDashboardThread**（初回送信時）に分割。conversational 再検証は `assertConversationalPersona` に抽出。**getDashboardThreadById**（`?consult=` 導線＋応答後同期用・note_id null 検証）／**listConsultThreads**／**renameThread**（zod trim 1〜100字・`.is('note_id', null)`）／**deleteThread**（resetThread 改名・`.select('id')` 0件→not_found 強化。掘り下げパネルと共用）
+  - `app/api/chat/route.ts` onEnd: dashboard のみ `update({title}).is('title', null)`（サーバー側生成・リネーム保護）＋ updated_at バンプ UPDATE。coalesce 1クエリ案は supabase-js で表現できないため is-null ガード＋バンプの2クエリに（レース安全で同等）
+  - `components/dashboard/consult-panel.tsx`: 初期ロードを最新スレッド取得に変更（未作成なら空の新規会話状態）。「会話をリセット」→**「新しい会話」**（ダイアログなし・ローカル状態クリアのみ・スレッドは初回送信時に作成）。ヘッダーに「履歴」リンク。`?consult=` はパネル自動オープン→担当タブアクティブ→該当スレッドをシード（`key={initialThreadId}` でスレッド間遷移を remount で処理）。ConsultChat は threadId nullable＋ref 二重持ち（送信時作成と同期タイマーの整合）
+  - `app/chats/page.tsx`＋`components/chats/thread-list.tsx`: 一覧（更新日時降順・ペルソナ名バッジ・無題は「無題の会話」）・行クリック→`/?consult=`・DropdownMenu からリネーム（Dialog）／削除（AlertDialog destructive→完全削除）。空状態＋ダッシュボード導線
+  - lint の `react-hooks/set-state-in-effect` に1回引っかかった→ `?consult=` 変化でのパネル再オープンは「render中のprop派生setState」パターンに書き換えて解消
+- **E2E検証（SPEC §8 全11項目・ブラウザペイン＋DB直接確認）**: 新しい会話でDB行が増えない→送信で作成／同一ペルソナ2本並存（DB確認）／タイトル自動設定（`## ` 除去）・2通目で非上書き・updated_at バンプ／閉じて開き直すと最新スレッド継続／/chats 降順＋バックフィル済みタイトル＋掘り下げ非掲載／行クリック→自動オープン＋マスタータブアクティブ／リネーム→反映＋以降も自動設定に上書きされない／削除→cascade でメッセージ消滅・他スレッド無傷／掘り下げ回帰（履歴表示・リセット健在）／未認証 /chats→307 /login・架空 threadId と掘り下げ threadId の `?consult=` 直打ち→パネル内 not_found／モバイル375px（一覧・メニュー・ダイアログ・パネル自動オープン）
+- **security-reviewer ゲート**: **Critical〜Medium ゼロ・Low 2件**——①デプロイ順序依存（インデックス撤去済みDB×旧コードの maybeSingle が複数行エラー）→**本番が実際にこの状態になったため即デプロイで解消**（マイグレーション先行適用＋E2Eでスレッドが増えた時点で本番パネルが壊れる構図。次回から「本番適用は原則デプロイ直前」を意識）②renameThread の note_id 絞りなし（所有境界内で実害なしの厳密化）→`.is('note_id', null)` 追加済み
+- **本番デプロイ完了**: push→`npx vercel deploy --prod --yes`（dpl_8Zx2bP1VqWpfwEWSFK44rztRYiVS）。本番 /chats が 307→/login（returnTo付き）で新ルート稼働を確認
+- 次: Sprint 6 残り＝構造化スケジュール保存・メモの自動ノート化 → キャラクターレビュー実行UI（…1002）→ middleware→proxy 移行。R2期日 8/11 まで磨き込み
