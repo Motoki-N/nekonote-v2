@@ -2,6 +2,7 @@
 // supabase/migrations のシードと対応させる:
 //   - conversational 2人: 20260713000001_chat_and_conversational_personas.sql
 //   - reviewer 4人＋プロファイル5種: 20260713000002_review_gate_and_reviewer_personas.sql
+//   - 講評プロファイル2種: 20260714000001_manuscript_critique_profiles.sql
 
 export const ASSISTANT_PERSONA_ID = 'e5a1c0de-0001-4000-8000-000000000001'
 export const CAFE_MASTER_PERSONA_ID = 'e5a1c0de-0002-4000-8000-000000000002'
@@ -16,3 +17,6 @@ export const CHARACTER_REVIEW_PROFILE_ID = 'e5a1c0de-1002-4000-8000-000000001002
 export const STRUCTURE_REVIEW_PROFILE_ID = 'e5a1c0de-1003-4000-8000-000000001003'
 export const SCENE_REVIEW_PROFILE_ID = 'e5a1c0de-1004-4000-8000-000000001004'
 export const PROOFREADING_PROFILE_ID = 'e5a1c0de-1005-4000-8000-000000001005'
+
+export const READER_CRITIQUE_PROFILE_ID = 'e5a1c0de-1006-4000-8000-000000001006'
+export const BOOKSELLER_CRITIQUE_PROFILE_ID = 'e5a1c0de-1007-4000-8000-000000001007'
