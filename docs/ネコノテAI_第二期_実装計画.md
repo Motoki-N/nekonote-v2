@@ -272,9 +272,10 @@ SPECで意図的にスコープ外へ残置した機能と技術的負債を、*
 - [x] ~~**Supabase: 漏洩パスワード保護の有効化**~~ → **対応不要と判断**（Issue #10 で検討。
       SPEC-auth の決定事項どおり本アプリは Google OAuth のみでパスワード認証を提供しないため
       リスク実体なし。また本機能は Pro プラン以上限定。Security Advisor の当該 WARN は許容する）
-- [ ] **Supabase: Email プロバイダが無効であることの確認**（Dashboard → Authentication →
+- [x] **Supabase: Email プロバイダが無効であることの確認**（Dashboard → Authentication →
       Providers。有効だと UI になくても API 経由のパスワードサインアップ経路が残るため、
       提供しない認証方式は入口ごと閉じる。Issue #10 の検討から派生した確認項目）
+      （7/15 完了：ユーザーが Dashboard で Email プロバイダの無効を確認済み）
 - [x] **Vercel 環境変数の確認**（AIキー等を誤って `NEXT_PUBLIC_` 名で登録していないか、
       Preview / Development 環境への露出範囲）
       （7/15 完了：`vercel env ls` でAIキー3本とも `NEXT_PUBLIC_` なし・Production のみ登録を確認）
