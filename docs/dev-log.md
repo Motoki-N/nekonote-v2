@@ -474,3 +474,16 @@
   2. **press-ready は内部エラーでも exit 0 で終わる**（ステップが緑のまま成果物なし）→ 変換後に `test -f` で成果物の存在を検査して失敗を可視化する
 - 運用メモ: 検証リポジトリはこのまま残し、Phase 2（Webエディタ）のGitHub読み書き先としても使える。writings への本適用（既存 .txt 構成との同居設計・タグ命名のプロジェクト分離）は Phase 2 着手時に改めて設計する
 - 次: Phase 2（2ペインWebエディタ）のSPEC詳細化 or 7/17〜20 ドッグフーディング（Sprint 7）を優先
+
+### セッション㉜: 縦書きエディタ Phase 2（2ペインWebエディタ）SPEC詳細化・確定（7/16）
+
+- 親SPEC §5.1 Phase 2 の詳細仕様として **SPEC-vertical-editor-phase2.md を策定・確定**（草案 → AskUserQuestion 4問 → 確定の縦通し）
+- **設計の要**:
+  - **プレビューはクライアント完結**: VFM変換（@vivliostyle/vfm をブラウザ実行）→ テーマCSSインライン注入 → 画像パスを認証プロキシURLへ書換 → Blob URL → 自前ホストの Vivliostyle Viewer（public/vivliostyle/）が組版。再組版はデバウンス＋保存時でサーバー往復なし。**実装ステップ1を技術スパイクに設定**（VFMブラウザバンドル・Blob URL読込の成立検証。不成立なら @vivliostyle/core 直接埋め込みへ切替）
+  - **PATのwrite昇格は不要と判明**: Sprint 4 の校正コミットで Contents: Read/Write 登録・書き込み実績済み（親SPEC §4.1 の昇格前提は消化済み）
+  - **画像プロキシ** `/api/editor/asset`（セッション必須＋所有確認＋パス検証＋拡張子allowlist）と新規書き込み経路が security-reviewer 必須ゲート。保存とプロキシに rate-limit 適用
+  - 保存＝コミット（メッセージ自動生成＋編集可・putFileContent 拡張で新blob SHAを返し楽観ロック基準を自己前進）、IndexedDB待避（`{repo}:{branch}:{path}` キー・baseSha 付き）、競合は **@codemirror/merge の2ペインdiff** で手動マージ支援（自動マージなし）
+  - 章一覧は book.config.js の entry を**実行せず正規表現抽出**（失敗時はファイル名昇順フォールバック）
+- **インタビューで5論点確定**: 対象リポジトリ=**既存 projects.repo/base_path を共有**（竜の巣の設定を manuscript-poc へ切替・スキーマ変更なし・base_path はプロジェクトルート規約）／ルーティング=**/projects/[id]/editor**（board・manuscript と同列タブ）／ブランチ=**デフォルトのみ**／**全体プレビューと新規章作成は Phase 2 に含める**（スマホのタブ切替は Phase 3 へ）
+- 実装ステップ6段（スパイク→章一覧＋CodeMirror→プレビュー接続→保存＋待避→競合→全体プレビュー＋新規章）・E2E 10項目を定義。アプリ本体のコード変更なし（typecheck/lint対象外）
+- 次: Phase 2 実装（ステップ1の技術スパイクから）。着手前に竜の巣プロジェクトの repo 設定切替（ユーザー操作）が必要
