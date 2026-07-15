@@ -12,6 +12,7 @@ export function ProjectTabs({ projectId }: { projectId: string }) {
     { href: `/projects/${projectId}`, label: "企画書", exact: true },
     { href: `/projects/${projectId}/board`, label: "ビートボード", exact: false },
     { href: `/projects/${projectId}/manuscript`, label: "原稿", exact: false },
+    { href: `/projects/${projectId}/editor`, label: "エディタ", exact: false },
   ];
 
   return (

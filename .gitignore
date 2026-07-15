@@ -22,6 +22,9 @@ build/
 # claude code（個人設定のみ除外。settings.json はコミット対象）
 .claude/settings.local.json
 
+# vivliostyle（postinstall で node_modules からコピーされる生成物）
+/public/vivliostyle/
+
 # misc
 .DS_Store
 *.log

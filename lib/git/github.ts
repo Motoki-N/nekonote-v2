@@ -26,11 +26,15 @@ function validRepo(repo: string): string {
   return parsed.data
 }
 
-async function githubFetch(token: string, path: string): Promise<Response> {
+async function githubFetch(
+  token: string,
+  path: string,
+  accept = 'application/vnd.github+json',
+): Promise<Response> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
       Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
+      Accept: accept,
       'X-GitHub-Api-Version': '2022-11-28',
     },
     // 原稿は常に最新を正とする（Next.js の fetch キャッシュに乗せない）
@@ -136,15 +140,17 @@ export async function getFileContent(
 }
 
 /**
- * ファイルを書き戻して1コミットを作る（Contents API PUT。ネコノテからの書き込みはこの操作のみ）。
- * sha は取得時の blob SHA。リモートが先に更新されていると 409 になる（上書き事故の防止）
+ * ファイルを書き戻して1コミットを作る（Contents API PUT）。
+ * sha は取得時の blob SHA。リモートが先に更新されていると 409 になる（上書き事故の防止）。
+ * blobSha（新しい blob SHA）を返すので、呼び出し側は再取得なしで楽観ロックの基準を進められる
+ * （SPEC-vertical-editor-phase2 §6）
  */
 export async function putFileContent(
   token: string,
   repo: string,
   filePath: string,
   params: { content: string; sha: string; message: string },
-): Promise<{ commitSha: string }> {
+): Promise<{ commitSha: string; blobSha: string }> {
   const res = await fetch(`${API_BASE}${contentsApiPath(repo, filePath)}`, {
     method: 'PUT',
     headers: {
@@ -172,9 +178,63 @@ export async function putFileContent(
     throw new AppError('internal', `GitHub APIエラー（status: ${res.status}）`)
   }
   if (!res.ok) throw toGithubError(res, `ファイル ${filePath} が見つかりません`)
-  const data = (await res.json()) as { commit?: { sha?: string } }
-  if (!data.commit?.sha) throw new AppError('internal', 'コミット結果の取得に失敗しました')
-  return { commitSha: data.commit.sha }
+  const data = (await res.json()) as { commit?: { sha?: string }; content?: { sha?: string } }
+  if (!data.commit?.sha || !data.content?.sha) {
+    throw new AppError('internal', 'コミット結果の取得に失敗しました')
+  }
+  return { commitSha: data.commit.sha, blobSha: data.content.sha }
+}
+
+/**
+ * 新規ファイルを作成して1コミットを作る（Contents API PUT・sha なし。
+ * SPEC-vertical-editor-phase2 §3.3 新規章作成）。既存ファイルと衝突したら conflict
+ */
+export async function createFileContent(
+  token: string,
+  repo: string,
+  filePath: string,
+  params: { content: string; message: string },
+): Promise<{ commitSha: string; blobSha: string }> {
+  const res = await fetch(`${API_BASE}${contentsApiPath(repo, filePath)}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message: params.message,
+      content: Buffer.from(params.content, 'utf8').toString('base64'),
+    }),
+  })
+  // sha なしのPUTで既存ファイルに当たると 422（"sha" wasn't supplied）になる
+  if (res.status === 409 || res.status === 422) {
+    throw new AppError(
+      'conflict',
+      '同名のファイルが既に存在します。別のファイル名を指定してください',
+    )
+  }
+  if (!res.ok) throw toGithubError(res, `リポジトリ ${repo} にファイルを作成できません`)
+  const data = (await res.json()) as { commit?: { sha?: string }; content?: { sha?: string } }
+  if (!data.commit?.sha || !data.content?.sha) {
+    throw new AppError('internal', 'コミット結果の取得に失敗しました')
+  }
+  return { commitSha: data.commit.sha, blobSha: data.content.sha }
+}
+
+/**
+ * ファイルの生バイト列を取得する（画像プロキシ用。SPEC-vertical-editor-phase2 §5.3）。
+ * Contents API の raw メディアタイプで取得するため base64 上限（1MB）より大きくても読める
+ */
+export async function getRawFileBytes(
+  token: string,
+  repo: string,
+  filePath: string,
+): Promise<ArrayBuffer> {
+  const res = await githubFetch(token, contentsApiPath(repo, filePath), 'application/vnd.github.raw')
+  if (!res.ok) throw toGithubError(res, `ファイル ${filePath} が見つかりません`)
+  return res.arrayBuffer()
 }
 
 /**

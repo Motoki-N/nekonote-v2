@@ -14,6 +14,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Claude Code の worktree（別作業ツリーのビルド生成物を巻き込まない）
     ".claude/**",
+    // Vivliostyle Viewer の自前ホスト（postinstall で node_modules からコピーされる生成物）
+    "public/vivliostyle/**",
+    // 原稿リポジトリ側のテンプレート（アプリのコードではない。Node/CommonJS 前提）
+    "docs/templates/**",
   ]),
 ]);
 

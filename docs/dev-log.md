@@ -487,3 +487,23 @@
 - **インタビューで5論点確定**: 対象リポジトリ=**既存 projects.repo/base_path を共有**（竜の巣の設定を manuscript-poc へ切替・スキーマ変更なし・base_path はプロジェクトルート規約）／ルーティング=**/projects/[id]/editor**（board・manuscript と同列タブ）／ブランチ=**デフォルトのみ**／**全体プレビューと新規章作成は Phase 2 に含める**（スマホのタブ切替は Phase 3 へ）
 - 実装ステップ6段（スパイク→章一覧＋CodeMirror→プレビュー接続→保存＋待避→競合→全体プレビュー＋新規章）・E2E 10項目を定義。アプリ本体のコード変更なし（typecheck/lint対象外）
 - 次: Phase 2 実装（ステップ1の技術スパイクから）。着手前に竜の巣プロジェクトの repo 設定切替（ユーザー操作）が必要
+
+### セッション㉝: 縦書きエディタ Phase 2（2ペインWebエディタ）実装完了・E2E全10項目合格（7/16）
+
+- **SPEC-vertical-editor-phase2 の6ステップを縦通しで実装し、§13 E2E 10項目すべて合格**。typecheck / lint / build グリーン。実装はアプリ本体のコード（`app/projects/[id]/editor/` ＋ `components/editor/` ＋ `lib/editor/` ＋ `lib/actions/editor.ts` ＋ 画像プロキシ `app/api/editor/asset/route.ts`）
+- **技術スパイク（ステップ1）成立**: `@vivliostyle/vfm` をブラウザ実行→テーマCSS注入→Blob URL→自前ホスト Vivliostyle Viewer（`public/vivliostyle/` へ postinstall コピー・CDN不使用）で縦書き・文庫A6・ノンブルが出た。**`@vivliostyle/core` 直接埋め込みへの切替は不要**（SPEC §5.1 の代替案は発動せず）
+  - **ハマり: Viewer の `#src=` はエンコードしない**。`encodeURIComponent(blobUrl)` を渡すと Viewer がハッシュを復号せず相対パス扱い→404。Blob URLは `&`/`#` を含まないので生連結で安全（`lib/editor/preview.ts` の `viewerUrl`）
+- **主要な設計**:
+  - プレビューはクライアント完結（VFM変換→`rewriteImageSrc` で画像を認証プロキシURLへ書換→Blob URL→iframe内Viewer）。再組版は打鍵デバウンス3秒＋保存時。`buildPreviewHtml` は単章＝フロントマター `class:` を body へ反映（扉・奥付様式）、複数章＝`break-before:page` シムで通し組版（body クラス様式は当たらない旨UI注記）
+  - テーマCSS解決（`lib/editor/theme.ts`）: `book.config.js` の `theme` が指すCSSを取得し `@import` を1段解決。`@vivliostyle/theme-bunko`/`theme-base` への参照はアプリホストの `<link>` へ読み替え、リポジトリ内相対CSSはインライン展開。取得失敗は既定テーマ（文庫A6相当）でフェイルソフト
+  - 保存＝コミット: `putFileContent` を拡張し**新 blob SHA を返す**→再取得なしで楽観ロック基準を自己前進（校正の `last_reviewed_commit` 前進と同じ発想）。IndexedDB 待避（`lib/editor/draft-store.ts`・キー `{repo}:{branch}:{path}`・baseSha付き・1秒デバウンス）、競合は `@codemirror/merge` の2ペインdiff（左リモート読取専用・右ローカル・`revertControls: 'a-to-b'`）で手動マージ
+  - 章一覧は `book.config.js` を**実行せず正規表現で entry 抽出**（`lib/editor/book-config.ts`）。entry順→未登録章（ファイル名昇順・末尾）。未登録は「entry未登録」印つき表示
+- **security-reviewer（必須ゲート）**: Critical/High なし。**Medium 2件を修正**——①`getEditorWorkspace` に明示 `getUser()` チェックを追加（middleware/RLS 依存だった多層防御の欠け・`userId: ''` の罠も解消）②プレビューHTMLの `theme.inlineCss` を `</style>` ブレイクアウト対策でエスケープ（リポジトリCSS由来のタグ注入防止。Blob URL＝同一オリジンのため実行されればセッション権限に及ぶ self-XSS 相当）。Low の新規章ファイル名スキーマに `(?!.*\.\.)` を追加。画像プロキシのパストラバーサル三段防御（schema `..` 拒否＋拡張子allowlist＋`joinRepoPath` 正規化）・PAT非漏洩・認可は問題なし
+- **E2E結果（manuscript-poc・実コミット発生）**: 章一覧entry順✓／CodeMirror表示＋ルビハイライト＋A6縦書きプレビュー✓／編集→プレビュー反映・コメントは出力に出ない✓／未保存リロード→復元バナー→復元✓／保存→コミット（GitHub反映確認）✓／**競合（gh CLIでリモート更新）→日本語バナー＋トースト→マージビュー→取り込み→再保存成功**✓／画像プロキシ（認証200・未ログイン=/login誘導・拡張子外400・トラバーサル拒否）✓／全体プレビュー（全章結合1/32通しノンブル・目次なし注記）✓／新規章作成（雛形コミット・entry未登録印・同名衝突で日本語エラー）✓／回帰（原稿タブ全17ファイル・校正ボタン・進捗集計33,133字）✓
+  - **ハマり: 画像プロキシの ZodError が 500 になる**（`.parse()` の ZodError → `toAppError` で internal 扱い）。トラバーサルは安全に拒否されるが status が 400 でなく 500。コードベース共通の慣習（Zod→internal・固定文言でリーク無し）なので現状維持
+  - **ハマり: CodeMirror は表示外の行をDOMに描画しない**（仮想化）→ `.cm-content.textContent` での本文全体検証は不成立。末尾の編集は GitHub上のコミット内容で検証した
+  - ペインのボタンクリックは座標ズレで外れやすく、`nav[...] button` を `textContent` で探して `.click()` する JS フォールバックが安定（既存メモリの定石どおり）
+- **前提の消化**: 竜の巣プロジェクトの repo を `Motoki-N/manuscript-poc`（base_path空）へ切替（ユーザー操作）。**既存PATの対象リポジトリに manuscript-poc を追加**が必要だった（Fine-grained PAT のトークン値は不変なので再登録不要・ユーザー実施）。E2E後は検証で汚した 11-scene1.md を Phase 1 時点（da3101e5）の内容へ復元し、テスト新規章も削除
+- 依存追加: `@vivliostyle/vfm`・`@vivliostyle/viewer`・`@vivliostyle/theme-bunko`・`codemirror` v6系（`@codemirror/state`/`view`/`language`/`commands`/`lang-markdown`/`merge`）・`@lezer/highlight`。postinstall で `scripts/copy-vivliostyle.mjs`（Viewer＋テーマを `public/vivliostyle/` へ）。eslint ignore に `public/vivliostyle/**` と `docs/templates/**` を追加
+- **スコープ外（Phase 3以降）**: コメント一覧UI・ルビ入力補助・字数/ページ見積り・画像D&D・`book.config.js`/判型のフォームUI・入稿ビルドUI起動・ブランチ切替/PR連携・スマホのタブ切替
+- 次: 本番反映は人間のPRマージ承認を経由（main直pushは行わない）。ドッグフーディングで実運用の使い勝手を見る
