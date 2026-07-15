@@ -4,6 +4,7 @@
 
 ## ドキュメント
 
+- [ユーザーマニュアル](docs/manual.md)
 - [要求仕様](docs/ネコノテAI_第二期_要求仕様ドキュメント.md)
 - [実装計画](docs/ネコノテAI_第二期_実装計画.md)
 - [Claude Code 運用計画](docs/claude-code-operation-plan.md)
