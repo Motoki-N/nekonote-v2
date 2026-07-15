@@ -423,3 +423,16 @@
   - writing_progress 1点のみ（折れ線は2点以上で表示）→ 7/9〜7/13 の5日分をバックフィル（28,400→36,500字の漸増。7/14 実測 37,488 に接続）
   - projects.deadline / target_pages が NULL → 2026-08-11・120p を設定（締切カウントダウン・スケジュール助言の実データ検証用）
 - 副産物の学び: `npx supabase db query --linked` は INSERT/UPDATE も通る（CTEでまとめれば1クエリで完結）。テストデータは実測値（7/14 の37,488字）と矛盾しない値を選ぶこと
+
+### セッション㉙: Gemini API 有効化＋セキュリティ監査残作業の消化（7/15）
+
+- **Gemini API 有効化**: コード側は対応済み（`@ai-sdk/google` 導入済み・`lib/ai/models.ts` のプロバイダ解決あり）で、不足はキーのみだった。`GOOGLE_GENERATIVE_AI_API_KEY` を .env.local＋Vercel Production に登録（キー登録はユーザー・確認と整理はAI）→ キー有効性を `gemini-3.1-flash-lite` への直接呼び出しで確認 → 再デプロイ（ユーザー）→ 設定画面で low を `anthropic/claude-haiku-4-5` から `google/gemini-3.1-flash-lite` へ切替。**high=Claude / medium=GPT / low=Gemini の3プロバイダ体制が要求仕様 §4.4 どおりに揃った**。.env.local.example にAIキー3社＋ENCRYPTION_KEY の記載を追加（`1f1d695`）
+- 権限判定の学び: `npx vercel redeploy`（本番再デプロイ）と本番DBへの直接UPDATE（ai_model_settings の切替）はどちらも自動モードでブロックされる → 再デプロイ・切替ともユーザー操作で対応（設定UIの実地確認を兼ねられたので結果オーライ）
+- **セキュリティ監査（7/14）の手作業残を5/7消化**（チェック状況は実装計画の該当節に反映済み）:
+  - マイグレーション適用確認: `npx supabase migration list --linked` で突合。確認途中に Issue #5 の仕掛かり分（20260715000001）が未コミット・未適用と検出されたが、別セッションの PR #9 マージ＋db push で解消され、最終確認では**全11本が本番適用済み**
+  - 手動作成オブジェクトの棚卸し: information_schema 照会で public 19＋private 1 テーブルすべてマイグレーション由来・ビューなし・Storageバケット0件
+  - `auth.users` トリガー存在確認: `check_email_allowlist_before_insert` が本番に存在（pg_trigger 照会）
+  - Auth設定確認: リダイレクトURL許可リストは `http://localhost:3000/**` の1件のみ＝合格。**本番URLが動く理由は GoTrue の「Site URL とのホスト名一致による暗黙許可」**（許可リストは Site URL 以外のホスト専用。検証失敗時はエラーではなく Site URL へ静かにフォールバックし、コードが `/` に落ちて middleware に弾かれログイン不能になる——独自ドメイン移行時の要注意ポイント）
+  - Vercel環境変数: AIキー3本とも `NEXT_PUBLIC_` なし・Production のみ登録
+  - Google OAuth: Google側の管理誤りが発覚しクライアントを作り直し。承認済みリダイレクトURIは Supabase コールバック（`.../auth/v1/callback`）1件のみの最小構成に整理し、本番ログイン確認済み
+- 残: **AIプロバイダのスペンド上限＋アラート**（M-1・最優先）と**漏洩パスワード保護の有効化**、Issue #7/#8 の消化。次は 7/17〜20 ドッグフーディング（Sprint 7）

@@ -257,16 +257,26 @@ SPECで意図的にスコープ外へ残置した機能と技術的負債を、*
 
 - [ ] **AIプロバイダの月額スペンド上限＋アラート設定**（Anthropic / OpenAI / Google の各ダッシュボード。
       監査 M-1 の対策1＝最優先。コード側のレートリミットは適用済みだが、最後の砦はこちら）
-- [ ] **Supabase: Security Advisor の実行**＋マイグレーション9本が全適用済みか・Dashboardから
+- [x] **Supabase: Security Advisor の実行**＋マイグレーション9本が全適用済みか・Dashboardから
       手動作成したテーブル/ビュー/Storageバケットがないかの確認
-- [ ] **Supabase: auth.users トリガーの本番存在確認**（`check_email_allowlist_before_insert`。
+      （7/15 完了：Advisor はユーザー実行済み→指摘は Issue #5/#7/#8 に起票。コミット済み
+      マイグレーション10本の全適用・手動作成テーブル/ビュー/バケットなしを `migration list
+      --linked` と information_schema 照会で確認）
+- [x] **Supabase: auth.users トリガーの本番存在確認**（`check_email_allowlist_before_insert`。
       適用漏れがあると許可リストの一次ゲートが消える）
-- [ ] **Supabase Auth 設定の確認**（リダイレクトURL許可リスト・Auth側レート制限）
+      （7/15 完了：pg_trigger 照会で本番に存在することを確認）
+- [x] **Supabase Auth 設定の確認**（リダイレクトURL許可リスト・Auth側レート制限）
+      （7/15 完了：許可リストは `http://localhost:3000/**` のみ＝合格。本番URLは Site URL の
+      ホスト名一致で暗黙許可される仕様（GoTrue）。広域ワイルドカードなし。レート制限は
+      第二期で未変更＝デフォルトのまま）
 - [ ] **Supabase: 漏洩パスワード保護の有効化**（Dashboard → Authentication → Passwords で
       Leaked password protection を有効化。Security Advisor 指摘・Issue #5 の残作業）
-- [ ] **Vercel 環境変数の確認**（AIキー等を誤って `NEXT_PUBLIC_` 名で登録していないか、
+- [x] **Vercel 環境変数の確認**（AIキー等を誤って `NEXT_PUBLIC_` 名で登録していないか、
       Preview / Development 環境への露出範囲）
-- [ ] **Google OAuth クライアント設定の確認**（承認済みリダイレクトURIの範囲）
+      （7/15 完了：`vercel env ls` でAIキー3本とも `NEXT_PUBLIC_` なし・Production のみ登録を確認）
+- [x] **Google OAuth クライアント設定の確認**（承認済みリダイレクトURIの範囲）
+      （7/15 完了：Google側の管理誤りが見つかったため OAuth クライアントを作り直し。
+      承認済みリダイレクトURIは Supabase コールバック1件のみの最小構成に整理し、本番ログイン確認済み）
 
 ### 日次リズム（補足）
 
