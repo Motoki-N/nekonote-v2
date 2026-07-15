@@ -36,11 +36,14 @@ CLAUDE.md「人間への設計確認が必要な変更」の基準（DBスキー
 
 ### ④ 修正＋検証
 
-1. main を最新化し（`git pull`）、ブランチ `fix/issue-<番号>-<短い英語slug>` を作成
-2. 修正を実装する（Issueのスコープに限定。ついで修正はしない——気づきはIssue起票を提案）
-3. `npm run typecheck` と `npm run lint` を実行し、エラーを解消する
-4. UIに影響する変更はブラウザペインで実際に確認する
-5. 認証・RLS・秘密情報に触れた場合は security-reviewer を必ず通す（自動フローでも省略しない）
+1. **現在のブランチが main であることを確認する**（`git branch --show-current`）。
+   main 以外にいたら、別セッションの作業が残っている可能性がある——勝手に checkout せず
+   ユーザーに状況を報告して指示を仰ぐ
+2. main を最新化し（`git pull`）、ブランチ `fix/issue-<番号>-<短い英語slug>` を作成
+3. 修正を実装する（Issueのスコープに限定。ついで修正はしない——気づきはIssue起票を提案）
+4. `npm run typecheck` と `npm run lint` を実行し、エラーを解消する
+5. UIに影響する変更はブラウザペインで実際に確認する
+6. 認証・RLS・秘密情報に触れた場合は security-reviewer を必ず通す（自動フローでも省略しない）
 
 ### ⑤ 自己レビュー
 
