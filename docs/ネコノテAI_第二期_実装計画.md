@@ -269,8 +269,12 @@ SPECで意図的にスコープ外へ残置した機能と技術的負債を、*
       （7/15 完了：許可リストは `http://localhost:3000/**` のみ＝合格。本番URLは Site URL の
       ホスト名一致で暗黙許可される仕様（GoTrue）。広域ワイルドカードなし。レート制限は
       第二期で未変更＝デフォルトのまま）
-- [ ] **Supabase: 漏洩パスワード保護の有効化**（Dashboard → Authentication → Passwords で
-      Leaked password protection を有効化。Security Advisor 指摘・Issue #5 の残作業）
+- [x] ~~**Supabase: 漏洩パスワード保護の有効化**~~ → **対応不要と判断**（Issue #10 で検討。
+      SPEC-auth の決定事項どおり本アプリは Google OAuth のみでパスワード認証を提供しないため
+      リスク実体なし。また本機能は Pro プラン以上限定。Security Advisor の当該 WARN は許容する）
+- [ ] **Supabase: Email プロバイダが無効であることの確認**（Dashboard → Authentication →
+      Providers。有効だと UI になくても API 経由のパスワードサインアップ経路が残るため、
+      提供しない認証方式は入口ごと閉じる。Issue #10 の検討から派生した確認項目）
 - [x] **Vercel 環境変数の確認**（AIキー等を誤って `NEXT_PUBLIC_` 名で登録していないか、
       Preview / Development 環境への露出範囲）
       （7/15 完了：`vercel env ls` でAIキー3本とも `NEXT_PUBLIC_` なし・Production のみ登録を確認）
