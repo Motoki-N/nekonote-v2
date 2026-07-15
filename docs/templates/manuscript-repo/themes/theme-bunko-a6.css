@@ -1,0 +1,17 @@
+/*
+ * 文庫判（A6 105×148mm）テーマ
+ * theme-bunko をベースに、A6版面（16行×40字・8.75pt相当）へ調整
+ */
+@import url(../node_modules/@vivliostyle/theme-bunko/theme.css);
+@import url(./nekonote-parts.css);
+
+:root {
+  /* 8.75pt（= 12pt × 72.92%）・行送り1.8で A6 に収める */
+  --vs-font-size-on-print: 72.92%;
+  --vs-line-height: 1.8;
+  --vs-theme--num-of-line: 16;      /* 行数 → 版面幅 16×1.8×8.75pt ≒ 88.9mm */
+  --vs-theme--num-of-character: 40; /* 字詰め → 版面高 40×8.75pt ≒ 123.4mm */
+
+  --nekonote--trim-width: 105mm;
+  --nekonote--trim-height: 148mm;
+}

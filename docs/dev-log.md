@@ -447,3 +447,17 @@
 - **開発4フェーズ**: Phase 1=Actionsパイプラインのみ（エディタなし。最大リスク「Vivliostyleの組版品質が入稿に耐えるか」を最小コストで検証——成果物は原稿リポジトリ側でアプリのコードにほぼ触れない）→ Phase 2=2ペインエディタ → Phase 3=快適性（コメントUI・ルビ補助・画像D&D・設定フォーム）→ Phase 4=ネコノテ連携
 - 位置づけ: R2スコープ（8/11）とは独立した将来フェーズの仕様。着手時期は未定・着手時は Phase 1 の技術検証（theme-bunko＋B6派生テーマで手持ち原稿をPDF化）から
 - 次: 7/17〜20 ドッグフーディング（Sprint 7）は予定どおり。縦書きエディタは Phase 1 検証をどこかで挟む
+
+### セッション㉛: 縦書きエディタ Phase 1 技術検証（Vivliostyle組版・ローカル完走・7/16）
+
+- SPEC-vertical-editor §5.1 Phase 1 の最大リスク「Vivliostyleの組版品質が入稿に耐えるか」をローカルで検証。**§10 Phase 1 完了条件のうちローカルで検証可能な全項目が合格**。成果物は原稿リポジトリテンプレート一式として `docs/templates/manuscript-repo/` に保存（サンプル原稿・判型テーマ2種・検査スクリプト・Actionsワークフロー雛形・README）
+- **検証環境**: @vivliostyle/cli 11.1.0（Vivliostyle.js 2.44.1・headless Chromium同梱）＋ @vivliostyle/theme-bunko 2.0.1 ＋ press-ready 4.0.3。サンプル原稿は自作の3章構成（ルビ・縦中横・HTMLコメント・挿絵2種・扉・目次・あとがき・奥付入り）
+- **合格項目**: ①VFMルビ `{漢字|かんじ}` の縦書き組版 ②縦中横（`.tcy`）③ノンブル・柱（@pageマージンボックス・偶奇出し分け・扉/挿絵/奥付では自動非表示）④目次のページ番号自動解決（target-counter）⑤奥付（フロントマター `class: colophon` で専用ページ・theme-base標準機能）⑥全面挿絵（塗り足し3mm込み・トンボの裁ち落とし線を越えて配置・キャプション/ノンブル非出力）⑦本文中カット（版面内・キャプション付き）⑧HTMLコメントが出力に一切現れない（構造的保証を実地確認）⑨画像検査スクリプト（実効解像度69dpi不足＋カラーを正しく警告・正常画像は通過）⑩4の倍数ページ検査（10ページ→白ページ2枚追加を提案）⑪press-readyでPDF/X-1a:2001変換（OutputIntent/GTS_PDFXConformance確認・CMYK・フォント全アウトライン化）⑫B6派生テーマ（theme-bunkoのCSS変数上書きのみで実現。判型・版面が計算どおり）
+- **判型設計**: 文庫A6=16行×40字（8.75pt相当・行送り1.8）、B6=17行×44字（10pt・行送り1.9）。theme-bunkoは「版面寸法をCSS変数（行数×字数×フォントサイズ）から算出し、物理ページサイズとの差を autoマージンで中央配置」する構造なので、派生テーマは変数上書きだけで済む——B6テーマの自作コストは想定よりずっと低かった
+- **ハマりどころ3件（テンプレートに反映済み）**:
+  1. VFMの `![](){.illust-full}` はクラスを**imgに付けてfigureで包む** → 全面挿絵のページ隔離は `figure:has(> img.illust-full)` で拾う（`:has()` はVivliostyle 2.44で動作確認）。当初 `figure.illust-full` を対象にしていて章冒頭ページに画像が覆い被さった
+  2. 全面挿絵のimgを絶対配置する際、**figureに `position: relative` を付けてはいけない**——縦書きフロー上のfigure位置（右端）が基準になり画像が帯状に切れる。無指定ならページ領域基準で解決され全面に描ける
+  3. **Ghostscript 10.x のSAFERモードで press-ready が `/invalidfileaccess` で失敗**（一時ICCプロファイルを読めない）→ `GS_OPTIONS=-dNOSAFER` で回避。Actionsワークフロー雛形にも組み込み済み
+- **残注意点**: 目次に扉・奥付も載る（entryタイトル全部が対象。Phase 2でtoc生成のカスタマイズ要検討）／本文中カット直後の行送りに改善余地／macOSは游明朝・Linux(Actions)はNoto Serif CJK JPで書体が変わる（版面設計は同一。テーマにフォールバック明示済み）／pdf-libをページ数検査用にdevDependencies追加
+- **Phase 1 の残り（要ユーザー判断）**: ①実際の原稿リポジトリ（Motoki-N/writings）へのテンプレート適用方針（既存構成との整合・別リポジトリにするか）②タグpush→Actions実走→Releases添付のE2E確認 ③手持ち原稿での組版品質の目視確認。ローカル生成PDF（A6/B6・press変換済み4本）はスクラッチパッド `phase1-poc/output/` にあり
+- 検証コマンドの通し（画像検査→A6/B6ビルド→ページ数検査→press-ready×2）はローカルで一気通貫グリーン。アプリ本体のコード変更なし（typecheck/lint対象外）

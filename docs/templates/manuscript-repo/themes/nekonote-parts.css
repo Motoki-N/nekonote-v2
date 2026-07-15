@@ -1,0 +1,115 @@
+/*
+ * ネコノテ共通パーツ: 扉・奥付・挿絵テンプレート・傍点・縦中横
+ * 判型テーマ（theme-bunko-a6.css / theme-b6.css）から @import される
+ */
+
+/* ---- 入稿用: 塗り足し・トンボ ---- */
+:root {
+  --vs-page--bleed: 3mm;
+  --vs-page--marks: crop cross;
+  --nekonote--trim-width: 105mm;  /* 仕上がり寸法（判型テーマで上書き） */
+  --nekonote--trim-height: 148mm;
+
+  /* GitHub Actions（Linux）には游明朝がないため Noto Serif CJK JP へフォールバック */
+  --vs-font-family: '游明朝', 'YuMincho', 'Noto Serif CJK JP', serif;
+}
+
+/* ---- 扉 ---- */
+body.titlepage {
+  page: titlepage;
+}
+body.titlepage h1 {
+  margin-block-start: 30%;
+  font-size: 1.6rem;
+  letter-spacing: 0.5em;
+}
+body.titlepage .author {
+  margin-block-start: 4rem;
+  font-size: 1rem;
+  letter-spacing: 0.25em;
+}
+@page titlepage {
+  --vs-page--mbox-visibility: hidden; /* 扉にはノンブル・柱を出さない */
+}
+
+/* ---- 奥付 ---- */
+/* body.colophon → page: colophon は theme-base が定義済み */
+@page colophon {
+  --vs-page--mbox-visibility: hidden; /* 奥付にもノンブルを出さない */
+}
+body.colophon section.okuzuke {
+  break-before: page;
+  margin-block-start: auto;
+}
+body.colophon .okuzuke-title {
+  font-size: 1.2rem;
+  letter-spacing: 0.25em;
+}
+body.colophon .okuzuke-info {
+  margin-block-start: 3rem;
+  font-size: 0.85rem;
+  line-height: 1.8;
+}
+body.colophon dl dt {
+  font-weight: normal;
+}
+body.colophon dl dd {
+  margin-inline-start: 1em;
+  margin-block-end: 1rem;
+}
+
+/* ---- 全面挿絵（裁ち落とし）---- */
+/* VFMは ![alt](src){.illust-full} を <figure><img class="illust-full">… に変換する。
+ * 専用ページ（マージン0・ノンブルなし）に隔離し、仕上がり＋3mm塗り足しで全面配置 */
+figure:has(> img.illust-full) {
+  page: illust-full-page;
+  break-before: page;
+  break-after: page;
+  /* position指定なし: img の absolute はページ領域基準で解決される */
+  margin: 0;
+  max-width: none;
+  max-height: none;
+}
+figure:has(> img.illust-full) > figcaption {
+  display: none; /* 全面挿絵にキャプションは刷らない */
+}
+img.illust-full {
+  position: absolute;
+  top: calc(-1 * var(--vs-page--bleed));
+  left: calc(-1 * var(--vs-page--bleed));
+  width: calc(var(--nekonote--trim-width) + 2 * var(--vs-page--bleed));
+  height: calc(var(--nekonote--trim-height) + 2 * var(--vs-page--bleed));
+  max-width: none;
+  max-height: none;
+  object-fit: cover;
+}
+@page illust-full-page {
+  margin: 0;
+  --vs-page--mbox-visibility: hidden; /* 挿絵ページにノンブルを出さない */
+}
+
+/* ---- 本文中カット ---- */
+figure:has(> img.illust-inline) {
+  break-inside: avoid;
+  max-width: none;
+  max-height: 60%;
+  margin-block: 1rem;
+}
+img.illust-inline {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 45mm;
+  margin-inline: auto;
+}
+
+/* ---- 傍点（圏点）---- */
+.tenten {
+  text-emphasis: filled sesame;
+  -webkit-text-emphasis: filled sesame;
+}
+
+/* ---- 縦中横 ---- */
+.tcy {
+  text-combine-upright: all;
+  -webkit-text-combine: horizontal;
+}

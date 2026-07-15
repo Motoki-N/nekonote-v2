@@ -1,0 +1,4 @@
+# 検証用画像はコミットしない（node scripts/make-test-images.mjs で再生成できる）
+*.png
+*.jpg
+!.gitignore

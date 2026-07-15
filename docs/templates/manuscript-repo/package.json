@@ -1,0 +1,17 @@
+{
+  "name": "manuscript-repo-template",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "vivliostyle build -c book.config.js",
+    "build:b6": "vivliostyle build -c book.config.b6.js",
+    "check:images": "node scripts/check-images.mjs",
+    "check:pages": "node scripts/check-pages.mjs output/ryu-no-su-a6.pdf"
+  },
+  "devDependencies": {
+    "@vivliostyle/cli": "^11.1.0",
+    "@vivliostyle/theme-bunko": "^2.0.1",
+    "pdf-lib": "^1.17.1",
+    "press-ready": "^4.0.3"
+  },
+  "private": true
+}

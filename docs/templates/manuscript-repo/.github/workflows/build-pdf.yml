@@ -1,0 +1,69 @@
+# 入稿PDFビルドパイプライン（SPEC-vertical-editor §4.3）
+# 入稿タグ（例: v1.0-nyuko）の push をトリガーに、入稿PDF（PDF/X-1a）を生成して
+# GitHub Releases に添付する。どのコミットを入稿したかがGitで完全に追跡できる。
+#
+# セキュリティ（SPEC §9）:
+# - トリガーはタグ push のみ。pull_request では一切実行しない（フォーク由来PRからの
+#   secrets 流出防止。原稿リポジトリは private 前提だが明示しておく）
+name: build-pdf
+
+on:
+  push:
+    tags:
+      - 'v*-nyuko'
+
+permissions:
+  contents: write # Releases への添付に必要
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 依存インストール
+        run: npm ci
+
+      - name: 日本語フォント・Ghostscriptのインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-noto-cjk-extra ghostscript
+
+      - name: 画像検査（解像度・カラー）
+        # 警告は Actions のログ・サマリで可視化しつつ、ビルドは継続する
+        run: node scripts/check-images.mjs || echo "::warning::画像検査で警告があります。ログを確認してください"
+
+      - name: 組版（文庫判 A6）
+        run: npx vivliostyle build -c book.config.js --timeout 600
+
+      - name: 組版（B6判）
+        run: npx vivliostyle build -c book.config.b6.js --timeout 600
+
+      - name: ページ数検査（4の倍数）
+        run: |
+          node scripts/check-pages.mjs output/ryu-no-su-a6.pdf || echo "::warning::A6版のページ数が4の倍数ではありません"
+          node scripts/check-pages.mjs output/ryu-no-su-b6.pdf || echo "::warning::B6版のページ数が4の倍数ではありません"
+
+      - name: PDF/X-1a 変換（press-ready）
+        # Ghostscript 9.50+ のSAFERモードは press-ready の一時ICCプロファイルを
+        # 読めないため NOSAFER を指定する（ローカル検証 2026-07-16 で確認済み）
+        env:
+          GS_OPTIONS: -dNOSAFER
+        run: |
+          npx press-ready build --input output/ryu-no-su-a6.pdf --output output/ryu-no-su-a6-press.pdf
+          npx press-ready build --input output/ryu-no-su-b6.pdf --output output/ryu-no-su-b6-press.pdf
+
+      - name: Releases に添付
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "入稿PDF ${{ github.ref_name }}" \
+            --notes "コミット ${{ github.sha }} から自動生成した入稿PDF（PDF/X-1a・トンボ/塗り足し込み）" \
+            output/ryu-no-su-a6-press.pdf \
+            output/ryu-no-su-b6-press.pdf

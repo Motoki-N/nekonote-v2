@@ -1,0 +1,17 @@
+/*
+ * B6判（128×182mm）テーマ
+ * theme-bunko をベースに、B6版面（17行×44字・10pt）へ調整（SPEC 論点5の派生テーマ）
+ */
+@import url(../node_modules/@vivliostyle/theme-bunko/theme.css);
+@import url(./nekonote-parts.css);
+
+:root {
+  /* 10pt（theme-bunko 既定）・行送り1.9 */
+  --vs-font-size-on-print: 83.33%;
+  --vs-line-height: 1.9;
+  --vs-theme--num-of-line: 17;      /* 版面幅 17×1.9×10pt ≒ 113.9mm */
+  --vs-theme--num-of-character: 44; /* 版面高 44×10pt ≒ 155.2mm */
+
+  --nekonote--trim-width: 128mm;
+  --nekonote--trim-height: 182mm;
+}
