@@ -262,6 +262,8 @@ SPECで意図的にスコープ外へ残置した機能と技術的負債を、*
 - [ ] **Supabase: auth.users トリガーの本番存在確認**（`check_email_allowlist_before_insert`。
       適用漏れがあると許可リストの一次ゲートが消える）
 - [ ] **Supabase Auth 設定の確認**（リダイレクトURL許可リスト・Auth側レート制限）
+- [ ] **Supabase: 漏洩パスワード保護の有効化**（Dashboard → Authentication → Passwords で
+      Leaked password protection を有効化。Security Advisor 指摘・Issue #5 の残作業）
 - [ ] **Vercel 環境変数の確認**（AIキー等を誤って `NEXT_PUBLIC_` 名で登録していないか、
       Preview / Development 環境への露出範囲）
 - [ ] **Google OAuth クライアント設定の確認**（承認済みリダイレクトURIの範囲）
