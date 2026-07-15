@@ -461,3 +461,16 @@
 - **残注意点**: 目次に扉・奥付も載る（entryタイトル全部が対象。Phase 2でtoc生成のカスタマイズ要検討）／本文中カット直後の行送りに改善余地／macOSは游明朝・Linux(Actions)はNoto Serif CJK JPで書体が変わる（版面設計は同一。テーマにフォールバック明示済み）／pdf-libをページ数検査用にdevDependencies追加
 - **Phase 1 の残り（要ユーザー判断）**: ①実際の原稿リポジトリ（Motoki-N/writings）へのテンプレート適用方針（既存構成との整合・別リポジトリにするか）②タグpush→Actions実走→Releases添付のE2E確認 ③手持ち原稿での組版品質の目視確認。ローカル生成PDF（A6/B6・press変換済み4本）はスクラッチパッド `phase1-poc/output/` にあり
 - 検証コマンドの通し（画像検査→A6/B6ビルド→ページ数検査→press-ready×2）はローカルで一気通貫グリーン。アプリ本体のコード変更なし（typecheck/lint対象外）
+
+### セッション㉛ 追記: Phase 1 E2E完走（検証リポジトリでのActions実走＋実原稿での品質検証・7/16）
+
+- **SPEC-vertical-editor Phase 1 の完了条件をすべて満たした**。検証場所と原稿は AskUserQuestion で確定（①新規検証リポジトリ ②異世界デバッガーのVFM化、いずれも推奨案を採用）
+- **検証リポジトリ**: `Motoki-N/manuscript-poc`（private・gh CLIで作成）。テンプレート一式＋実原稿で構成
+- **実原稿のVFM化**: writings の「異世界デバッガー」パート1（シーン1〜11・約9.4万バイト≒3.1万字。パート2〜4はメモ段階のため対象外）を変換スクリプト（scratchpadの convert-to-vfm.mjs）で一括変換——青空文庫式ルビ `｜親文字《るび》`/`漢字《るび》` → VFM `{親文字|るび}`、1行1段落 → 空行区切り（VFMは単一改行を<br>にするため）。変換漏れゼロ
+- **E2E結果**: タグ `v0.2-nyuko` push → Actions（ubuntu）で 画像検査→A6/B6組版→ページ数検査→press-ready→**Releases添付まで全ステップ成功**。実原稿3.1万字が文庫A6で74ページ（4の倍数警告も正しく発火・白ページ2枚追加の提案）。Releasesの成果物は PDF/X-1a:2001・トンボ/塗り足し込み・A6版16.5MB/B6版15.5MB
+- **実原稿での組版品質**: 字下げ・行頭行末禁則・ダーシ（──）の縦組み・拗促音・長文段落の折り返しすべて自然。Linux（Noto Serif CJK JP）とmacOS（游明朝）で書体は変わるが版面設計（16行×40字）は同一で、折り返し位置も一致
+- **1回目の実走（v0.1-nyuko）で発見した罠2件（テンプレートへ反映済み）**:
+  1. **press-ready は pdffonts（poppler-utils）を要求する**——ubuntuランナーに無く変換が失敗。apt install に poppler-utils を追加
+  2. **press-ready は内部エラーでも exit 0 で終わる**（ステップが緑のまま成果物なし）→ 変換後に `test -f` で成果物の存在を検査して失敗を可視化する
+- 運用メモ: 検証リポジトリはこのまま残し、Phase 2（Webエディタ）のGitHub読み書き先としても使える。writings への本適用（既存 .txt 構成との同居設計・タグ命名のプロジェクト分離）は Phase 2 着手時に改めて設計する
+- 次: Phase 2（2ペインWebエディタ）のSPEC詳細化 or 7/17〜20 ドッグフーディング（Sprint 7）を優先

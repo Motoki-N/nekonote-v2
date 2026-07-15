@@ -32,7 +32,8 @@ jobs:
       - name: 日本語フォント・Ghostscriptのインストール
         run: |
           sudo apt-get update
-          sudo apt-get install -y fonts-noto-cjk fonts-noto-cjk-extra ghostscript
+          # poppler-utils は press-ready が要求する pdffonts のため（欠けると変換が静かに失敗する）
+          sudo apt-get install -y fonts-noto-cjk fonts-noto-cjk-extra ghostscript poppler-utils
 
       - name: 画像検査（解像度・カラー）
         # 警告は Actions のログ・サマリで可視化しつつ、ビルドは継続する
@@ -52,11 +53,14 @@ jobs:
       - name: PDF/X-1a 変換（press-ready）
         # Ghostscript 9.50+ のSAFERモードは press-ready の一時ICCプロファイルを
         # 読めないため NOSAFER を指定する（ローカル検証 2026-07-16 で確認済み）
+        # press-ready は内部エラーでも exit 0 で終わるため、成果物の存在を必ず検査する
         env:
           GS_OPTIONS: -dNOSAFER
         run: |
           npx press-ready build --input output/ryu-no-su-a6.pdf --output output/ryu-no-su-a6-press.pdf
           npx press-ready build --input output/ryu-no-su-b6.pdf --output output/ryu-no-su-b6-press.pdf
+          test -f output/ryu-no-su-a6-press.pdf || { echo "::error::A6版のPDF/X-1a変換に失敗しました"; exit 1; }
+          test -f output/ryu-no-su-b6-press.pdf || { echo "::error::B6版のPDF/X-1a変換に失敗しました"; exit 1; }
 
       - name: Releases に添付
         env:
