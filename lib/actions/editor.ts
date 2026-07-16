@@ -8,6 +8,7 @@ import {
   KUMI_VAR_NAMES,
   extractCssVar,
   extractEntryPaths,
+  extractPageSizeCss,
   extractStringValue,
   extractThemePath,
   joinRepoPath,
@@ -112,6 +113,8 @@ export type EditorChapter = {
 async function listChapters(ctx: EditorContext): Promise<{
   chapters: EditorChapter[]
   themePath: string | null
+  /** book.config.js の size（CSS値）。プレビューの @page size に注入する */
+  pageSizeCss: string | null
 }> {
   const tree = await getManuscriptTree(ctx.token, ctx.repo, ctx.basePath)
   const prefix = ctx.basePath === '' ? '' : `${ctx.basePath}/`
@@ -122,12 +125,14 @@ async function listChapters(ctx: EditorContext): Promise<{
   // book.config.js は実行せず文字列抽出（SPEC §3.3）。読めなければファイル名昇順フォールバック
   let entryPaths: string[] = []
   let themePath: string | null = null
+  let pageSizeCss: string | null = null
   const configPath = joinRepoPath(ctx.basePath, 'book.config.js')
   if (configPath) {
     try {
       const config = await getFileContent(ctx.token, ctx.repo, configPath)
       entryPaths = extractEntryPaths(config.content)
       themePath = extractThemePath(config.content)
+      pageSizeCss = extractPageSizeCss(config.content)
     } catch {
       // book.config.js がないリポジトリも許容する（テーマは既定・章順はファイル名昇順）
     }
@@ -146,7 +151,7 @@ async function listChapters(ctx: EditorContext): Promise<{
   for (const path of files) {
     if (fileSet.has(path)) ordered.push({ path, inEntry: false })
   }
-  return { chapters: ordered, themePath }
+  return { chapters: ordered, themePath, pageSizeCss }
 }
 
 export type EditorWorkspaceData =
@@ -193,11 +198,21 @@ export async function getEditorWorkspace(
       basePath: (project.base_path ?? '').replace(/\/$/, ''),
       token: credential.token,
     }
-    const [branch, { chapters, themePath }] = await Promise.all([
+    const [branch, { chapters, themePath, pageSizeCss }] = await Promise.all([
       getDefaultBranch(ctx.token, ctx.repo),
       listChapters(ctx),
     ])
-    const theme = await resolveThemeAssets(ctx.token, ctx.repo, ctx.basePath, themePath)
+    const resolved = await resolveThemeAssets(ctx.token, ctx.repo, ctx.basePath, themePath)
+    // 判型の注入: CLIビルドでは book.config.js の size が @page size を与えるが、
+    // ブラウザプレビューには渡らない。--vs-page--size（theme-base の @page が参照）を
+    // 注入しないと size: auto のままページ分割されない（2026-07-16 に発見したバグの修正）。
+    // resolveThemeAssets はモジュール共有の既定テーマを返すことがあるため非破壊で足す
+    const theme = pageSizeCss
+      ? {
+          ...resolved,
+          inlineCss: `${resolved.inlineCss}\n:root { --vs-page--size: ${pageSizeCss}; }\n`,
+        }
+      : resolved
     return {
       ok: true,
       data: { gate: 'ok', repo: ctx.repo, branch, basePath: ctx.basePath, chapters, theme },

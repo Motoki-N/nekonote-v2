@@ -14,10 +14,13 @@ const APP_HOSTED_THEMES: { pattern: RegExp; path: string }[] = [
   { pattern: /@vivliostyle\/theme-base/, path: '/vivliostyle/themes/theme-base/theme-all.css' },
 ]
 
-/** 既定テーマ（book.config.js が読めない・theme 指定がないときのフォールバック。文庫A6相当） */
+/**
+ * 既定テーマ（book.config.js が読めない・theme 指定がないときのフォールバック。文庫A6相当）。
+ * --vs-page--size がないと size: auto のままページ分割されないため、既定でもA6を与える
+ */
 const DEFAULT_THEME: ThemeAssets = {
   stylesheetPaths: [APP_HOSTED_THEMES[0].path],
-  inlineCss: '',
+  inlineCss: ':root { --vs-page--size: 105mm 148mm; }',
 }
 
 const IMPORT_RE = /@import\s+(?:url\(\s*(?:"([^"]*)"|'([^']*)'|([^)'"]*))\s*\)|"([^"]*)"|'([^']*)')[^;]*;?/g

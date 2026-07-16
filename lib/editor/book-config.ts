@@ -19,6 +19,21 @@ export function extractThemePath(source: string): string | null {
   return match ? match[1] : null
 }
 
+/**
+ * `size: '105mm,148mm'` をCSSの @page size 値（`105mm 148mm`）として抽出する。
+ * CLIビルドではこの設定が判型を与えるが、ブラウザプレビューには渡らないため、
+ * アプリが `--vs-page--size` としてテーマに注入する（これがないと `size: auto` の
+ * まま組版され、ページ分割されない）。寸法ペアと用紙名（A6 等）のみ許可
+ */
+export function extractPageSizeCss(source: string): string | null {
+  const match = source.match(/\bsize\s*:\s*['"`]([^'"`\n]+)['"`]/)
+  if (!match) return null
+  const value = match[1].trim()
+  const pair = value.match(/^(\d+(?:\.\d+)?(?:mm|cm|pt|in|px))\s*,\s*(\d+(?:\.\d+)?(?:mm|cm|pt|in|px))$/)
+  if (pair) return `${pair[1]} ${pair[2]}`
+  return /^[A-Za-z]\d?(?:\s+(?:portrait|landscape))?$/.test(value) ? value : null
+}
+
 // ---- 設定フォーム用の読み書き（SPEC-vertical-editor-phase3 §7）。
 // 実行もASTパースもせず、正規表現ベースの文字列置換のみで書き換える。
 // 呼び出し側は置換後に抽出関数を再実行して期待値が読めることを検証してからコミットする
