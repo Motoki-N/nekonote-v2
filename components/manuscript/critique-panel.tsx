@@ -2,12 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { BookOpenText, CircleStop, Loader2, X } from "lucide-react";
+import { BookOpenText, CircleStop, Loader2, MessageSquareText, X } from "lucide-react";
+import { toast } from "sonner";
 
 import {
   createCritiqueSession,
   getCritiqueBootstrap,
   listCritiqueSessions,
+  writeBackCritique,
   type CritiqueBootstrap,
   type CritiqueRecord,
 } from "@/lib/actions/critique";
@@ -62,6 +64,10 @@ export function CritiquePanel({
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 講評のレビューメモ書き戻し（SPEC-vertical-editor-phase4 §3.3）。
+  // 恒久的な重複記録は持たないため、この表示中に書き戻したものだけ無効化する
+  const [writingBackId, setWritingBackId] = useState<string | null>(null);
+  const [writtenBackIds, setWrittenBackIds] = useState<ReadonlySet<string>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -160,6 +166,21 @@ export function CritiquePanel({
     },
     [busy, selectedProfileId, effectivePersonaId, projectId],
   );
+
+  const handleWriteBack = useCallback(async (sessionId: string) => {
+    setWritingBackId(sessionId);
+    try {
+      const result = await writeBackCritique(sessionId);
+      if (!result.ok || !result.data) {
+        toast.error(result.ok ? "書き戻しに失敗しました" : result.error.message);
+        return;
+      }
+      toast("講評をレビューメモ（00-review-notes.md）へ書き戻しました");
+      setWrittenBackIds((prev) => new Set(prev).add(sessionId));
+    } finally {
+      setWritingBackId(null);
+    }
+  }, []);
 
   const runDisabled =
     !bootstrapDone ||
@@ -287,6 +308,24 @@ export function CritiquePanel({
                 </summary>
                 <div className="border-t border-border p-3 text-sm whitespace-pre-wrap text-card-foreground">
                   {critique.content}
+                </div>
+                {/* レビューメモ（manuscripts/00-review-notes.md）への書き戻し（SPEC-phase4 §3.3） */}
+                <div className="flex justify-end border-t border-border px-3 py-2">
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    disabled={busy || writingBackId !== null || writtenBackIds.has(critique.sessionId)}
+                    onClick={() => void handleWriteBack(critique.sessionId)}
+                  >
+                    {writingBackId === critique.sessionId ? (
+                      <Loader2 data-icon="inline-start" className="animate-spin" />
+                    ) : (
+                      <MessageSquareText data-icon="inline-start" />
+                    )}
+                    {writtenBackIds.has(critique.sessionId)
+                      ? "書き戻し済み"
+                      : "レビューメモへ書き戻す"}
+                  </Button>
                 </div>
               </details>
             ))}

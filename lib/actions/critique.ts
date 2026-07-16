@@ -5,9 +5,11 @@ import { z } from 'zod'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
+import { createFileContent, getFileContent, putFileContent } from '@/lib/git/github'
 import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
 import { resolveProfileForPhase, resolveReviewerPersona } from '@/lib/review-validation'
 import type { ReferenceScope } from '@/lib/schemas/enums'
+import { manuscriptFilePathSchema } from '@/lib/schemas/manuscript'
 import { createClient } from '@/lib/supabase/server'
 
 // 講評（作品全体への読み切り型レビュー。SPEC-dashboard-critique-settings §3.3）。
@@ -201,6 +203,97 @@ export async function createCritiqueSession(
     }
 
     return { ok: true, data: { sessionId: created.id } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/** 講評書き戻し先の固定ファイル名（SPEC-vertical-editor-phase4 §3.3。entry には載せない＝本文・PDFに出ない） */
+const REVIEW_NOTES_FILE = 'manuscripts/00-review-notes.md'
+
+/** レビューメモファイルの新規作成時ヘッダ */
+const REVIEW_NOTES_HEADER = `# レビューメモ（ネコノテAI）
+
+このファイルは講評の書き戻し先です。book.config.js の entry に載せない限り、本・PDFには含まれません。
+`
+
+/** HTMLコメントを壊す \`--\` を全角へ無害化する（講評本文は複数行のまま保持する） */
+function sanitizeForComment(text: string): string {
+  return text.replaceAll('--', '−−')
+}
+
+/**
+ * 講評の全文を専用メモファイルへ `<!-- -->` コメントとして追記＝コミットする
+ * （SPEC-vertical-editor-phase4 §3.3。追記型・恒久的な重複記録は持たない）
+ */
+export async function writeBackCritique(
+  sessionId: string,
+): Promise<ActionResult<{ commitSha: string; filePath: string }>> {
+  try {
+    const sid = uuidSchema.parse(sessionId)
+    const supabase = await createClient()
+
+    // RLS越しの取得＝所有確認を兼ねる。projects を結合してリポジトリ情報も一括で得る
+    const { data: session, error: sessionError } = await supabase
+      .from('review_sessions')
+      .select(
+        'id, created_at, project_id, target_ref, status, review_profiles!inner (name, target_phase), personas (name), review_feedbacks (content), projects!inner (id, repo, base_path)',
+      )
+      .eq('id', sid)
+      .maybeSingle()
+    if (sessionError) throw new AppError('internal', sessionError.message)
+    if (!session) throw new AppError('not_found', '講評が見つかりません')
+    // 講評セッション（target_ref = プロジェクトid・原稿フェーズ・完了済み）であることを検証する
+    if (
+      session.target_ref !== session.project_id ||
+      session.review_profiles.target_phase !== 'manuscript' ||
+      session.status !== 'completed'
+    ) {
+      throw new AppError('validation', '書き戻せるのは完了済みの講評だけです')
+    }
+    const content = session.review_feedbacks[0]?.content
+    if (!content) throw new AppError('not_found', '講評の本文が見つかりません')
+    if (!session.projects.repo) throw new AppError('validation', 'リポジトリが設定されていません')
+
+    const credential = await patCredentialProvider.getCredential(supabase)
+    if (!credential) {
+      throw new AppError('validation', 'GitHub PATが未登録です。設定から登録してください')
+    }
+
+    const basePath = session.projects.base_path ?? ''
+    const prefix = basePath === '' ? '' : `${basePath.replace(/\/$/, '')}/`
+    // DB由来の base_path を含むため書き込み先パスも再検証する（多層防御。SPEC-phase4 §5）
+    const filePath = manuscriptFilePathSchema.parse(`${prefix}${REVIEW_NOTES_FILE}`)
+
+    // 追記ブロック（日付は講評実行日・JST）
+    const date = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(
+      new Date(session.created_at),
+    )
+    const persona = session.personas?.name ? `（${session.personas.name}）` : ''
+    const heading = sanitizeForComment(`[ネコノテ講評 ${date} ${session.review_profiles.name}${persona}]`)
+    const block = `<!-- ${heading}\n${sanitizeForComment(content)}\n-->\n`
+
+    // 既存ファイルは末尾に追記、無ければヘッダつきで新規作成（blob SHA 起点の楽観ロック）
+    let existing: { content: string; sha: string } | null = null
+    try {
+      existing = await getFileContent(credential.token, session.projects.repo, filePath)
+    } catch (error) {
+      if (!(error instanceof AppError && error.code === 'not_found')) throw error
+    }
+
+    const message = '講評: レビューメモへ書き戻し（ネコノテAI）'
+    const { commitSha } = existing
+      ? await putFileContent(credential.token, session.projects.repo, filePath, {
+          content: `${existing.content.replace(/\n*$/, '\n\n')}${block}`,
+          sha: existing.sha,
+          message,
+        })
+      : await createFileContent(credential.token, session.projects.repo, filePath, {
+          content: `${REVIEW_NOTES_HEADER}\n${block}`,
+          message,
+        })
+
+    return { ok: true, data: { commitSha, filePath } }
   } catch (error) {
     return toActionError(error)
   }
