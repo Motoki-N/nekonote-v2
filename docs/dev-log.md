@@ -506,4 +506,5 @@
 - **前提の消化**: 竜の巣プロジェクトの repo を `Motoki-N/manuscript-poc`（base_path空）へ切替（ユーザー操作）。**既存PATの対象リポジトリに manuscript-poc を追加**が必要だった（Fine-grained PAT のトークン値は不変なので再登録不要・ユーザー実施）。E2E後は検証で汚した 11-scene1.md を Phase 1 時点（da3101e5）の内容へ復元し、テスト新規章も削除
 - 依存追加: `@vivliostyle/vfm`・`@vivliostyle/viewer`・`@vivliostyle/theme-bunko`・`codemirror` v6系（`@codemirror/state`/`view`/`language`/`commands`/`lang-markdown`/`merge`）・`@lezer/highlight`。postinstall で `scripts/copy-vivliostyle.mjs`（Viewer＋テーマを `public/vivliostyle/` へ）。eslint ignore に `public/vivliostyle/**` と `docs/templates/**` を追加
 - **スコープ外（Phase 3以降）**: コメント一覧UI・ルビ入力補助・字数/ページ見積り・画像D&D・`book.config.js`/判型のフォームUI・入稿ビルドUI起動・ブランチ切替/PR連携・スマホのタブ切替
-- 次: 本番反映は人間のPRマージ承認を経由（main直pushは行わない）。ドッグフーディングで実運用の使い勝手を見る
+- **本番反映済み**: PR #12 をユーザーがマージ（`feda746`）→ Vercel 自動デプロイ完了（`nekonote-v2.vercel.app`）。ビルドログで postinstall の Viewer コピー実行を確認、本番で `/vivliostyle/viewer/` の静的配信も確認（200/image/png）。ビルド中の「Dynamic server usage」ログは cookie 使用ルートの静的化プローブによる既存の無害な出力
+- 次: ドッグフーディング（Sprint 7）で実運用の使い勝手を見る。エディタで気づいた問題は Issue 起票→/fix-issue で回す
