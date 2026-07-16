@@ -2,11 +2,15 @@
 
 import { useState } from "react";
 import { useObject } from "@ai-sdk/react";
-import { CircleStop, GitCommitHorizontal, Loader2, SpellCheck, X } from "lucide-react";
+import { CircleStop, GitCommitHorizontal, Loader2, MessageSquareText, SpellCheck, X } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
-import { commitAcceptedSuggestions, type SuggestionRecord } from "@/lib/actions/manuscripts";
+import {
+  commitAcceptedSuggestions,
+  writeBackOnHoldSuggestions,
+  type SuggestionRecord,
+} from "@/lib/actions/manuscripts";
 import { isApplicable } from "@/lib/proofread-apply";
 import type { SuggestionStatus } from "@/lib/schemas/enums";
 import { proofreadSuggestionSchema } from "@/lib/schemas/manuscript";
@@ -78,6 +82,7 @@ export function ProofreadPanel({
   const [hasRun, setHasRun] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [writingBack, setWritingBack] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
 
@@ -101,7 +106,7 @@ export function ProofreadPanel({
     },
   });
 
-  const busy = isLoading || refreshing || committing || updatingId !== null;
+  const busy = isLoading || refreshing || committing || writingBack || updatingId !== null;
   const streaming = isLoading ? (object ?? []) : null;
   const pendingCount = suggestions.filter((s) => s.status === "pending").length;
   const acceptedUncommitted = suggestions.filter(
@@ -109,6 +114,13 @@ export function ProofreadPanel({
   );
   // 受入済みに適用不能が混ざっているとコミットは必ず失敗するため、先にUIで止める
   const inapplicableAcceptedCount = acceptedUncommitted.filter(
+    (s) => !isApplicable(content, s.original_text),
+  ).length;
+  // 保留のコメント書き戻し（SPEC-vertical-editor-phase4 §3.2）。書き戻し済み（committed_sha あり）は対象外
+  const onHoldUnwritten = suggestions.filter(
+    (s) => s.status === "on_hold" && s.committed_sha === null,
+  );
+  const inapplicableOnHoldCount = onHoldUnwritten.filter(
     (s) => !isApplicable(content, s.original_text),
   ).length;
   const displayError = error ? toDisplayError(error) : streamError;
@@ -138,6 +150,25 @@ export function ProofreadPanel({
       await onCompleted();
     } finally {
       setCommitting(false);
+    }
+  };
+
+  const handleWriteBack = async () => {
+    setWritingBack(true);
+    try {
+      const result = await writeBackOnHoldSuggestions(linkId);
+      if (!result.ok || !result.data) {
+        toast.error(result.ok ? "書き戻しに失敗しました" : result.error.message);
+        return;
+      }
+      if (result.data.warning) {
+        toast.warning(result.data.warning);
+      } else {
+        toast(`保留${result.data.writtenCount}件をコメントとして書き戻しました`);
+      }
+      await onCompleted();
+    } finally {
+      setWritingBack(false);
     }
   };
 
@@ -257,6 +288,51 @@ export function ProofreadPanel({
                 </AlertDialog>
               </>
             )}
+            {onHoldUnwritten.length > 0 && (
+              <>
+                {inapplicableOnHoldCount > 0 && (
+                  <p className="text-xs text-destructive">
+                    適用不能の保留提案が{inapplicableOnHoldCount}件あります。
+                    未処理に戻すか拒否すると書き戻せます
+                  </p>
+                )}
+                <AlertDialog>
+                  <AlertDialogTrigger
+                    render={
+                      <Button
+                        variant="secondary"
+                        disabled={busy || inapplicableOnHoldCount > 0}
+                      >
+                        {writingBack ? (
+                          <Loader2 data-icon="inline-start" className="animate-spin" />
+                        ) : (
+                          <MessageSquareText data-icon="inline-start" />
+                        )}
+                        保留をコメントで書き戻す（{onHoldUnwritten.length}件）
+                      </Button>
+                    }
+                  />
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>
+                        保留提案をコメントとして原稿に書き戻しますか？
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        保留中の{onHoldUnwritten.length}件を、該当箇所の直前に {"<!-- -->"}{" "}
+                        コメントとして挿入し、1コミットとしてGitHubへ書き戻します。
+                        コメントはプレビュー・PDFには現れず、縦書きエディタのコメント一覧から確認できます。
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>キャンセル</AlertDialogCancel>
+                      <AlertDialogAction onClick={() => void handleWriteBack()}>
+                        書き戻す
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
+            )}
             <Button
               disabled={busy}
               onClick={() => {
@@ -290,6 +366,9 @@ function SavedSuggestionCard({
 }) {
   const committed = suggestion.committed_sha !== null;
   const { status } = suggestion;
+  // committed_sha の意味は status で分岐する: accepted=適用コミット、on_hold=コメント書き戻し（SPEC-phase4 §3.2）。
+  // 書き戻し済みの保留は操作対象から外す（消化はエディタのコメント一覧に一本化）
+  const writtenBack = committed && status === "on_hold";
   // 適用不能の表示は「これから適用しうる」状態（未処理・保留・未コミットの受入）に限る
   const showInapplicable =
     !applicable && !committed && (status === "pending" || status === "on_hold" || status === "accepted");
@@ -302,7 +381,9 @@ function SavedSuggestionCard({
       header={
         <>
           <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
-          {committed && <Badge variant="outline">コミット済み</Badge>}
+          {committed && (
+            <Badge variant="outline">{writtenBack ? "コメント書き戻し済み" : "コミット済み"}</Badge>
+          )}
           {showInapplicable && <Badge variant="destructive">適用不能</Badge>}
           {updating && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
         </>

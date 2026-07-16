@@ -13,6 +13,7 @@ import {
   PanelRight,
   Save,
   Settings,
+  SpellCheck,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -83,10 +84,13 @@ export function VerticalEditor({
   projectId,
   workspace,
   workspaceError,
+  initialFile,
 }: {
   projectId: string
   workspace: EditorWorkspaceData | null
   workspaceError: string | null
+  /** ?file= での初期章選択（原稿タブからの相互リンク。章一覧に無いパスは無視する。SPEC-phase4 §3.1） */
+  initialFile: string | null
 }) {
   // 設定フォームのコミット後にテーマ・章一覧を取り直すため state で持つ（初期値はサーバー）
   const [ws, setWs] = useState<EditorWorkspaceData | null>(workspace)
@@ -314,6 +318,23 @@ export function VerticalEditor({
     },
     [ok, projectId, flushDraft, keyFor, markDraft, compilePreview, refreshDerived],
   )
+
+  // ?file= の初期章選択（初回のみ。章一覧との一致でのみ採用する多層防御。SPEC-phase4 §3.1）。
+  // openChapterFlow は同期 setState を含むため、effect 本体から直接呼ばずタイマー経由で呼ぶ
+  const initialChapterRef = useRef(
+    initialFile && (ok?.chapters.some((chapter) => chapter.path === initialFile) ?? false)
+      ? initialFile
+      : null,
+  )
+  useEffect(() => {
+    if (initialChapterRef.current === null) return
+    const timer = setTimeout(() => {
+      const path = initialChapterRef.current
+      initialChapterRef.current = null
+      if (path !== null) void openChapterFlow(path)
+    }, 0)
+    return () => clearTimeout(timer)
+  }, [openChapterFlow])
 
   /** 復元バナー: 待避を取り込む（SPEC §7-2） */
   const restoreDraft = useCallback(() => {
@@ -684,6 +705,22 @@ export function VerticalEditor({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1.5">
+          {/* 原稿タブ（校正・講評）への相互リンク（編集中の章を開いたまま遷移。SPEC-phase4 §3.1） */}
+          <Button
+            size="sm"
+            variant="outline"
+            nativeButton={false}
+            render={
+              <Link
+                href={`/projects/${projectId}/manuscript${
+                  selectedPath ? `?file=${encodeURIComponent(selectedPath)}` : ''
+                }`}
+              >
+                <SpellCheck data-icon="inline-start" />
+                レビュー
+              </Link>
+            }
+          />
           <Button
             variant="ghost"
             size="icon-sm"

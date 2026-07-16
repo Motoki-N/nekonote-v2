@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, BookOpenText, FileText, Info, Loader2, Settings, SpellCheck } from "lucide-react";
+import { ArrowLeft, BookOpenText, FileText, Info, Loader2, PenLine, Settings, SpellCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -26,25 +26,29 @@ export function ManuscriptWorkspace({
   projectId,
   tree,
   treeError,
+  initialFile,
 }: {
   projectId: string;
   tree: ManuscriptTreeData | null;
   /** ツリー取得のエラー（PAT失効・リポジトリ不達等。画面は落とさず表示する） */
   treeError: string | null;
+  /** ?file= での初期表示（エディタからの相互リンク。一覧に無いパスは無視する。SPEC-phase4 §3.1） */
+  initialFile: string | null;
 }) {
-  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  // ?file= の初期表示（エディタからの相互リンク。一覧との一致でのみ採用する多層防御。SPEC-phase4 §3.1）
+  const [selectedPath, setSelectedPath] = useState<string | null>(() =>
+    initialFile && tree?.gate === "ok" && tree.files.includes(initialFile) ? initialFile : null,
+  );
   const [file, setFile] = useState<ManuscriptFileData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(selectedPath !== null);
   const [fileError, setFileError] = useState<string | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   // 講評パネル（作品全体対象。ファイルを開いていなくても使える）。校正パネルと排他表示
   const [critiqueOpen, setCritiqueOpen] = useState(false);
 
-  const openFile = useCallback(
+  // 本文の取得のみ（先頭 await まで同期 setState なし＝初期表示の effect からも呼べる）
+  const loadFile = useCallback(
     async (path: string) => {
-      setSelectedPath(path);
-      setLoading(true);
-      setFileError(null);
       try {
         const result = await openManuscriptFile(projectId, path);
         if (!result.ok || !result.data) {
@@ -60,10 +64,29 @@ export function ManuscriptWorkspace({
     [projectId],
   );
 
+  const openFile = useCallback(
+    async (path: string) => {
+      setSelectedPath(path);
+      setLoading(true);
+      setFileError(null);
+      await loadFile(path);
+    },
+    [loadFile],
+  );
+
   // 校正完了後にファイル情報（最新本文・提案・バナー）を取り直す
   const refreshFile = useCallback(async () => {
     if (selectedPath) await openFile(selectedPath);
   }, [selectedPath, openFile]);
+
+  // ?file= の初期ロード（初回のみ。選択・ローディング表示は state 初期化子で設定済み）
+  const initialLoadRef = useRef(selectedPath);
+  useEffect(() => {
+    const path = initialLoadRef.current;
+    if (path === null) return;
+    initialLoadRef.current = null;
+    void loadFile(path);
+  }, [loadFile]);
 
   // 受入/拒否/保留はGitHub再取得を伴わないため、成功時はローカルの提案一覧だけ差し替える
   const handleUpdateSuggestion = useCallback(
@@ -226,7 +249,21 @@ export function ManuscriptWorkspace({
               {file && (
                 <span className="text-xs text-muted-foreground">{file.charCount}字</span>
               )}
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-1.5">
+                {/* 縦書きエディタへの相互リンク（同じ章を開いたまま遷移。SPEC-phase4 §3.1） */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  nativeButton={false}
+                  render={
+                    <Link
+                      href={`/projects/${projectId}/editor?file=${encodeURIComponent(selectedPath)}`}
+                    >
+                      <PenLine data-icon="inline-start" />
+                      エディタで開く
+                    </Link>
+                  }
+                />
                 <Button
                   size="sm"
                   disabled={!file}

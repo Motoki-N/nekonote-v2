@@ -12,7 +12,7 @@ import {
   putFileContent,
 } from '@/lib/git/github'
 import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
-import { applySuggestions } from '@/lib/proofread-apply'
+import { applySuggestions, writeBackAsComments } from '@/lib/proofread-apply'
 import { suggestionStatuses } from '@/lib/schemas/enums'
 import type { SuggestionStatus } from '@/lib/schemas/enums'
 import { manuscriptFilePathSchema } from '@/lib/schemas/manuscript'
@@ -411,6 +411,107 @@ export async function commitAcceptedSuggestions(
     if (shaError) console.error('last_reviewed_commit の更新に失敗:', shaError.message)
 
     return { ok: true, data: { commitSha, appliedCount: accepted.length, warning } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * 保留提案をファイル単位で一括、`<!-- -->` コメントとして原稿へ書き戻す＝コミットする
+ * （SPEC-vertical-editor-phase4 §3.2。commitAcceptedSuggestions と対称の構造）。
+ * 挿入は一意一致アンカーで再検証し、1件でも位置が決まらなければコミットしない（部分書き戻しを作らない）。
+ * 書き戻した提案は on_hold のまま committed_sha に記録し、以後の操作対象から外す（消化はエディタに一本化）
+ */
+export async function writeBackOnHoldSuggestions(
+  manuscriptLinkId: string,
+): Promise<ActionResult<{ commitSha: string; writtenCount: number; warning?: string }>> {
+  try {
+    const linkId = uuidSchema.parse(manuscriptLinkId)
+    const supabase = await createClient()
+
+    // RLS越しの取得＝所有確認を兼ねる
+    const { data: link, error: linkError } = await supabase
+      .from('manuscript_links')
+      .select('id, file_path, projects (id, repo, base_path)')
+      .eq('id', linkId)
+      .maybeSingle()
+    if (linkError) throw new AppError('internal', linkError.message)
+    if (!link || !link.projects) throw new AppError('not_found', '原稿リンクが見つかりません')
+    if (!link.projects.repo) throw new AppError('validation', 'リポジトリが設定されていません')
+    // DB由来の file_path も再検証する（多層防御。commitAcceptedSuggestions と同じ作法）
+    const filePath = manuscriptFilePathSchema.parse(link.file_path)
+    const basePath = link.projects.base_path ?? ''
+    if (basePath !== '' && !filePath.startsWith(`${basePath.replace(/\/$/, '')}/`)) {
+      throw new AppError('validation', 'ファイルパスが不正です')
+    }
+
+    const credential = await patCredentialProvider.getCredential(supabase)
+    if (!credential) {
+      throw new AppError('validation', 'GitHub PATが未登録です。設定から登録してください')
+    }
+
+    const { data: onHold, error: onHoldError } = await supabase
+      .from('revision_suggestions')
+      .select('id, original_text, suggested_text, reason')
+      .eq('manuscript_link_id', linkId)
+      .eq('status', 'on_hold')
+      .is('committed_sha', null)
+      .order('created_at', { ascending: true })
+    if (onHoldError) throw new AppError('internal', onHoldError.message)
+    if (!onHold || onHold.length === 0) {
+      throw new AppError('validation', '書き戻していない保留の提案がありません')
+    }
+
+    // 最新原稿を取得して挿入（blob SHA 起点の楽観ロック。リモート更新が挟まると PUT が conflict になる）
+    const { content, sha } = await getFileContent(credential.token, link.projects.repo, filePath)
+    const written = writeBackAsComments(content, onHold)
+    if (!written.ok) {
+      const excerpt =
+        written.failedOriginal.length > 20
+          ? `${written.failedOriginal.slice(0, 20)}…`
+          : written.failedOriginal
+      throw new AppError(
+        'validation',
+        `書き戻せない提案があります（「${excerpt}」が現在の原稿に一意に見つかりません）。該当の提案を未処理に戻すか拒否してから、もう一度書き戻してください`,
+      )
+    }
+
+    const fileName = filePath.split('/').pop() ?? filePath
+    const { commitSha } = await putFileContent(credential.token, link.projects.repo, filePath, {
+      content: written.content,
+      sha,
+      message: `校正: ${fileName} に保留${onHold.length}件をコメントで書き戻し（ネコノテAI）`,
+    })
+
+    // コミット成立後の記録。失敗のままエラーにすると「未書き戻し扱いで再実行→二重挿入」に
+    // つながるため、リトライした上で、失敗しても成功（警告つき）として返す（適用コミットと同じ作法）
+    let markError: { message: string } | null = null
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const { error } = await supabase
+        .from('revision_suggestions')
+        .update({ committed_sha: commitSha })
+        .in(
+          'id',
+          onHold.map((s) => s.id),
+        )
+      markError = error
+      if (!error) break
+    }
+    let warning: string | undefined
+    if (markError) {
+      console.error('committed_sha の記録に失敗（コミット自体は成立）:', markError.message)
+      warning =
+        'コミットは完了しましたが、提案への記録に失敗しました。そのまま再実行すると同じコメントを二重に挿入するおそれがあります。ファイルを開き直して提案の状態を確認してください'
+    }
+
+    // 自分のコミットで更新バナーを出さないよう、レビュー済みSHAを進める
+    const { error: shaError } = await supabase
+      .from('manuscript_links')
+      .update({ last_reviewed_commit: commitSha })
+      .eq('id', linkId)
+    if (shaError) console.error('last_reviewed_commit の更新に失敗:', shaError.message)
+
+    return { ok: true, data: { commitSha, writtenCount: onHold.length, warning } }
   } catch (error) {
     return toActionError(error)
   }
