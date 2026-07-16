@@ -16,17 +16,23 @@ export function EditorPane({
   initialContent,
   onDocChange,
   onSaveRequest,
+  onImageDrop,
+  viewRef,
 }: {
   initialContent: string
   onDocChange: (content: string) => void
   onSaveRequest: () => void
+  /** 画像ファイルのドロップ（SPEC-phase3 §6） */
+  onImageDrop?: (file: File) => void
+  /** 親がコメントジャンプ・入力補助で EditorView を操作するための参照（SPEC-phase3 §3・§4） */
+  viewRef?: React.RefObject<EditorView | null>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   // ハンドラは ref 経由で参照し、親の再レンダーでエディタを作り直さない
-  const handlersRef = useRef({ onDocChange, onSaveRequest })
+  const handlersRef = useRef({ onDocChange, onSaveRequest, onImageDrop })
   useEffect(() => {
-    handlersRef.current = { onDocChange, onSaveRequest }
-  }, [onDocChange, onSaveRequest])
+    handlersRef.current = { onDocChange, onSaveRequest, onImageDrop }
+  }, [onDocChange, onSaveRequest, onImageDrop])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -36,11 +42,16 @@ export function EditorPane({
         extensions: buildEditorExtensions({
           onDocChange: (content) => handlersRef.current.onDocChange(content),
           onSaveRequest: () => handlersRef.current.onSaveRequest(),
+          onImageDrop: (file) => handlersRef.current.onImageDrop?.(file),
         }),
       }),
       parent: containerRef.current,
     })
-    return () => view.destroy()
+    if (viewRef) viewRef.current = view
+    return () => {
+      if (viewRef) viewRef.current = null
+      view.destroy()
+    }
     // initialContent は初期値のみ（変更で作り直さない。差し替えは view.dispatch で行う）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

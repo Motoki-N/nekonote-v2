@@ -14,17 +14,55 @@ export function PreviewPane({
   html,
   typesetting,
   onLoaded,
+  onPageCount,
 }: {
   /** 組版対象の完成HTML。null はまだ章を開いていない状態 */
   html: string | null
   /** 組版中インジケータ（親が変換開始で立て、iframe ロードで下ろす） */
   typesetting: boolean
   onLoaded: () => void
+  /** 組版が落ち着いた時点の実ページ数（SPEC-phase3 §5。取得できない環境では呼ばれない） */
+  onPageCount?: (pages: number) => void
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   // 読み込み完了前に revoke すると Viewer の取得が失敗するため、旧URLはロード完了まで保持する
   const currentUrlRef = useRef<string | null>(null)
   const staleUrlsRef = useRef<string[]>([])
+  const pagePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const onPageCountRef = useRef(onPageCount)
+  useEffect(() => {
+    onPageCountRef.current = onPageCount
+  }, [onPageCount])
+
+  /**
+   * 実ページ数の取得: Viewer は自前ホスト（同一オリジン）なので iframe 内の
+   * ページ番号表示を読める。組版は非同期・段階的に進むため、Viewer のステータスが
+   * complete になるまで待ってから総ページ数を報告する（途中の値で確定させない）
+   */
+  const startPagePolling = useCallback(() => {
+    if (pagePollRef.current) clearInterval(pagePollRef.current)
+    let ticks = 0
+    pagePollRef.current = setInterval(() => {
+      ticks += 1
+      const doc = iframeRef.current?.contentDocument
+      const status = doc
+        ?.querySelector('[data-vivliostyle-viewer-viewport]')
+        ?.getAttribute('data-vivliostyle-viewer-status')
+      if (status === 'complete') {
+        // Viewer は表示外ページを間引くことがあるため、コンテナ数でなく総ページ表示を読む
+        const total = Number(doc?.querySelector('#vivliostyle-total-pages')?.textContent ?? '')
+        if (pagePollRef.current) clearInterval(pagePollRef.current)
+        pagePollRef.current = null
+        if (Number.isInteger(total) && total > 0) onPageCountRef.current?.(total)
+        return
+      }
+      // 最長60秒で打ち切り（巨大原稿・組版失敗時にポーリングを残さない）
+      if (ticks >= 120) {
+        if (pagePollRef.current) clearInterval(pagePollRef.current)
+        pagePollRef.current = null
+      }
+    }, 500)
+  }, [])
 
   useEffect(() => {
     if (html === null || !iframeRef.current) return
@@ -39,6 +77,7 @@ export function PreviewPane({
     return () => {
       for (const url of stale) URL.revokeObjectURL(url)
       if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current)
+      if (pagePollRef.current) clearInterval(pagePollRef.current)
     }
   }, [])
 
@@ -46,7 +85,8 @@ export function PreviewPane({
     for (const url of staleUrlsRef.current) URL.revokeObjectURL(url)
     staleUrlsRef.current = []
     onLoaded()
-  }, [onLoaded])
+    startPagePolling()
+  }, [onLoaded, startPagePolling])
 
   return (
     <div className="relative h-full min-h-0">

@@ -224,6 +224,38 @@ export async function createFileContent(
 }
 
 /**
+ * バイナリファイル（画像）を新規作成して1コミットを作る（SPEC-vertical-editor-phase3 §6）。
+ * content は呼び出し側で base64 済み（テキスト前提の createFileContent と区別する）。
+ * 既存ファイルと衝突したら conflict（呼び出し側が連番リネームで再試行する）
+ */
+export async function createBinaryFileContent(
+  token: string,
+  repo: string,
+  filePath: string,
+  params: { base64Content: string; message: string },
+): Promise<{ commitSha: string; blobSha: string }> {
+  const res = await fetch(`${API_BASE}${contentsApiPath(repo, filePath)}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message: params.message, content: params.base64Content }),
+  })
+  if (res.status === 409 || res.status === 422) {
+    throw new AppError('conflict', '同名のファイルが既に存在します')
+  }
+  if (!res.ok) throw toGithubError(res, `リポジトリ ${repo} にファイルを作成できません`)
+  const data = (await res.json()) as { commit?: { sha?: string }; content?: { sha?: string } }
+  if (!data.commit?.sha || !data.content?.sha) {
+    throw new AppError('internal', 'コミット結果の取得に失敗しました')
+  }
+  return { commitSha: data.commit.sha, blobSha: data.content.sha }
+}
+
+/**
  * ファイルの生バイト列を取得する（画像プロキシ用。SPEC-vertical-editor-phase2 §5.3）。
  * Contents API の raw メディアタイプで取得するため base64 上限（1MB）より大きくても読める
  */
@@ -235,6 +267,109 @@ export async function getRawFileBytes(
   const res = await githubFetch(token, contentsApiPath(repo, filePath), 'application/vnd.github.raw')
   if (!res.ok) throw toGithubError(res, `ファイル ${filePath} が見つかりません`)
   return res.arrayBuffer()
+}
+
+// ---- 入稿ビルド（SPEC-vertical-editor-phase3 §8）。
+// タグ作成の代行＝Git Refs API（Contents権限で可能・PATスコープ変更なし）。
+// 完了検知は Releases API のポーリング（同じく Contents 権限で読める）
+
+/** タグ一覧（名前のみ・最大100件）。入稿タグの次番号の提案に使う */
+export async function listTags(token: string, repo: string): Promise<string[]> {
+  const res = await githubFetch(token, `/repos/${validRepo(repo)}/tags?per_page=100`)
+  if (!res.ok) throw toGithubError(res, `リポジトリ ${repo} のタグ一覧を取得できません`)
+  const data = (await res.json()) as { name?: string }[]
+  return data.flatMap((tag) => (tag.name ? [tag.name] : []))
+}
+
+/** ブランチHEADのコミットSHAを取得する */
+export async function getBranchHeadSha(
+  token: string,
+  repo: string,
+  branch: string,
+): Promise<string> {
+  const res = await githubFetch(
+    token,
+    `/repos/${validRepo(repo)}/git/ref/${encodeURIComponent(`heads/${branch}`)}`,
+  )
+  if (!res.ok) throw toGithubError(res, `ブランチ ${branch} が見つかりません`)
+  const data = (await res.json()) as { object?: { sha?: string } }
+  if (!data.object?.sha) throw new AppError('internal', 'ブランチHEADの取得に失敗しました')
+  return data.object.sha
+}
+
+/** 軽量タグを作成する（Git Refs API）。同名タグが既にあると conflict */
+export async function createTagRef(
+  token: string,
+  repo: string,
+  tag: string,
+  sha: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/repos/${validRepo(repo)}/git/refs`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ref: `refs/tags/${tag}`, sha }),
+  })
+  if (res.status === 422) {
+    throw new AppError('conflict', `タグ ${tag} は既に存在します。別のタグ名を指定してください`)
+  }
+  if (!res.ok) throw toGithubError(res, `リポジトリ ${repo} にタグを作成できません`)
+}
+
+export type ReleaseAsset = {
+  id: number
+  name: string
+  sizeBytes: number
+}
+
+/** タグに紐づく Release を取得する。まだ無ければ null（ビルド進行中） */
+export async function getReleaseByTag(
+  token: string,
+  repo: string,
+  tag: string,
+): Promise<{ assets: ReleaseAsset[] } | null> {
+  const res = await githubFetch(
+    token,
+    `/repos/${validRepo(repo)}/releases/tags/${encodeURIComponent(tag)}`,
+  )
+  if (res.status === 404) return null
+  if (!res.ok) throw toGithubError(res, `リポジトリ ${repo} の Release を取得できません`)
+  const data = (await res.json()) as {
+    assets?: { id?: number; name?: string; size?: number }[]
+  }
+  return {
+    assets: (data.assets ?? []).flatMap((asset) =>
+      asset.id && asset.name ? [{ id: asset.id, name: asset.name, sizeBytes: asset.size ?? 0 }] : [],
+    ),
+  }
+}
+
+/**
+ * Release アセットのダウンロード先（S3の署名付きURL）を取得する。
+ * octet-stream 要求への 302 の Location を返す（本体はプロキシせずリダイレクトで届ける——
+ * Vercel のレスポンスサイズ制限を避ける。SPEC-phase3 §9）
+ */
+export async function getReleaseAssetLocation(
+  token: string,
+  repo: string,
+  assetId: number,
+): Promise<string> {
+  const res = await fetch(`${API_BASE}/repos/${validRepo(repo)}/releases/assets/${assetId}`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/octet-stream',
+      'X-GitHub-Api-Version': '2022-11-28',
+    },
+    redirect: 'manual',
+    cache: 'no-store',
+  })
+  const location = res.headers.get('location')
+  if ((res.status === 302 || res.status === 307) && location) return location
+  throw toGithubError(res, 'Release アセットが見つかりません')
 }
 
 /**
