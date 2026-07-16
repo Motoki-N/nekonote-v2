@@ -14,17 +14,49 @@ export function PreviewPane({
   html,
   typesetting,
   onLoaded,
+  onPageCount,
 }: {
   /** 組版対象の完成HTML。null はまだ章を開いていない状態 */
   html: string | null
   /** 組版中インジケータ（親が変換開始で立て、iframe ロードで下ろす） */
   typesetting: boolean
   onLoaded: () => void
+  /** 組版が落ち着いた時点の実ページ数（SPEC-phase3 §5。取得できない環境では呼ばれない） */
+  onPageCount?: (pages: number) => void
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   // 読み込み完了前に revoke すると Viewer の取得が失敗するため、旧URLはロード完了まで保持する
   const currentUrlRef = useRef<string | null>(null)
   const staleUrlsRef = useRef<string[]>([])
+  const pagePollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const onPageCountRef = useRef(onPageCount)
+  useEffect(() => {
+    onPageCountRef.current = onPageCount
+  }, [onPageCount])
+
+  /**
+   * 実ページ数の取得: Viewer は自前ホスト（同一オリジン）なので iframe 内の
+   * ページコンテナ要素を数えられる。組版は非同期に進むため、件数が2回連続で
+   * 一致したら「落ち着いた」とみなして報告する（renderAllPages=true 前提）
+   */
+  const startPagePolling = useCallback(() => {
+    if (pagePollRef.current) clearInterval(pagePollRef.current)
+    let previous = -1
+    let ticks = 0
+    pagePollRef.current = setInterval(() => {
+      ticks += 1
+      const doc = iframeRef.current?.contentDocument
+      const count = doc?.querySelectorAll('[data-vivliostyle-page-container]').length ?? 0
+      // 最長30秒で打ち切り（巨大原稿・組版失敗時にポーリングを残さない）
+      if ((count > 0 && count === previous) || ticks >= 60) {
+        if (pagePollRef.current) clearInterval(pagePollRef.current)
+        pagePollRef.current = null
+        if (count > 0) onPageCountRef.current?.(count)
+        return
+      }
+      previous = count
+    }, 500)
+  }, [])
 
   useEffect(() => {
     if (html === null || !iframeRef.current) return
@@ -39,6 +71,7 @@ export function PreviewPane({
     return () => {
       for (const url of stale) URL.revokeObjectURL(url)
       if (currentUrlRef.current) URL.revokeObjectURL(currentUrlRef.current)
+      if (pagePollRef.current) clearInterval(pagePollRef.current)
     }
   }, [])
 
@@ -46,7 +79,8 @@ export function PreviewPane({
     for (const url of staleUrlsRef.current) URL.revokeObjectURL(url)
     staleUrlsRef.current = []
     onLoaded()
-  }, [onLoaded])
+    startPagePolling()
+  }, [onLoaded, startPagePolling])
 
   return (
     <div className="relative h-full min-h-0">

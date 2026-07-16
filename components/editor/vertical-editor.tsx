@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowLeft,
@@ -19,10 +19,17 @@ import { toast } from 'sonner'
 import {
   createChapter,
   getAllChapterContents,
+  getEditorWorkspace,
   openChapter,
   saveChapter,
+  uploadImage,
 } from '@/lib/actions/editor'
 import type { EditorChapter, EditorWorkspaceData } from '@/lib/actions/editor'
+import { EditorSelection } from '@codemirror/state'
+import { EditorView } from '@codemirror/view'
+
+import { extractComments } from '@/lib/editor/comments'
+import type { ManuscriptComment } from '@/lib/editor/comments'
 import {
   deleteDraft,
   draftKey,
@@ -31,18 +38,27 @@ import {
   setDraft,
 } from '@/lib/editor/draft-store'
 import type { Draft } from '@/lib/editor/draft-store'
+import { fileToBase64, illustNotation, sanitizeImageFileName } from '@/lib/editor/image'
 import { buildPreviewHtml } from '@/lib/editor/preview'
+import { countManuscriptChars, estimatePages, extractKumiSettings } from '@/lib/editor/word-count'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { BuildDialog } from '@/components/editor/build-dialog'
 import { EditorPane } from '@/components/editor/editor-pane'
+import { EditorToolbar } from '@/components/editor/editor-toolbar'
+import { ImageUploadDialog } from '@/components/editor/image-upload-dialog'
+import type { IllustKind } from '@/components/editor/image-upload-dialog'
 import { MergePane } from '@/components/editor/merge-pane'
 import { NewChapterDialog } from '@/components/editor/new-chapter-dialog'
 import { PreviewPane } from '@/components/editor/preview-pane'
 import { SaveDialog } from '@/components/editor/save-dialog'
+import { SettingsDialog } from '@/components/editor/settings-dialog'
 
 // 待避（IndexedDB）とプレビュー再組版のデバウンス（SPEC-vertical-editor-phase2 §5.1・§7）
 const DRAFT_DEBOUNCE_MS = 1000
 const PREVIEW_DEBOUNCE_MS = 3000
+// 字数カウントのデバウンス（SPEC-vertical-editor-phase3 §5）
+const COUNT_DEBOUNCE_MS = 500
 
 /** 開いている章の書き込み基準。打鍵ごとに触るため state ではなく ref で持つ */
 type CurrentChapter = {
@@ -72,7 +88,9 @@ export function VerticalEditor({
   workspace: EditorWorkspaceData | null
   workspaceError: string | null
 }) {
-  const ok = workspace && workspace.gate === 'ok' ? workspace : null
+  // 設定フォームのコミット後にテーマ・章一覧を取り直すため state で持つ（初期値はサーバー）
+  const [ws, setWs] = useState<EditorWorkspaceData | null>(workspace)
+  const ok = ws && ws.gate === 'ok' ? ws : null
 
   const [chapters, setChapters] = useState<EditorChapter[]>(ok?.chapters ?? [])
   const [selectedPath, setSelectedPath] = useState<string | null>(null)
@@ -90,6 +108,8 @@ export function VerticalEditor({
   const [saving, setSaving] = useState(false)
   const [newChapterOpen, setNewChapterOpen] = useState(false)
   const [creating, setCreating] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [buildOpen, setBuildOpen] = useState(false)
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const [typesetting, setTypesetting] = useState(false)
   const [fullPreview, setFullPreview] = useState(false)
@@ -98,12 +118,34 @@ export function VerticalEditor({
   const [previewOpen, setPreviewOpen] = useState(true)
   const [ratio, setRatio] = useState(0.5)
   const [dragging, setDragging] = useState(false)
+  /** 本文の字数（コメント・記法除外。SPEC-phase3 §5）。null は章未選択 */
+  const [charCount, setCharCount] = useState<number | null>(null)
+  /** Vivliostyle が組んだ実ページ数（編集で無効化→概算値へ戻す） */
+  const [actualPages, setActualPages] = useState<number | null>(null)
+  /** 編集中の章のコメント一覧（SPEC-phase3 §3） */
+  const [comments, setComments] = useState<ManuscriptComment[]>([])
+  const [sidebarTab, setSidebarTab] = useState<'chapters' | 'comments'>('chapters')
+  /** 画像アップロードの対象（D&D またはツールバーから。SPEC-phase3 §6） */
+  const [pendingImage, setPendingImage] = useState<File | null>(null)
+  const [uploadingImage, setUploadingImage] = useState(false)
 
   const currentRef = useRef<CurrentChapter | null>(null)
   const contentRef = useRef('')
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const splitRef = useRef<HTMLDivElement>(null)
+  const editorViewRef = useRef<EditorView | null>(null)
+  const imageInputRef = useRef<HTMLInputElement>(null)
+
+  /** 版面（行数×字詰め）: テーマCSSから抽出。ページ数概算に使う */
+  const kumi = useMemo(() => (ok ? extractKumiSettings(ok.theme.inlineCss) : null), [ok])
+
+  // compilePreview が設定コミット直後の新テーマを拾えるよう ref でも持つ
+  const okRef = useRef(ok)
+  useEffect(() => {
+    okRef.current = ok
+  }, [ok])
 
   const keyFor = useCallback(
     (path: string) => (ok ? draftKey(ok.repo, ok.branch, path) : path),
@@ -172,10 +214,11 @@ export function VerticalEditor({
   /** 部分プレビューの再組版（デバウンス済みの呼び出しのみ想定。SPEC §5.1） */
   const compilePreview = useCallback(() => {
     const current = currentRef.current
-    if (!ok || !current) return
+    const okNow = okRef.current
+    if (!okNow || !current) return
     const html = buildPreviewHtml({
       chapters: [{ path: current.path, content: contentRef.current }],
-      theme: ok.theme,
+      theme: okNow.theme,
       title: fileName(current.path),
       origin: window.location.origin,
       assetUrl,
@@ -183,7 +226,14 @@ export function VerticalEditor({
     setPreviewHtml(html)
     setTypesetting(true)
     setFullPreview(false)
-  }, [ok, assetUrl, fileName])
+  }, [assetUrl, fileName])
+
+  /** 字数・コメント一覧を内容から再計算する（打鍵側はデバウンスして呼ぶ） */
+  const refreshDerived = useCallback((content: string) => {
+    setCharCount(countManuscriptChars(content))
+    setComments(extractComments(content))
+  }, [])
+  const recount = useCallback(() => refreshDerived(contentRef.current), [refreshDerived])
 
   const onDocChange = useCallback(
     (content: string) => {
@@ -191,12 +241,16 @@ export function VerticalEditor({
       contentRef.current = content
       if (!current) return
       setDirty(content !== current.remoteContent)
+      // 編集で実ページ数は古くなる → 概算値表示へ戻す（次の組版完了で再取得）
+      setActualPages(null)
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
       draftTimerRef.current = setTimeout(persistDraft, DRAFT_DEBOUNCE_MS)
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
       previewTimerRef.current = setTimeout(compilePreview, PREVIEW_DEBOUNCE_MS)
+      if (countTimerRef.current) clearTimeout(countTimerRef.current)
+      countTimerRef.current = setTimeout(recount, COUNT_DEBOUNCE_MS)
     },
-    [persistDraft, compilePreview],
+    [persistDraft, compilePreview, recount],
   )
 
   // アンマウント時: タイマーを止め、待避を確定する
@@ -204,6 +258,7 @@ export function VerticalEditor({
     return () => {
       if (draftTimerRef.current) clearTimeout(draftTimerRef.current)
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
+      if (countTimerRef.current) clearTimeout(countTimerRef.current)
       persistDraft()
     }
   }, [persistDraft])
@@ -230,6 +285,8 @@ export function VerticalEditor({
         const data = result.data
         currentRef.current = { path: data.path, baseSha: data.sha, remoteContent: data.content }
         contentRef.current = data.content
+        refreshDerived(data.content)
+        setActualPages(null)
 
         const draft = await getDraft(keyFor(path)).catch(() => null)
         if (draft && draft.content !== data.content) {
@@ -255,7 +312,7 @@ export function VerticalEditor({
         setChapterLoading(false)
       }
     },
-    [ok, projectId, flushDraft, keyFor, markDraft, compilePreview],
+    [ok, projectId, flushDraft, keyFor, markDraft, compilePreview, refreshDerived],
   )
 
   /** 復元バナー: 待避を取り込む（SPEC §7-2） */
@@ -264,11 +321,12 @@ export function VerticalEditor({
     if (!current || !restorePrompt) return
     contentRef.current = restorePrompt.content
     setDirty(restorePrompt.content !== current.remoteContent)
+    refreshDerived(restorePrompt.content)
     setRestorePrompt(null)
     setEditorDoc(restorePrompt.content)
     setEditorEpoch((epoch) => epoch + 1)
     compilePreview()
-  }, [restorePrompt, compilePreview])
+  }, [restorePrompt, compilePreview, refreshDerived])
 
   /** 復元バナー: 待避を破棄する */
   const discardDraft = useCallback(() => {
@@ -348,6 +406,7 @@ export function VerticalEditor({
       contentRef.current = merged
       const isDirty = merged !== merge.remoteContent
       setDirty(isDirty)
+      refreshDerived(merged)
       const key = keyFor(current.path)
       if (isDirty) {
         setDraft(key, { content: merged, baseSha: merge.remoteSha, updatedAt: Date.now() }).catch(
@@ -363,7 +422,7 @@ export function VerticalEditor({
       setEditorEpoch((epoch) => epoch + 1)
       compilePreview()
     },
-    [merge, keyFor, markDraft, compilePreview],
+    [merge, keyFor, markDraft, compilePreview, refreshDerived],
   )
 
   /** ローカル編集を破棄してリモート最新を開き直す */
@@ -410,7 +469,7 @@ export function VerticalEditor({
     }
   }, [ok, projectId, flushDraft, assetUrl])
 
-  /** 新規章の作成＝コミット（SPEC §3.3） */
+  /** 新規章の作成＝コミット（SPEC §3.3。entry へは自動追記される。SPEC-phase3 §7-2） */
   const handleCreateChapter = useCallback(
     async (name: string) => {
       setCreating(true)
@@ -420,15 +479,16 @@ export function VerticalEditor({
           toast.error(result.ok ? '章の作成に失敗しました' : result.error.message)
           return
         }
-        const path = result.data.path
-        // entry へは自動追記しないため「entry未登録」として一覧の末尾に足す（SPEC §3.3）
+        const { path, inEntry } = result.data
         setChapters((prev) =>
-          prev.some((chapter) => chapter.path === path)
-            ? prev
-            : [...prev, { path, inEntry: false }],
+          prev.some((chapter) => chapter.path === path) ? prev : [...prev, { path, inEntry }],
         )
         setNewChapterOpen(false)
-        toast.success('章を作成してコミットしました')
+        toast.success(
+          inEntry
+            ? '章を作成し、entry に追記してコミットしました'
+            : '章を作成してコミットしました（entry への追記はできませんでした）',
+        )
         await openChapterFlow(path)
       } finally {
         setCreating(false)
@@ -436,6 +496,80 @@ export function VerticalEditor({
     },
     [projectId, openChapterFlow],
   )
+
+  /** 設定コミット後の再取得（章一覧の順序・テーマCSSに反映。SPEC-phase3 §7） */
+  const refreshWorkspace = useCallback(async () => {
+    const result = await getEditorWorkspace(projectId)
+    if (result.ok && result.data) {
+      setWs(result.data)
+      if (result.data.gate === 'ok') {
+        setChapters(result.data.chapters)
+        okRef.current = result.data
+      }
+    }
+  }, [projectId])
+
+  const handleSettingsSaved = useCallback(() => {
+    void refreshWorkspace().then(() => {
+      // 新しいテーマ（組み設定）でプレビューを組み直す
+      if (currentRef.current) compilePreview()
+    })
+  }, [refreshWorkspace, compilePreview])
+
+  /**
+   * 画像アップロードの実行（SPEC-phase3 §6・論点C）。
+   * images/ へ即コミット → カーソル位置に挿入記法を追記（本文は通常の保存フロー）
+   */
+  const confirmImageUpload = useCallback(
+    async ({ kind, caption }: { kind: IllustKind; caption: string }) => {
+      const file = pendingImage
+      if (!file) return
+      setUploadingImage(true)
+      try {
+        const base64 = await fileToBase64(file)
+        const result = await uploadImage(projectId, sanitizeImageFileName(file.name), base64)
+        if (!result.ok || !result.data) {
+          toast.error(result.ok ? '画像のアップロードに失敗しました' : result.error.message)
+          return
+        }
+        const view = editorViewRef.current
+        if (view) {
+          const pos = view.state.selection.main.from
+          // 挿絵は独立した段落として前後を空行で区切る
+          const insert = `\n\n${illustNotation(result.data.fileName, kind, caption)}\n\n`
+          view.dispatch({
+            changes: { from: pos, insert },
+            selection: EditorSelection.cursor(pos + insert.length),
+            scrollIntoView: true,
+            userEvent: 'input',
+          })
+          view.focus()
+        }
+        setPendingImage(null)
+        toast.success(`画像 ${result.data.fileName} をコミットしました`)
+      } catch {
+        toast.error('画像の読み込みに失敗しました')
+      } finally {
+        setUploadingImage(false)
+      }
+    },
+    [pendingImage, projectId],
+  )
+
+  /** コメント一覧から該当箇所へジャンプ（SPEC-phase3 §3。選択で一時的に目立たせる） */
+  const jumpToComment = useCallback((comment: ManuscriptComment) => {
+    const view = editorViewRef.current
+    if (!view) return
+    // 一覧はデバウンス更新のため、直後の編集でオフセットが範囲外になり得る
+    const docLength = view.state.doc.length
+    const from = Math.min(comment.from, docLength)
+    const to = Math.min(comment.to, docLength)
+    view.dispatch({
+      selection: EditorSelection.range(from, to),
+      effects: EditorView.scrollIntoView(from, { y: 'center' }),
+    })
+    view.focus()
+  }, [])
 
   /** ペイン比率のドラッグ可変（SPEC §3.2） */
   const startDrag = useCallback((event: React.PointerEvent) => {
@@ -474,7 +608,7 @@ export function VerticalEditor({
       </GuidanceCard>
     )
   }
-  if (!workspace || workspace.gate === 'no_pat') {
+  if (!ws || ws.gate === 'no_pat') {
     return (
       <GuidanceCard>
         <p className="text-sm text-foreground">
@@ -493,7 +627,7 @@ export function VerticalEditor({
       </GuidanceCard>
     )
   }
-  if (workspace.gate === 'no_repo') {
+  if (ws.gate === 'no_repo') {
     return (
       <GuidanceCard>
         <p className="text-sm text-foreground">原稿リポジトリが設定されていません。</p>
@@ -530,6 +664,19 @@ export function VerticalEditor({
                 title="未保存の編集があります"
               />
             )}
+            {charCount !== null && (
+              <span
+                className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground"
+                title={
+                  actualPages !== null
+                    ? 'ページ数はプレビューの組版結果（実測）です'
+                    : 'ページ数は版面（行数×字詰め）からの概算です。プレビュー完了で実測値に置き換わります'
+                }
+              >
+                {charCount.toLocaleString('ja-JP')}字・
+                {actualPages !== null ? `${actualPages}ページ` : `約${estimatePages(charCount, kumi)}ページ`}
+              </span>
+            )}
           </span>
         ) : (
           <span className="text-xs text-muted-foreground">
@@ -537,6 +684,19 @@ export function VerticalEditor({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="書籍設定"
+            title="書籍設定（書誌・章構成・組み設定・奥付）"
+            className="text-muted-foreground"
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Settings />
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setBuildOpen(true)}>
+            入稿ビルド
+          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -576,59 +736,112 @@ export function VerticalEditor({
           <nav
             aria-label="章一覧"
             className={cn(
-              'w-full shrink-0 overflow-y-auto border-border p-2 lg:block lg:w-60 lg:border-r',
+              'flex w-full shrink-0 flex-col overflow-y-auto border-border p-2 lg:flex lg:w-60 lg:border-r',
               selectedPath !== null && 'hidden',
             )}
           >
-            <div className="mb-1 flex items-center justify-between px-2">
-              <span className="text-xs text-muted-foreground">全{chapters.length}章</span>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="新しい章ファイルを作成"
-                className="text-muted-foreground"
-                onClick={() => setNewChapterOpen(true)}
-              >
-                <FilePlus2 />
-              </Button>
-            </div>
-            {chapters.length === 0 ? (
-              <p className="p-2 text-sm text-muted-foreground">
-                manuscripts/ 配下に章ファイル（.md）が見つかりません
-              </p>
-            ) : (
-              <ul className="flex flex-col gap-0.5">
-                {chapters.map((chapter) => (
-                  <li key={chapter.path}>
-                    <button
-                      type="button"
-                      onClick={() => void openChapterFlow(chapter.path)}
-                      aria-current={selectedPath === chapter.path ? 'true' : undefined}
-                      className={cn(
-                        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
-                        selectedPath === chapter.path
-                          ? 'bg-secondary text-secondary-foreground'
-                          : 'text-foreground hover:bg-secondary/50',
-                      )}
-                    >
-                      <FileText className="size-4 shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 break-all">{fileName(chapter.path)}</span>
-                      {(draftPaths.has(chapter.path) ||
-                        (chapter.path === selectedPath && dirty)) && (
-                        <span
-                          className="size-1.5 shrink-0 rounded-full bg-primary"
-                          title="未保存の待避があります"
-                        />
-                      )}
-                      {!chapter.inEntry && (
-                        <span className="ml-auto shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
-                          entry未登録
-                        </span>
-                      )}
-                    </button>
-                  </li>
+            {/* 章一覧／コメント一覧の切替タブ（SPEC-phase3 §3。コメントは章を開いているときのみ） */}
+            {selectedPath !== null && (
+              <div className="mb-1.5 grid grid-cols-2 gap-1 rounded-md bg-muted p-0.5">
+                {(
+                  [
+                    { key: 'chapters', label: '章' },
+                    { key: 'comments', label: `コメント${comments.length > 0 ? ` ${comments.length}` : ''}` },
+                  ] as const
+                ).map((tab) => (
+                  <button
+                    key={tab.key}
+                    type="button"
+                    aria-pressed={sidebarTab === tab.key}
+                    onClick={() => setSidebarTab(tab.key)}
+                    className={cn(
+                      'rounded px-2 py-1 text-xs transition-colors',
+                      sidebarTab === tab.key
+                        ? 'bg-background text-foreground shadow-sm'
+                        : 'text-muted-foreground hover:text-foreground',
+                    )}
+                  >
+                    {tab.label}
+                  </button>
                 ))}
-              </ul>
+              </div>
+            )}
+            {sidebarTab === 'comments' && selectedPath !== null ? (
+              comments.length === 0 ? (
+                <p className="p-2 text-sm text-muted-foreground">
+                  この章にコメントはありません（Cmd/Ctrl+/ で挿入できます）
+                </p>
+              ) : (
+                <ul className="flex flex-col gap-0.5" aria-label="コメント一覧">
+                  {comments.map((comment) => (
+                    <li key={`${comment.from}:${comment.to}`}>
+                      <button
+                        type="button"
+                        onClick={() => jumpToComment(comment)}
+                        className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-secondary/50"
+                      >
+                        <span className="shrink-0 pt-px text-[10px] tabular-nums leading-4 text-muted-foreground">
+                          L{comment.line}
+                        </span>
+                        <span className="min-w-0 break-all">{comment.summary}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : (
+              <>
+                <div className="mb-1 flex items-center justify-between px-2">
+                  <span className="text-xs text-muted-foreground">全{chapters.length}章</span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="新しい章ファイルを作成"
+                    className="text-muted-foreground"
+                    onClick={() => setNewChapterOpen(true)}
+                  >
+                    <FilePlus2 />
+                  </Button>
+                </div>
+                {chapters.length === 0 ? (
+                  <p className="p-2 text-sm text-muted-foreground">
+                    manuscripts/ 配下に章ファイル（.md）が見つかりません
+                  </p>
+                ) : (
+                  <ul className="flex flex-col gap-0.5">
+                    {chapters.map((chapter) => (
+                      <li key={chapter.path}>
+                        <button
+                          type="button"
+                          onClick={() => void openChapterFlow(chapter.path)}
+                          aria-current={selectedPath === chapter.path ? 'true' : undefined}
+                          className={cn(
+                            'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
+                            selectedPath === chapter.path
+                              ? 'bg-secondary text-secondary-foreground'
+                              : 'text-foreground hover:bg-secondary/50',
+                          )}
+                        >
+                          <FileText className="size-4 shrink-0 text-muted-foreground" />
+                          <span className="min-w-0 break-all">{fileName(chapter.path)}</span>
+                          {(draftPaths.has(chapter.path) ||
+                            (chapter.path === selectedPath && dirty)) && (
+                            <span
+                              className="size-1.5 shrink-0 rounded-full bg-primary"
+                              title="未保存の待避があります"
+                            />
+                          )}
+                          {!chapter.inEntry && (
+                            <span className="ml-auto shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
+                              entry未登録
+                            </span>
+                          )}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
             )}
           </nav>
         )}
@@ -666,6 +879,10 @@ export function VerticalEditor({
                       setMerge(null)
                       setRestorePrompt(null)
                       setDirty(false)
+                      setCharCount(null)
+                      setActualPages(null)
+                      setComments([])
+                      setSidebarTab('chapters')
                       setSidebarOpen(true)
                     }}
                   >
@@ -709,14 +926,22 @@ export function VerticalEditor({
                     onDiscardLocal={discardLocalForMerge}
                   />
                 ) : (
-                  <div className="min-h-0 flex-1">
-                    <EditorPane
-                      key={`${selectedPath}:${editorEpoch}`}
-                      initialContent={editorDoc}
-                      onDocChange={onDocChange}
-                      onSaveRequest={requestSave}
+                  <>
+                    <EditorToolbar
+                      viewRef={editorViewRef}
+                      onImageRequest={() => imageInputRef.current?.click()}
                     />
-                  </div>
+                    <div className="min-h-0 flex-1">
+                      <EditorPane
+                        key={`${selectedPath}:${editorEpoch}`}
+                        initialContent={editorDoc}
+                        onDocChange={onDocChange}
+                        onSaveRequest={requestSave}
+                        onImageDrop={setPendingImage}
+                        viewRef={editorViewRef}
+                      />
+                    </div>
+                  </>
                 )}
               </div>
 
@@ -759,6 +984,8 @@ export function VerticalEditor({
                       html={previewHtml}
                       typesetting={typesetting}
                       onLoaded={() => setTypesetting(false)}
+                      // 実ページ数は編集章の部分プレビューのみ反映（全体プレビューは書籍全体の値になるため）
+                      onPageCount={fullPreview ? undefined : setActualPages}
                     />
                   </div>
                 </div>
@@ -782,6 +1009,40 @@ export function VerticalEditor({
         creating={creating}
         onCreate={(name) => void handleCreateChapter(name)}
         onOpenChange={setNewChapterOpen}
+      />
+      <SettingsDialog
+        projectId={projectId}
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onSaved={handleSettingsSaved}
+        onOpenChapter={(path) => void openChapterFlow(path)}
+      />
+      <BuildDialog
+        projectId={projectId}
+        open={buildOpen}
+        dirty={dirty || draftPaths.size > 0}
+        onOpenChange={setBuildOpen}
+      />
+      {/* 種別・キャプションはファイルごとに初期化する（key） */}
+      <ImageUploadDialog
+        key={pendingImage ? `${pendingImage.name}:${pendingImage.lastModified}` : 'none'}
+        file={pendingImage}
+        uploading={uploadingImage}
+        onConfirm={(params) => void confirmImageUpload(params)}
+        onCancel={() => setPendingImage(null)}
+      />
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp,image/gif"
+        className="hidden"
+        aria-hidden="true"
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null
+          if (file) setPendingImage(file)
+          event.target.value = ''
+        }}
       />
     </div>
   )
