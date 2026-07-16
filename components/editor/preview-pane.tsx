@@ -36,25 +36,31 @@ export function PreviewPane({
 
   /**
    * 実ページ数の取得: Viewer は自前ホスト（同一オリジン）なので iframe 内の
-   * ページコンテナ要素を数えられる。組版は非同期に進むため、件数が2回連続で
-   * 一致したら「落ち着いた」とみなして報告する（renderAllPages=true 前提）
+   * ページ番号表示を読める。組版は非同期・段階的に進むため、Viewer のステータスが
+   * complete になるまで待ってから総ページ数を報告する（途中の値で確定させない）
    */
   const startPagePolling = useCallback(() => {
     if (pagePollRef.current) clearInterval(pagePollRef.current)
-    let previous = -1
     let ticks = 0
     pagePollRef.current = setInterval(() => {
       ticks += 1
       const doc = iframeRef.current?.contentDocument
-      const count = doc?.querySelectorAll('[data-vivliostyle-page-container]').length ?? 0
-      // 最長30秒で打ち切り（巨大原稿・組版失敗時にポーリングを残さない）
-      if ((count > 0 && count === previous) || ticks >= 60) {
+      const status = doc
+        ?.querySelector('[data-vivliostyle-viewer-viewport]')
+        ?.getAttribute('data-vivliostyle-viewer-status')
+      if (status === 'complete') {
+        // Viewer は表示外ページを間引くことがあるため、コンテナ数でなく総ページ表示を読む
+        const total = Number(doc?.querySelector('#vivliostyle-total-pages')?.textContent ?? '')
         if (pagePollRef.current) clearInterval(pagePollRef.current)
         pagePollRef.current = null
-        if (count > 0) onPageCountRef.current?.(count)
+        if (Number.isInteger(total) && total > 0) onPageCountRef.current?.(total)
         return
       }
-      previous = count
+      // 最長60秒で打ち切り（巨大原稿・組版失敗時にポーリングを残さない）
+      if (ticks >= 120) {
+        if (pagePollRef.current) clearInterval(pagePollRef.current)
+        pagePollRef.current = null
+      }
     }, 500)
   }, [])
 
