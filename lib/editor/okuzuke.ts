@@ -48,16 +48,19 @@ export function replaceOkuzuke(
   params: { dateText: string | null; fields: { label: OkuzukeLabel; value: string }[] },
 ): string | null {
   let result = markdown
+  // 置換は関数形式にする（値の `$` 系シーケンスをテンプレート展開させない。
+  // security-review 2026-07-16 L-1）
   for (const { label, value } of params.fields) {
     if (/[<>&\n]/.test(value)) return null
     const regex = fieldRegex(label)
     if (!regex.test(result)) return null
-    result = result.replace(regex, `<dt>${label}</dt><dd>${value}</dd>`)
+    result = result.replace(regex, () => `<dt>${label}</dt><dd>${value}</dd>`)
   }
   if (params.dateText !== null) {
-    if (/[<>&\n]/.test(params.dateText)) return null
+    const dateText = params.dateText
+    if (/[<>&\n]/.test(dateText)) return null
     if (!DATE_LINE.test(result)) return null
-    result = result.replace(DATE_LINE, `${params.dateText}　初版発行`)
+    result = result.replace(DATE_LINE, () => `${dateText}　初版発行`)
   }
   return result
 }

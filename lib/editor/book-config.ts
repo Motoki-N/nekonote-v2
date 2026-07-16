@@ -40,7 +40,9 @@ export function replaceStringValue(source: string, key: BiblioKey, value: string
   if (/['"`\n\\]/.test(value)) return null
   const regex = new RegExp(`(\\b${key}\\s*:\\s*)(['"\`])[^'"\`\\n]*\\2`)
   if (!regex.test(source)) return null
-  return source.replace(regex, `$1$2${value}$2`)
+  // 置換は関数形式にする（値に `$&` 等が含まれても置換テンプレート展開されない。
+  // security-review 2026-07-16 L-1）
+  return source.replace(regex, (_whole, prefix: string, quote: string) => `${prefix}${quote}${value}${quote}`)
 }
 
 /** entry 配列の1要素（文字列リテラル＝章、その他＝目次差し込み等の表示専用要素） */
@@ -101,9 +103,10 @@ export function replaceEntryItems(source: string, newItems: string[]): string | 
   const indent = indentMatch ? indentMatch[1] : '    '
   const closeIndent = indent.length >= 2 ? indent.slice(0, indent.length - 2) : ''
   const body = newItems.map((item) => `${indent}${item},`).join('\n')
+  // 関数形式で `$` 系の置換テンプレート展開を防ぐ（security-review 2026-07-16 L-1）
   return source.replace(
     /\bentry\s*:\s*\[[\s\S]*?\]/,
-    `entry: [\n${body}\n${closeIndent}]`,
+    () => `entry: [\n${body}\n${closeIndent}]`,
   )
 }
 
@@ -127,7 +130,8 @@ export function replaceCssVar(css: string, name: KumiVarName, value: string): st
   if (/[;{}\n]/.test(value)) return null
   const regex = new RegExp(`(${name}\\s*:\\s*)[^;\\n]+(;)`)
   if (!regex.test(css)) return null
-  return css.replace(regex, `$1${value}$2`)
+  // 関数形式で `$` 系の置換テンプレート展開を防ぐ（security-review 2026-07-16 L-1）
+  return css.replace(regex, (_whole, prefix: string, semi: string) => `${prefix}${value}${semi}`)
 }
 
 /** リポジトリルート基準でパスを結合する（`.`/`..`/空セグメントを正規化。ルート外は null） */
