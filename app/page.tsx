@@ -116,6 +116,12 @@ export default async function Home({
               size="sm"
               variant="outline"
               nativeButton={false}
+              render={<Link href="/atelier">アトリエ</Link>}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              nativeButton={false}
               render={<Link href="/projects">プロジェクト一覧</Link>}
             />
             <Button size="sm" nativeButton={false} render={<Link href="/notes">ノートをひらく</Link>} />
