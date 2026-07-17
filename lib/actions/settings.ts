@@ -10,10 +10,11 @@ import type { ActionResult } from '@/lib/errors'
 import { verifyToken } from '@/lib/git/github'
 import { resolveReviewerPersona } from '@/lib/review-validation'
 import {
-  aiCapabilities,
   aiProviders,
+  modelCapabilities,
   type AiCapability,
   type AiProvider,
+  type ModelCapability,
   type PersonaType,
   type ReferenceScope,
   type TargetPhase,
@@ -130,7 +131,7 @@ export async function deleteGithubPat(): Promise<ActionResult> {
 // ========================================
 
 export type AiModelSettingRow = {
-  capability: AiCapability
+  capability: ModelCapability
   provider: AiProvider
   modelId: string
   /** ユーザー行あり（false = DEFAULT_MODEL_MAP 表示） */
@@ -144,7 +145,7 @@ export type AiModelSettingsData = {
   /** プロバイダAPIキーの設定有無（サーバー判定。警告バッジ用） */
   keyConfigured: Record<AiProvider, boolean>
   /** 「デフォルトに戻す」後の表示用（DEFAULT_MODEL_MAP はサーバー専用モジュールのため渡す） */
-  defaults: Record<AiCapability, { provider: AiProvider; modelId: string }>
+  defaults: Record<ModelCapability, { provider: AiProvider; modelId: string }>
 }
 
 export async function getAiModelSettings(): Promise<ActionResult<AiModelSettingsData>> {
@@ -162,9 +163,9 @@ export async function getAiModelSettings(): Promise<ActionResult<AiModelSettings
     if (personasResult.error) throw new AppError('internal', personasResult.error.message)
 
     const userRows = new Map(
-      (settingsResult.data ?? []).map((row) => [row.capability as AiCapability, row]),
+      (settingsResult.data ?? []).map((row) => [row.capability as ModelCapability, row]),
     )
-    const rows: AiModelSettingRow[] = aiCapabilities.map((capability) => {
+    const rows: AiModelSettingRow[] = modelCapabilities.map((capability) => {
       const userRow = userRows.get(capability)
       return {
         capability,
@@ -182,7 +183,7 @@ export async function getAiModelSettings(): Promise<ActionResult<AiModelSettings
     ) as Record<AiProvider, boolean>
 
     const defaults = Object.fromEntries(
-      aiCapabilities.map((capability) => [
+      modelCapabilities.map((capability) => [
         capability,
         {
           provider: DEFAULT_MODEL_MAP[capability].provider,
@@ -217,9 +218,9 @@ export async function upsertAiModelSetting(input: AiModelSettingInput): Promise<
 }
 
 /** 「デフォルトに戻す」= ユーザー行の削除（DEFAULT_MODEL_MAP に戻る） */
-export async function deleteAiModelSetting(capability: AiCapability): Promise<ActionResult> {
+export async function deleteAiModelSetting(capability: ModelCapability): Promise<ActionResult> {
   try {
-    const parsed = z.enum(aiCapabilities).parse(capability)
+    const parsed = z.enum(modelCapabilities).parse(capability)
     const supabase = await createClient()
     const { error } = await supabase.from('ai_model_settings').delete().eq('capability', parsed)
     if (error) throw new AppError('internal', error.message)

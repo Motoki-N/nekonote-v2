@@ -146,6 +146,63 @@ export type Database = {
           },
         ]
       }
+      illustrations: {
+        Row: {
+          created_at: string
+          id: string
+          kind: string
+          project_id: string
+          prompt: string
+          reference_illustration_id: string | null
+          request: Json
+          storage_path: string
+          title: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          kind: string
+          project_id: string
+          prompt: string
+          reference_illustration_id?: string | null
+          request: Json
+          storage_path: string
+          title: string
+          updated_at?: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          kind?: string
+          project_id?: string
+          prompt?: string
+          reference_illustration_id?: string | null
+          request?: Json
+          storage_path?: string
+          title?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "illustrations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "illustrations_reference_illustration_id_fkey"
+            columns: ["reference_illustration_id"]
+            isOneToOne: false
+            referencedRelation: "illustrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       manuscript_links: {
         Row: {
           created_at: string

@@ -1,9 +1,9 @@
 import { z } from 'zod'
-import { aiCapabilities, aiProviders } from './enums'
+import { aiProviders, modelCapabilities } from './enums'
 
 // 能力レベル → 実モデルのマッピング（1ユーザーにつき capability ごとに1行）
 export const aiModelSettingInputSchema = z.object({
-  capability: z.enum(aiCapabilities),
+  capability: z.enum(modelCapabilities),
   provider: z.enum(aiProviders),
   model_id: z.string().min(1, 'モデルIDを入力してください'),
 })
