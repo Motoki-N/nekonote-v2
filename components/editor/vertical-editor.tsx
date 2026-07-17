@@ -11,6 +11,7 @@ import {
   Loader2,
   PanelLeft,
   PanelRight,
+  PictureInPicture2,
   Save,
   Settings,
   SpellCheck,
@@ -41,6 +42,8 @@ import {
 import type { Draft } from '@/lib/editor/draft-store'
 import { fileToBase64, illustNotation, sanitizeImageFileName } from '@/lib/editor/image'
 import { buildPreviewHtml } from '@/lib/editor/preview'
+import { detachedPreviewUrl, previewChannelName } from '@/lib/editor/preview-channel'
+import type { PreviewChannelMessage } from '@/lib/editor/preview-channel'
 import { countManuscriptChars, estimatePages, extractKumiSettings } from '@/lib/editor/word-count'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
@@ -120,6 +123,10 @@ export function VerticalEditor({
   const [fullPreviewLoading, setFullPreviewLoading] = useState(false)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [previewOpen, setPreviewOpen] = useState(true)
+  /** プレビューを別ウィンドウへ分離中か（Issue #72。分離中はインラインのプレビューを畳む） */
+  const [detached, setDetached] = useState(false)
+  /** 分離窓からの ready（初回・リロード）で現在のHTMLを送り直すためのトリガー */
+  const [resendTick, setResendTick] = useState(0)
   const [ratio, setRatio] = useState(0.5)
   const [dragging, setDragging] = useState(false)
   /** 本文の字数（コメント・記法除外。SPEC-phase3 §5）。null は章未選択 */
@@ -139,6 +146,10 @@ export function VerticalEditor({
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const splitRef = useRef<HTMLDivElement>(null)
+  const popupRef = useRef<Window | null>(null)
+  const channelRef = useRef<BroadcastChannel | null>(null)
+  /** previewHtml と対になる表示名（組版時点で確定。章切替中に古いHTMLへ新タイトルが付くのを防ぐ） */
+  const previewTitleRef = useRef('プレビュー')
   const editorViewRef = useRef<EditorView | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
 
@@ -227,6 +238,7 @@ export function VerticalEditor({
       origin: window.location.origin,
       assetUrl,
     })
+    previewTitleRef.current = fileName(current.path)
     setPreviewHtml(html)
     setTypesetting(true)
     setFullPreview(false)
@@ -481,6 +493,7 @@ export function VerticalEditor({
         origin: window.location.origin,
         assetUrl,
       })
+      previewTitleRef.current = '全体プレビュー'
       setPreviewHtml(html)
       setTypesetting(true)
       setFullPreview(true)
@@ -611,6 +624,80 @@ export function VerticalEditor({
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
   }, [])
+
+  // ---- プレビューの別ウィンドウ分離（Issue #72） ----
+
+  // 分離窓との通信チャンネル。窓のリロード時の ready も拾えるよう、常時張っておく
+  useEffect(() => {
+    const channel = new BroadcastChannel(previewChannelName(projectId))
+    channelRef.current = channel
+    channel.onmessage = (event: MessageEvent<PreviewChannelMessage>) => {
+      const message = event.data
+      if (message.type === 'ready') {
+        // 窓側の準備完了（URL直開き・リロード含む）→ 分離モードにして現在のHTMLを送る
+        setDetached(true)
+        setResendTick((tick) => tick + 1)
+      } else if (message.type === 'pages') {
+        // 実ページ数は編集章の部分プレビューのみ反映（インライン時と同じ条件）
+        if (!message.full) setActualPages(message.total)
+      } else if (message.type === 'closed') {
+        setDetached(false)
+      }
+    }
+    // リロード等で開いたままの分離窓があれば再接続させる（窓が ready を返す）
+    channel.postMessage({ type: 'hello' } satisfies PreviewChannelMessage)
+    return () => {
+      channel.close()
+      channelRef.current = null
+      // エディタを離れたら分離窓も閉じる（宙に浮いた古いプレビューを残さない）
+      popupRef.current?.close()
+      popupRef.current = null
+    }
+  }, [projectId])
+
+  // 分離中はプレビューHTMLの更新を窓へ送る（再組版は窓側の Viewer が行う）
+  useEffect(() => {
+    if (!detached || previewHtml === null) return
+    channelRef.current?.postMessage({
+      type: 'document',
+      html: previewHtml,
+      full: fullPreview,
+      title: previewTitleRef.current,
+    } satisfies PreviewChannelMessage)
+  }, [detached, previewHtml, fullPreview, resendTick])
+
+  // pagehide が飛ばない閉じ方（プロセス終了等）への保険として閉窓をポーリング検知
+  useEffect(() => {
+    if (!detached) return
+    const timer = setInterval(() => {
+      if (popupRef.current?.closed) {
+        popupRef.current = null
+        setDetached(false)
+      }
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [detached])
+
+  const toggleDetachedPreview = useCallback(() => {
+    if (detached) {
+      popupRef.current?.close()
+      popupRef.current = null
+      setDetached(false)
+      return
+    }
+    // 同名ウィンドウは再利用される（多重に開かない）。popup 指定でタブでなく独立ウィンドウに
+    const popup = window.open(
+      detachedPreviewUrl(projectId),
+      `nekonote-preview-${projectId}`,
+      'popup=yes,width=900,height=1000',
+    )
+    if (!popup) {
+      toast.error('ポップアップがブロックされました。ブラウザの設定で許可してください')
+      return
+    }
+    popupRef.current = popup
+    setDetached(true)
+  }, [detached, projectId])
 
   // ---- 前提未達（repo/PAT）の誘導表示（原稿タブと同じ作法） ----
   if (workspaceError) {
@@ -747,15 +834,33 @@ export function VerticalEditor({
             )}
             全体プレビュー
           </Button>
+          {/* プレビューの別ウィンドウ分離（Issue #72）。狭い画面＋外部ディスプレイの
+              使い方が主目的なので、インラインプレビューと違い lg 未満でも出す */}
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label={previewOpen ? 'プレビューを隠す' : 'プレビューを表示'}
-            className="hidden text-muted-foreground lg:inline-flex"
-            onClick={() => setPreviewOpen((open) => !open)}
+            aria-label={
+              detached ? 'プレビューをこのウィンドウに戻す' : 'プレビューを別ウィンドウで開く'
+            }
+            title={
+              detached ? 'プレビューをこのウィンドウに戻す' : 'プレビューを別ウィンドウで開く'
+            }
+            className={cn('text-muted-foreground', detached && 'text-primary')}
+            onClick={toggleDetachedPreview}
           >
-            <PanelRight />
+            <PictureInPicture2 />
           </Button>
+          {!detached && (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={previewOpen ? 'プレビューを隠す' : 'プレビューを表示'}
+              className="hidden text-muted-foreground lg:inline-flex"
+              onClick={() => setPreviewOpen((open) => !open)}
+            >
+              <PanelRight />
+            </Button>
+          )}
           <Button
             size="sm"
             disabled={!selectedPath || !dirty || saving || merge !== null}
@@ -899,7 +1004,11 @@ export function VerticalEditor({
             <>
               <div
                 className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-none"
-                style={previewOpen ? { flexBasis: `${ratio * 100}%` } : { flexBasis: '100%' }}
+                style={
+                  previewOpen && !detached
+                    ? { flexBasis: `${ratio * 100}%` }
+                    : { flexBasis: '100%' }
+                }
               >
                 {/* モバイル: 一覧へ戻る */}
                 <div className="flex items-center gap-2 border-b border-border px-2 py-1 lg:hidden">
@@ -983,7 +1092,7 @@ export function VerticalEditor({
               </div>
 
               {/* 比率ドラッグ用の仕切り（デスクトップのみ） */}
-              {previewOpen && (
+              {previewOpen && !detached && (
                 <div
                   role="separator"
                   aria-orientation="vertical"
@@ -993,7 +1102,7 @@ export function VerticalEditor({
                 />
               )}
 
-              {previewOpen && (
+              {previewOpen && !detached && (
                 <div
                   className={cn(
                     'hidden min-h-0 min-w-0 flex-1 flex-col border-border lg:flex',
