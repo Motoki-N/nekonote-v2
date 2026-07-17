@@ -1,12 +1,9 @@
-import Link from "next/link";
-
 import {
   getAiModelSettings,
   getGithubConnection,
   listPersonas,
   listReviewProfiles,
 } from "@/lib/actions/settings";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { GithubConnection } from "@/components/settings/github-connection";
 import { ModelSettings } from "@/components/settings/model-settings";
 import { PersonaList } from "@/components/settings/persona-list";
@@ -23,14 +20,8 @@ export default async function SettingsPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-lg font-semibold text-foreground">
-            🐱
-          </Link>
-          <h1 className="text-lg font-semibold text-foreground">設定</h1>
-        </div>
-        <ThemeToggle />
+      <header className="flex items-center border-b border-border px-4 py-3 sm:px-6">
+        <h1 className="text-lg font-semibold text-foreground">設定</h1>
       </header>
 
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-4 sm:p-6">

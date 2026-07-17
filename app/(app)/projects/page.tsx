@@ -1,9 +1,5 @@
-import Link from "next/link";
-
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectStatus, ProposalStatus } from "@/lib/schemas/enums";
-import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { ProjectCard, type ProjectListItem } from "@/components/projects/project-card";
 import { CreateProjectDialog } from "@/components/projects/project-form-dialog";
 
@@ -35,22 +31,8 @@ export default async function ProjectsPage() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-lg font-semibold text-foreground">
-            🐱
-          </Link>
-          <h1 className="text-lg font-semibold text-foreground">プロジェクト</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            nativeButton={false}
-            render={<Link href="/notes">ノート</Link>}
-          />
-          <CreateProjectDialog workingTitleTags={workingTitleTags ?? []} />
-          <ThemeToggle />
-        </div>
+        <h1 className="text-lg font-semibold text-foreground">プロジェクト</h1>
+        <CreateProjectDialog workingTitleTags={workingTitleTags ?? []} />
       </header>
 
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4 sm:p-6">

@@ -1,7 +1,4 @@
-import Link from "next/link";
-
 import { createClient } from "@/lib/supabase/server";
-import { ThemeToggle } from "@/components/theme-toggle";
 import {
   AtelierWorkspace,
   type AtelierProject,
@@ -35,14 +32,8 @@ export default async function AtelierPage() {
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-lg font-semibold text-foreground">
-            🐱
-          </Link>
-          <h1 className="text-lg font-semibold text-foreground">アトリエ</h1>
-        </div>
-        <ThemeToggle />
+      <header className="flex items-center border-b border-border px-4 py-3 sm:px-6">
+        <h1 className="text-lg font-semibold text-foreground">アトリエ</h1>
       </header>
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-4 sm:p-6">

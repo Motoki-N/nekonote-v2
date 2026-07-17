@@ -9,6 +9,8 @@ import {
   FileText,
   Info,
   Loader2,
+  Maximize2,
+  Minimize2,
   PanelLeft,
   PanelRight,
   PictureInPicture2,
@@ -47,6 +49,7 @@ import type { PreviewChannelMessage } from '@/lib/editor/preview-channel'
 import { countManuscriptChars, estimatePages, extractKumiSettings } from '@/lib/editor/word-count'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
+import { useChrome } from '@/components/layout/app-chrome'
 import { BuildDialog } from '@/components/editor/build-dialog'
 import { EditorPane } from '@/components/editor/editor-pane'
 import { EditorToolbar } from '@/components/editor/editor-toolbar'
@@ -139,6 +142,26 @@ export function VerticalEditor({
   /** 画像アップロードの対象（D&D またはツールバーから。SPEC-phase3 §6） */
   const [pendingImage, setPendingImage] = useState<File | null>(null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  /** 集中モード: 入力ペイン（＋開いていればプレビュー）以外のクロームをすべて隠す */
+  const [focusMode, setFocusMode] = useState(false)
+
+  const { setHidden: setChromeHidden } = useChrome()
+
+  // グローバルナビ＋プロジェクトヘッダーの表示を集中モードに同期（離脱時は必ず復帰させる）
+  useEffect(() => {
+    setChromeHidden(focusMode)
+    return () => setChromeHidden(false)
+  }, [focusMode, setChromeHidden])
+
+  // Esc で集中モードを解除
+  useEffect(() => {
+    if (!focusMode) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setFocusMode(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [focusMode])
 
   const currentRef = useRef<CurrentChapter | null>(null)
   const contentRef = useRef('')
@@ -749,9 +772,40 @@ export function VerticalEditor({
   const selectedName = selectedPath ? fileName(selectedPath) : null
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative flex min-h-0 flex-1 flex-col">
+      {/* 集中モード中のフローティング操作（半透明。Escでも解除できる） */}
+      {focusMode && (
+        <div className="absolute right-3 top-3 z-40 flex items-center gap-1.5 rounded-md border border-border bg-background/80 p-1 shadow-sm backdrop-blur">
+          {dirty && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={!selectedPath || saving || merge !== null}
+              onClick={requestSave}
+            >
+              <Save data-icon="inline-start" />
+              保存
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="集中モードを終了（Esc）"
+            title="集中モードを終了（Esc）"
+            className="text-muted-foreground"
+            onClick={() => setFocusMode(false)}
+          >
+            <Minimize2 />
+          </Button>
+        </div>
+      )}
       {/* エディタツールバー */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-1.5">
+      <div
+        className={cn(
+          'flex flex-wrap items-center gap-2 border-b border-border px-3 py-1.5',
+          focusMode && 'hidden',
+        )}
+      >
         <Button
           variant="ghost"
           size="icon-sm"
@@ -861,6 +915,18 @@ export function VerticalEditor({
               <PanelRight />
             </Button>
           )}
+          {/* 集中モード: ナビ・ヘッダー・章一覧・ツールバーを隠して執筆に専念する */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="集中モード（入力ペインのみを表示）"
+            title="集中モード（Escで解除）"
+            className="text-muted-foreground"
+            disabled={selectedPath === null}
+            onClick={() => setFocusMode(true)}
+          >
+            <Maximize2 />
+          </Button>
           <Button
             size="sm"
             disabled={!selectedPath || !dirty || saving || merge !== null}
@@ -873,8 +939,8 @@ export function VerticalEditor({
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {/* 章一覧サイドバー（SPEC §3.3） */}
-        {sidebarOpen && (
+        {/* 章一覧サイドバー（SPEC §3.3。集中モード中は隠す） */}
+        {sidebarOpen && !focusMode && (
           <nav
             aria-label="章一覧"
             className={cn(
@@ -1010,8 +1076,13 @@ export function VerticalEditor({
                     : { flexBasis: '100%' }
                 }
               >
-                {/* モバイル: 一覧へ戻る */}
-                <div className="flex items-center gap-2 border-b border-border px-2 py-1 lg:hidden">
+                {/* モバイル: 一覧へ戻る（集中モード中は隠す） */}
+                <div
+                  className={cn(
+                    'flex items-center gap-2 border-b border-border px-2 py-1 lg:hidden',
+                    focusMode && 'hidden',
+                  )}
+                >
                   <Button
                     variant="ghost"
                     size="icon-sm"
