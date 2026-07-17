@@ -376,3 +376,117 @@ export function buildDeepDivePrompt({
     '"""',
   ].join('\n')
 }
+
+// ========================================
+// イラストレーター（SPEC-illustrator §5.3）
+// ========================================
+
+export type IllustrationRequestContext = {
+  kindLabel: string
+  colorModeLabel: string
+  aspectRatio: string
+  instructions: string
+  sceneNote: string | null
+  /** 参照画像の元プロンプト（参照画像つき依頼のとき。画像そのものは生成時に添付される） */
+  referencePrompt: string | null
+}
+
+export type ManuscriptFileContext = {
+  path: string
+  content: string
+}
+
+/**
+ * イラスト案出し（第1段階）の system プロンプト。
+ * ペルソナの口調（personas.description）＋案出しの仕事の定義を組み立てる
+ */
+export function buildIllustrationProposeSystemPrompt({
+  personaDescription,
+}: {
+  personaDescription: string
+}): string {
+  return [
+    personaDescription,
+    '',
+    '# 今回の仕事: イラスト案の提案',
+    '渡された資料（企画書・設定資料・原稿）と依頼内容を読み、雰囲気や構図の異なるイラスト案を2〜3案提案する。',
+    '',
+    '## 各案に含めるもの',
+    '- title: 案の短いタイトル（15字以内）',
+    '- description: 狙いの説明。何をどう描き、なぜこの作品に合うのか（100〜200字）',
+    '- imagePrompt: 画像生成モデルに渡すプロンプト（日本語）',
+    '',
+    '## imagePrompt の書き方',
+    '- 画像生成モデルは資料を読めない。プロンプト単体で完結させること。登場人物や場所の固有名詞は、資料から読み取った具体的な外見・情景の描写に展開する',
+    '- 被写体・構図・光・色調・画風・雰囲気を具体的に書く',
+    '- 依頼のカラー/モノクロ指定を必ず含める（モノクロなら「モノクロ、白黒」と明記する）',
+    '- 本文に書かれた外見・情景の描写と矛盾させない。書かれていない部分は作品のトーンから補う',
+    '- 参照画像つきの依頼では、生成時にその画像が添付される。参照画像の何を保つか（人物の顔立ち・画風など）と何を変えるかをプロンプトに明記する',
+  ].join('\n')
+}
+
+/**
+ * イラスト案出しの user 入力。
+ * 依頼内容＋種別ごとの参照資料（SPEC §5.2: 表紙・コンセプト=企画書一式＋原稿全文 /
+ * キャラクター=企画書一式 / 挿絵=対象原稿ファイル）
+ */
+export function buildIllustrationProposeInput({
+  request,
+  proposal,
+  notes,
+  manuscriptFiles,
+}: {
+  request: IllustrationRequestContext
+  proposal: ProposalContext | null
+  notes: NoteContext[]
+  manuscriptFiles: ManuscriptFileContext[]
+}): string {
+  const lines: string[] = [
+    '# 依頼内容',
+    `種別: ${request.kindLabel}`,
+    `色: ${request.colorModeLabel}`,
+    `縦横比: ${request.aspectRatio}`,
+    '描いてほしい内容:',
+    '"""',
+    request.instructions,
+    '"""',
+  ]
+  if (request.sceneNote) {
+    lines.push('場面の補足:', '"""', request.sceneNote, '"""')
+  }
+  if (request.referencePrompt !== null) {
+    lines.push(
+      '参照画像: あり（生成時に添付される）。参照画像を作ったときのプロンプト:',
+      '"""',
+      request.referencePrompt || '（不明）',
+      '"""',
+    )
+  }
+
+  if (proposal) {
+    lines.push('', ...proposalSection(proposal))
+    lines.push('', '# 紐づけノート（設定資料）')
+    if (notes.length === 0) {
+      lines.push('（紐づけノートなし）')
+    } else {
+      for (const note of notes) {
+        lines.push(
+          `## ${note.title || '（無題）'}`,
+          '"""',
+          note.content || '（本文なし）',
+          '"""',
+          '',
+        )
+      }
+    }
+  }
+
+  if (manuscriptFiles.length > 0) {
+    lines.push('', '# 原稿')
+    for (const file of manuscriptFiles) {
+      lines.push(`## ${file.path}`, '"""', file.content, '"""', '')
+    }
+  }
+
+  return lines.join('\n')
+}

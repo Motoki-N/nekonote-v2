@@ -123,8 +123,9 @@ create table public.illustrations (
   updated_at timestamptz not null default now() -- タイトル編集用（set_updated_at トリガー）
 );
 
--- 4) Storage: 非公開バケット 'illustrations'。
---    パスは {user_id}/{illustration_id}.png。storage.objects に所有者のみの
+-- 4) Storage: 非公開バケット 'illustrations'（png/jpeg/webp・10MB上限。
+--    出力形式はモデル依存のため決め打ちにしない）。
+--    パスは {user_id}/{illustration_id}.{拡張子}。storage.objects に所有者のみの
 --    select / insert / delete ポリシー（RLS）を定義する
 ```
 
