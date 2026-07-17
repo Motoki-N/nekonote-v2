@@ -25,6 +25,13 @@ export type Emotion = (typeof emotions)[number]
 export const aiCapabilities = ['high', 'medium', 'low'] as const
 export type AiCapability = (typeof aiCapabilities)[number]
 
+// ai_model_settings 専用の能力枠（ペルソナには 'image' を割り当てない。SPEC-illustrator §5.1）
+export const modelCapabilities = [...aiCapabilities, 'image'] as const
+export type ModelCapability = (typeof modelCapabilities)[number]
+
+export const illustrationKinds = ['cover', 'insert', 'character', 'concept'] as const
+export type IllustrationKind = (typeof illustrationKinds)[number]
+
 export const referenceScopes = [
   'all',
   'manuscript_only',
@@ -33,7 +40,7 @@ export const referenceScopes = [
 ] as const
 export type ReferenceScope = (typeof referenceScopes)[number]
 
-export const personaTypes = ['reviewer', 'conversational'] as const
+export const personaTypes = ['reviewer', 'conversational', 'illustrator'] as const
 export type PersonaType = (typeof personaTypes)[number]
 
 export const targetPhases = [

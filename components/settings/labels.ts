@@ -1,6 +1,6 @@
 import type {
-  AiCapability,
   AiProvider,
+  ModelCapability,
   PersonaType,
   ReferenceScope,
   TargetPhase,
@@ -8,10 +8,11 @@ import type {
 
 // 設定画面の列挙値ラベル（SPEC-dashboard-critique-settings §3.4）
 
-export const CAPABILITY_LABEL: Record<AiCapability, string> = {
+export const CAPABILITY_LABEL: Record<ModelCapability, string> = {
   high: "高精度",
   medium: "標準",
   low: "軽量",
+  image: "画像生成",
 };
 
 export const PROVIDER_LABEL: Record<AiProvider, string> = {
@@ -30,6 +31,7 @@ export const REFERENCE_SCOPE_LABEL: Record<ReferenceScope, string> = {
 export const PERSONA_TYPE_LABEL: Record<PersonaType, string> = {
   reviewer: "レビュアー",
   conversational: "対話型",
+  illustrator: "イラストレーター",
 };
 
 export const TARGET_PHASE_LABEL: Record<TargetPhase, string> = {

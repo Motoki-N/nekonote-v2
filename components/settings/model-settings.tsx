@@ -9,7 +9,7 @@ import {
   upsertAiModelSetting,
   type AiModelSettingsData,
 } from "@/lib/actions/settings";
-import type { AiCapability, AiProvider } from "@/lib/schemas/enums";
+import type { AiProvider, ModelCapability } from "@/lib/schemas/enums";
 import { aiProviders } from "@/lib/schemas/enums";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,21 +28,21 @@ type RowState = {
  * 「デフォルトに戻す」= 行削除。キー未設定プロバイダには警告バッジ（サーバー判定の boolean のみ）
  */
 export function ModelSettings({ data }: { data: AiModelSettingsData }) {
-  const [rows, setRows] = useState<Record<AiCapability, RowState>>(() =>
+  const [rows, setRows] = useState<Record<ModelCapability, RowState>>(() =>
     Object.fromEntries(
       data.rows.map((row) => [
         row.capability,
         { provider: row.provider, modelId: row.modelId, isCustom: row.isCustom },
       ]),
-    ) as Record<AiCapability, RowState>,
+    ) as Record<ModelCapability, RowState>,
   );
-  const [busyCapability, setBusyCapability] = useState<AiCapability | null>(null);
+  const [busyCapability, setBusyCapability] = useState<ModelCapability | null>(null);
 
-  function setRow(capability: AiCapability, patch: Partial<RowState>) {
+  function setRow(capability: ModelCapability, patch: Partial<RowState>) {
     setRows((prev) => ({ ...prev, [capability]: { ...prev[capability], ...patch } }));
   }
 
-  async function handleSave(capability: AiCapability) {
+  async function handleSave(capability: ModelCapability) {
     const row = rows[capability];
     if (busyCapability || row.modelId.trim() === "") return;
     setBusyCapability(capability);
@@ -63,7 +63,7 @@ export function ModelSettings({ data }: { data: AiModelSettingsData }) {
     }
   }
 
-  async function handleReset(capability: AiCapability) {
+  async function handleReset(capability: ModelCapability) {
     if (busyCapability) return;
     setBusyCapability(capability);
     try {
