@@ -45,6 +45,8 @@ export function ManuscriptWorkspace({
   const [panelOpen, setPanelOpen] = useState(false);
   // 講評パネル（作品全体対象。ファイルを開いていなくても使える）。校正パネルと排他表示
   const [critiqueOpen, setCritiqueOpen] = useState(false);
+  // 提案カードクリックによる該当箇所ハイライト。nonce は同じカードの再クリックでも再スクロールさせるため
+  const [highlight, setHighlight] = useState<{ text: string; nonce: number } | null>(null);
 
   // 本文の取得のみ（先頭 await まで同期 setState なし＝初期表示の effect からも呼べる）
   const loadFile = useCallback(
@@ -69,6 +71,7 @@ export function ManuscriptWorkspace({
       setSelectedPath(path);
       setLoading(true);
       setFileError(null);
+      setHighlight(null);
       await loadFile(path);
     },
     [loadFile],
@@ -106,6 +109,20 @@ export function ManuscriptWorkspace({
       );
     },
     [],
+  );
+
+  // 提案カードクリック → 該当箇所へスクロール＆ハイライト（Issue #71）。
+  // 原文抜粋が本文に見つからない提案（適用不能）はジャンプできない旨を通知する
+  const handleLocate = useCallback(
+    (originalText: string) => {
+      if (!file) return;
+      if (originalText === "" || !file.content.includes(originalText)) {
+        toast.error("該当箇所が原稿内に見つかりません（原稿が更新された可能性があります）");
+        return;
+      }
+      setHighlight((prev) => ({ text: originalText, nonce: (prev?.nonce ?? 0) + 1 }));
+    },
+    [file],
   );
 
   if (treeError) {
@@ -299,7 +316,7 @@ export function ManuscriptWorkspace({
             ) : (
               file && (
                 <div className="mx-auto w-full max-w-2xl flex-1 whitespace-pre-wrap p-4 text-[15px] leading-7 text-foreground sm:p-6">
-                  {file.content}
+                  <ManuscriptBody content={file.content} highlight={highlight} />
                 </div>
               )
             )}
@@ -314,6 +331,7 @@ export function ManuscriptWorkspace({
           content={file.content}
           suggestions={file.suggestions}
           onUpdateStatus={handleUpdateSuggestion}
+          onLocate={handleLocate}
           onCompleted={refreshFile}
           onClose={() => setPanelOpen(false)}
         />
@@ -322,6 +340,37 @@ export function ManuscriptWorkspace({
       {critiqueOpen && <CritiquePanel projectId={projectId} onClose={() => setCritiqueOpen(false)} />}
       </div>
     </div>
+  );
+}
+
+/**
+ * 原稿本文の表示。ハイライト指定があれば該当箇所（最初の出現）を <mark> で挟み、
+ * スクロールして見せる（Issue #71）。見つからない場合は本文をそのまま表示する
+ */
+function ManuscriptBody({
+  content,
+  highlight,
+}: {
+  content: string;
+  highlight: { text: string; nonce: number } | null;
+}) {
+  const markRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    // highlight（nonce）が変わるたびに該当箇所へスクロールする。
+    // block: "start" ＋ scroll-mt で、モバイルのボトムシート（下65dvh）に隠れない位置に出す
+    markRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [highlight]);
+
+  const idx = highlight === null ? -1 : content.indexOf(highlight.text);
+  if (highlight === null || idx === -1) return <>{content}</>;
+  return (
+    <>
+      {content.slice(0, idx)}
+      <mark ref={markRef} className="scroll-mt-24 rounded-sm bg-primary/20 text-foreground">
+        {highlight.text}
+      </mark>
+      {content.slice(idx + highlight.text.length)}
+    </>
   );
 }
 

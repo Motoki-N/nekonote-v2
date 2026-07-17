@@ -65,6 +65,7 @@ export function ProofreadPanel({
   content,
   suggestions,
   onUpdateStatus,
+  onLocate,
   onCompleted,
   onClose,
 }: {
@@ -75,6 +76,8 @@ export function ProofreadPanel({
   suggestions: SuggestionRecord[];
   /** 受入/拒否/保留の状態変更（親が提案一覧を更新する） */
   onUpdateStatus: (id: string, status: SuggestionStatus) => Promise<void>;
+  /** カードクリックで原稿の該当箇所へスクロール＆ハイライト（Issue #71） */
+  onLocate: (originalText: string) => void;
   /** 校正完了・コミット完了時に親がファイル情報（本文・提案・バナー）を取り直す */
   onCompleted: () => Promise<void>;
   onClose: () => void;
@@ -213,6 +216,7 @@ export function ProofreadPanel({
                 disabled={busy}
                 updating={updatingId === s.id}
                 onUpdateStatus={(status) => void handleUpdateStatus(s.id, status)}
+                onLocate={() => onLocate(s.original_text)}
               />
             ))}
           {streaming !== null && (
@@ -225,6 +229,7 @@ export function ProofreadPanel({
                   suggestedText={s?.suggested_text ?? ""}
                   reason={s?.reason ?? null}
                   header={<span className="text-xs text-muted-foreground">提案 {i + 1}</span>}
+                  onLocate={() => onLocate(s?.original_text ?? "")}
                 />
               ))}
               <div className="flex items-center gap-2 p-2 text-xs text-muted-foreground">
@@ -356,6 +361,7 @@ function SavedSuggestionCard({
   disabled,
   updating,
   onUpdateStatus,
+  onLocate,
 }: {
   suggestion: SuggestionRecord;
   /** 原文抜粋が現在の原稿に一意に見つかるか（見つからなければ受入不可＝適用不能） */
@@ -363,6 +369,8 @@ function SavedSuggestionCard({
   disabled: boolean;
   updating: boolean;
   onUpdateStatus: (status: SuggestionStatus) => void;
+  /** カードクリックで原稿の該当箇所へジャンプ */
+  onLocate: () => void;
 }) {
   const committed = suggestion.committed_sha !== null;
   const { status } = suggestion;
@@ -378,6 +386,7 @@ function SavedSuggestionCard({
       originalText={suggestion.original_text}
       suggestedText={suggestion.suggested_text}
       reason={suggestion.reason}
+      onLocate={onLocate}
       header={
         <>
           <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
@@ -390,7 +399,8 @@ function SavedSuggestionCard({
       }
       footer={
         committed ? null : (
-          <div className="mt-2 flex items-center gap-1">
+          // 操作ボタンのクリックをカードクリック（該当箇所ジャンプ）に伝播させない
+          <div className="mt-2 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
             {(status === "pending" || status === "on_hold") && (
               <>
                 <Button
@@ -445,15 +455,30 @@ function SuggestionCardBody({
   reason,
   header,
   footer,
+  onLocate,
 }: {
   originalText: string;
   suggestedText: string;
   reason: string | null;
   header: React.ReactNode;
   footer?: React.ReactNode;
+  /** カードクリック（原稿の該当箇所へジャンプ）。ボタン類のクリックは対象外 */
+  onLocate?: () => void;
 }) {
   return (
-    <article className="rounded-lg border border-border bg-card p-3">
+    <article
+      className="cursor-pointer rounded-lg border border-border bg-card p-3 transition-colors hover:border-ring"
+      role="button"
+      tabIndex={0}
+      aria-label="原稿の該当箇所を表示"
+      onClick={onLocate}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
+          onLocate?.();
+        }
+      }}
+    >
       <header className="mb-2 flex items-center gap-2">{header}</header>
       <dl className="flex flex-col gap-2 text-sm">
         <div>
