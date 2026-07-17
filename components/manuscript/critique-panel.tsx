@@ -292,8 +292,8 @@ export function CritiquePanel({
             )}
             {critiques.length === 0 && streamingText === null && !targetMissing && (
               <p className="p-2 text-sm text-muted-foreground">
-                作品全体を読んだ講評を受けられます。読者講評はターゲット層になりきった感想を、
-                書店員講評は売れ行き目線の客観評価を返します。
+                作品全体を読んだ講評を受けられます。読者講評はターゲット層になりきった賛否両論の感想を、
+                売り込み分析は書店員目線の売り込み提案を返します。あらすじ・キャッチコピーの作成も頼めます。
               </p>
             )}
             {critiques.map((critique) => (
