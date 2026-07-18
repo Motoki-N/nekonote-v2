@@ -5,6 +5,8 @@ import Link from 'next/link'
 import {
   ArrowLeft,
   BookOpen,
+  BookOpenText,
+  ExternalLink,
   FilePlus2,
   FileText,
   Info,
@@ -29,6 +31,12 @@ import {
   uploadImage,
 } from '@/lib/actions/editor'
 import type { EditorChapter, EditorWorkspaceData } from '@/lib/actions/editor'
+import {
+  openManuscriptFile,
+  updateSuggestionStatus,
+  type ManuscriptFileData,
+} from '@/lib/actions/manuscripts'
+import type { SuggestionStatus } from '@/lib/schemas/enums'
 import { EditorSelection } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
@@ -50,6 +58,8 @@ import { countManuscriptChars, estimatePages, extractKumiSettings } from '@/lib/
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
 import { useChrome } from '@/components/layout/app-chrome'
+import { CritiquePanel } from '@/components/manuscript/critique-panel'
+import { ProofreadPanel } from '@/components/manuscript/proofread-panel'
 import { BuildDialog } from '@/components/editor/build-dialog'
 import { EditorPane } from '@/components/editor/editor-pane'
 import { EditorToolbar } from '@/components/editor/editor-toolbar'
@@ -144,6 +154,12 @@ export function VerticalEditor({
   const [uploadingImage, setUploadingImage] = useState(false)
   /** 集中モード: 入力ペイン（＋開いていればプレビュー）以外のクロームをすべて隠す */
   const [focusMode, setFocusMode] = useState(false)
+  /** エディタ内レビューパネル（Issue #18。校正は開いている章、講評は作品全体が対象） */
+  const [reviewOpen, setReviewOpen] = useState<'proofread' | 'critique' | null>(null)
+  /** 校正パネルに渡す原稿情報（openManuscriptFile の結果。コミット済み内容が正） */
+  const [reviewFile, setReviewFile] = useState<ManuscriptFileData | null>(null)
+  const [reviewLoading, setReviewLoading] = useState(false)
+  const [reviewError, setReviewError] = useState<string | null>(null)
 
   const { setHidden: setChromeHidden } = useChrome()
 
@@ -175,6 +191,10 @@ export function VerticalEditor({
   const previewTitleRef = useRef('プレビュー')
   const editorViewRef = useRef<EditorView | null>(null)
   const imageInputRef = useRef<HTMLInputElement>(null)
+  /** 未保存編集ありで校正を押した場合の「保存後に校正パネルを開く」予約 */
+  const pendingProofreadRef = useRef(false)
+  /** レビューパネルを閉じたときに戻すプレビュー表示状態（開く前の値を覚える） */
+  const prevPreviewOpenRef = useRef(true)
 
   /** 版面（行数×字詰め）: テーマCSSから抽出。ページ数概算に使う */
   const kumi = useMemo(() => (ok ? extractKumiSettings(ok.theme.inlineCss) : null), [ok])
@@ -399,6 +419,115 @@ export function VerticalEditor({
     setSaveDialogOpen(true)
   }, [saving, flushDraft])
 
+  // ---- エディタ内レビューパネル（Issue #18） ----
+
+  /** レビューパネルを開く（lg以上ではプレビューと入れ替え、閉じたら元の表示状態へ戻す） */
+  const openReviewPanel = useCallback(
+    (panel: 'proofread' | 'critique') => {
+      if (reviewOpen === null) prevPreviewOpenRef.current = previewOpen
+      setReviewOpen(panel)
+      setPreviewOpen(false)
+    },
+    [reviewOpen, previewOpen],
+  )
+
+  const closeReviewPanel = useCallback(() => {
+    setReviewOpen(null)
+    setReviewFile(null)
+    setReviewError(null)
+    // パネル表示中に明示操作（全体プレビュー等）で開き直していた場合は上書きしない
+    setPreviewOpen((open) => open || prevPreviewOpenRef.current)
+  }, [])
+
+  /** 校正パネルを開く。校正はコミット済み内容が対象のため、未保存の編集は先に保存へ誘導する */
+  const openProofread = useCallback(async () => {
+    const current = currentRef.current
+    if (!current) return
+    if (contentRef.current !== current.remoteContent) {
+      pendingProofreadRef.current = true
+      toast.info('未保存の編集があります。保存（コミット）すると校正パネルを開きます')
+      requestSave()
+      return
+    }
+    openReviewPanel('proofread')
+    // 前回開いた章の原稿情報が残っていると、フェッチ完了まで別の章の提案を誤操作できてしまう
+    setReviewFile(null)
+    setReviewLoading(true)
+    setReviewError(null)
+    try {
+      const result = await openManuscriptFile(projectId, current.path)
+      if (!result.ok || !result.data) {
+        setReviewFile(null)
+        setReviewError(result.ok ? '原稿情報の読み込みに失敗しました' : result.error.message)
+        return
+      }
+      setReviewFile(result.data)
+    } finally {
+      setReviewLoading(false)
+    }
+  }, [projectId, requestSave, openReviewPanel])
+
+  /** 提案の受入/拒否/保留（原稿タブと同じ作法で、成功時はローカルの提案一覧のみ差し替える） */
+  const handleUpdateSuggestion = useCallback(async (id: string, status: SuggestionStatus) => {
+    const result = await updateSuggestionStatus(id, status)
+    if (!result.ok) {
+      toast.error(result.error.message)
+      return
+    }
+    setReviewFile((prev) =>
+      prev
+        ? {
+            ...prev,
+            suggestions: prev.suggestions.map((s) => (s.id === id ? { ...s, status } : s)),
+          }
+        : prev,
+    )
+  }, [])
+
+  /** 提案カードクリック → エディタの該当箇所を選択してスクロール */
+  const locateInEditor = useCallback((originalText: string) => {
+    const view = editorViewRef.current
+    if (!view) return
+    const doc = view.state.doc.toString()
+    const idx = originalText === '' ? -1 : doc.indexOf(originalText)
+    if (idx === -1) {
+      toast.error('該当箇所がエディタ内に見つかりません（原稿が更新された可能性があります）')
+      return
+    }
+    view.dispatch({
+      selection: EditorSelection.range(idx, idx + originalText.length),
+      effects: EditorView.scrollIntoView(idx, { y: 'center' }),
+    })
+    view.focus()
+  }, [])
+
+  /**
+   * 校正完了・コミット完了後の取り直し。「まとめてコミット」「保留の書き戻し」はGitHubに
+   * コミットを作るため、エディタが未編集ならリモート最新を開き直して baseSha を進める
+   * （追従しないと次の保存が必ず競合フローに入る）
+   */
+  const refreshReview = useCallback(async () => {
+    const current = currentRef.current
+    if (!current) return
+    const result = await openManuscriptFile(projectId, current.path)
+    // 取得待ちの間に章が切り替わっていたら、古い章の情報で上書きしない
+    if (currentRef.current?.path !== current.path) return
+    if (!result.ok || !result.data) {
+      toast.error(result.ok ? '原稿情報の再取得に失敗しました' : result.error.message)
+      return
+    }
+    setReviewFile(result.data)
+    if (result.data.content === current.remoteContent) return
+    if (contentRef.current !== current.remoteContent) {
+      // パネルを開いたまま編集が進んでいた場合。次の保存で差分の取り込みフローに入る
+      toast.warning(
+        '校正の反映で原稿が更新されました。未保存の編集は保存時に差分の取り込みが必要になります',
+      )
+      return
+    }
+    await openChapterFlow(current.path)
+  }, [projectId, openChapterFlow])
+
   /** 保存＝コミット（SPEC §6）。conflict はマージ支援へ（SPEC §8-1） */
   const confirmSave = useCallback(
     async (message: string) => {
@@ -413,6 +542,8 @@ export function VerticalEditor({
         })
         if (!result.ok || !result.data) {
           if (!result.ok && result.error.code === 'conflict') {
+            // 競合時は「保存後に校正パネルを開く」予約も落とす（後日の無関係な保存で開かないように）
+            pendingProofreadRef.current = false
             setSaveDialogOpen(false)
             const remote = await openChapter(projectId, current.path)
             if (remote.ok && remote.data) {
@@ -442,11 +573,16 @@ export function VerticalEditor({
         setSaveDialogOpen(false)
         toast.success('コミットしました')
         compilePreview()
+        // 校正ボタン起点の保存だった場合は、そのまま校正パネルを開く（Issue #18）
+        if (pendingProofreadRef.current) {
+          pendingProofreadRef.current = false
+          void openProofread()
+        }
       } finally {
         setSaving(false)
       }
     },
-    [projectId, keyFor, markDraft, compilePreview],
+    [projectId, keyFor, markDraft, compilePreview, openProofread],
   )
 
   /** マージ結果を編集へ取り込む（リモートSHAが新しい基準になる。SPEC §8） */
@@ -846,10 +982,32 @@ export function VerticalEditor({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1.5">
-          {/* 原稿タブ（校正・講評）への相互リンク（編集中の章を開いたまま遷移。SPEC-phase4 §3.1） */}
+          {/* エディタ内から校正・講評を直接起動（Issue #18。校正は開いている章が対象） */}
           <Button
             size="sm"
             variant="outline"
+            disabled={!selectedPath || chapterLoading || merge !== null}
+            onClick={() => void openProofread()}
+          >
+            <SpellCheck data-icon="inline-start" />
+            校正
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={chapters.length === 0}
+            onClick={() => openReviewPanel('critique')}
+          >
+            <BookOpenText data-icon="inline-start" />
+            講評
+          </Button>
+          {/* 原稿タブ（校正・講評）への相互リンク（編集中の章を開いたまま遷移。SPEC-phase4 §3.1） */}
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="原稿レビュー画面をひらく"
+            title="原稿レビュー画面をひらく（編集中の章を開いたまま遷移）"
+            className="text-muted-foreground"
             nativeButton={false}
             render={
               <Link
@@ -857,8 +1015,7 @@ export function VerticalEditor({
                   selectedPath ? `?file=${encodeURIComponent(selectedPath)}` : ''
                 }`}
               >
-                <SpellCheck data-icon="inline-start" />
-                レビュー
+                <ExternalLink />
               </Link>
             }
           />
@@ -1021,7 +1178,13 @@ export function VerticalEditor({
                       <li key={chapter.path}>
                         <button
                           type="button"
-                          onClick={() => void openChapterFlow(chapter.path)}
+                          onClick={() => {
+                            // 校正パネルは開いていた章に紐づくため、章の切替で閉じる（講評は作品全体なので維持）
+                            if (chapter.path !== selectedPath && reviewOpen === 'proofread') {
+                              closeReviewPanel()
+                            }
+                            void openChapterFlow(chapter.path)
+                          }}
                           aria-current={selectedPath === chapter.path ? 'true' : undefined}
                           className={cn(
                             'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors',
@@ -1090,6 +1253,7 @@ export function VerticalEditor({
                     className="text-muted-foreground"
                     onClick={() => {
                       flushDraft()
+                      if (reviewOpen === 'proofread') closeReviewPanel()
                       setSelectedPath(null)
                       currentRef.current = null
                       setPreviewHtml(null)
@@ -1210,6 +1374,48 @@ export function VerticalEditor({
             </>
           )}
         </div>
+
+        {/* エディタ内レビューパネル（Issue #18）。lg以上は右パネル、未満はボトムシート（原稿タブと同じ流儀） */}
+        {reviewOpen === 'proofread' &&
+          !focusMode &&
+          (reviewFile === null ? (
+            <aside
+              aria-label="校正パネル"
+              className="fixed inset-x-0 bottom-0 z-30 flex h-[65dvh] flex-col border-t border-border bg-background lg:static lg:z-auto lg:h-full lg:w-96 lg:shrink-0 lg:border-l lg:border-t-0"
+            >
+              <div className="flex flex-1 flex-col items-center justify-center gap-3 p-4">
+                {reviewLoading ? (
+                  <Loader2
+                    className="size-5 animate-spin text-muted-foreground"
+                    aria-label="読み込み中"
+                  />
+                ) : (
+                  <>
+                    <p className="text-sm text-destructive">
+                      {reviewError ?? '原稿情報の読み込みに失敗しました'}
+                    </p>
+                    <Button size="sm" variant="outline" onClick={closeReviewPanel}>
+                      閉じる
+                    </Button>
+                  </>
+                )}
+              </div>
+            </aside>
+          ) : (
+            <ProofreadPanel
+              key={reviewFile.linkId}
+              linkId={reviewFile.linkId}
+              content={reviewFile.content}
+              suggestions={reviewFile.suggestions}
+              onUpdateStatus={handleUpdateSuggestion}
+              onLocate={locateInEditor}
+              onCompleted={refreshReview}
+              onClose={closeReviewPanel}
+            />
+          ))}
+        {reviewOpen === 'critique' && !focusMode && (
+          <CritiquePanel projectId={projectId} onClose={closeReviewPanel} />
+        )}
       </div>
 
       <SaveDialog
@@ -1219,7 +1425,11 @@ export function VerticalEditor({
         }
         saving={saving}
         onConfirm={(message) => void confirmSave(message)}
-        onOpenChange={setSaveDialogOpen}
+        onOpenChange={(open) => {
+          setSaveDialogOpen(open)
+          // 保存せず閉じたら「保存後に校正パネルを開く」予約も解除する
+          if (!open) pendingProofreadRef.current = false
+        }}
       />
       <NewChapterDialog
         open={newChapterOpen}
