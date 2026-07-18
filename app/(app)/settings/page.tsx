@@ -1,5 +1,6 @@
 import {
   getAiModelSettings,
+  getAiUsageSummary,
   getGithubConnection,
   listPersonas,
   listReviewProfiles,
@@ -8,14 +9,16 @@ import { GithubConnection } from "@/components/settings/github-connection";
 import { ModelSettings } from "@/components/settings/model-settings";
 import { PersonaList } from "@/components/settings/persona-list";
 import { ProfileList } from "@/components/settings/profile-list";
+import { UsageSummary } from "@/components/settings/usage-summary";
 
-/** 設定画面（SPEC-dashboard-critique-settings §3.4）。AIモデル・ペルソナ・プロファイル・GitHub連携 */
+/** 設定画面（SPEC-dashboard-critique-settings §3.4）。AIモデル・使用量・ペルソナ・プロファイル・GitHub連携 */
 export default async function SettingsPage() {
-  const [modelSettings, personas, profiles, connection] = await Promise.all([
+  const [modelSettings, personas, profiles, connection, usage] = await Promise.all([
     getAiModelSettings(),
     listPersonas(),
     listReviewProfiles(),
     getGithubConnection(),
+    getAiUsageSummary(),
   ]);
 
   return (
@@ -35,6 +38,20 @@ export default async function SettingsPage() {
           ) : (
             <p className="text-sm text-destructive">
               {modelSettings.ok ? "読み込みに失敗しました" : modelSettings.error.message}
+            </p>
+          )}
+        </section>
+
+        <section className="flex flex-col gap-3">
+          <h2 className="text-base font-semibold text-foreground">AI使用量（直近30日）</h2>
+          <p className="text-sm text-muted-foreground">
+            AI機能の呼び出し回数とトークン数です。金額はプロバイダ側の管理画面で確認してください。
+          </p>
+          {usage.ok && usage.data ? (
+            <UsageSummary rows={usage.data} />
+          ) : (
+            <p className="text-sm text-destructive">
+              {usage.ok ? "読み込みに失敗しました" : usage.error.message}
             </p>
           )}
         </section>

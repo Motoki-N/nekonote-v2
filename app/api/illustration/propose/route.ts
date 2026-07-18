@@ -2,6 +2,7 @@ import { generateObject } from 'ai'
 
 import { resolveModel } from '@/lib/ai/models'
 import { ILLUSTRATOR_PERSONA_ID } from '@/lib/ai/personas'
+import { recordAiUsage } from '@/lib/ai/usage'
 import {
   buildIllustrationProposeInput,
   buildIllustrationProposeSystemPrompt,
@@ -177,8 +178,11 @@ export async function POST(req: Request) {
     const basePath = project.base_path ?? ''
     const prefixLength = basePath === '' ? 0 : basePath.replace(/\/$/, '').length + 1
 
-    const model = await resolveModel(supabase, persona.ai_capability as AiCapability)
-    const { object } = await generateObject({
+    const { model, provider, modelId } = await resolveModel(
+      supabase,
+      persona.ai_capability as AiCapability,
+    )
+    const { object, usage } = await generateObject({
       model,
       schema: proposeOutputSchema,
       system: buildIllustrationProposeSystemPrompt({ personaDescription: persona.description }),
@@ -198,6 +202,15 @@ export async function POST(req: Request) {
           content: f.content,
         })),
       }),
+    })
+
+    // 使用量記録（Issue #45）
+    await recordAiUsage(supabase, {
+      feature: 'illustration-propose',
+      provider,
+      modelId,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
     })
 
     return Response.json({ proposals: object.proposals })

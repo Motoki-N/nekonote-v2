@@ -519,3 +519,34 @@ export async function deleteReviewProfile(profileId: string): Promise<ActionResu
     return toActionError(error)
   }
 }
+
+export type AiUsageSummaryRow = {
+  feature: string
+  provider: string
+  modelId: string
+  callCount: number
+  inputTokens: number
+  outputTokens: number
+}
+
+/** 直近30日のAI使用量サマリー（Issue #45。トークン数のみ・金額換算はしない）。集計はDB側（RLSで本人分のみ） */
+export async function getAiUsageSummary(): Promise<ActionResult<AiUsageSummaryRow[]>> {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('ai_usage_summary', { days: 30 })
+    if (error) throw new AppError('internal', error.message)
+    return {
+      ok: true,
+      data: (data ?? []).map((row) => ({
+        feature: row.feature,
+        provider: row.provider,
+        modelId: row.model_id,
+        callCount: row.call_count,
+        inputTokens: row.input_tokens,
+        outputTokens: row.output_tokens,
+      })),
+    }
+  } catch (error) {
+    return toActionError(error)
+  }
+}

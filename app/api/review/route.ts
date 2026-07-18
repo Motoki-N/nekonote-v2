@@ -2,6 +2,7 @@ import { streamText } from 'ai'
 import { z } from 'zod'
 
 import { resolveModel } from '@/lib/ai/models'
+import { recordAiUsage } from '@/lib/ai/usage'
 import {
   buildManuscriptCritiqueInput,
   buildProposalReviewInput,
@@ -265,7 +266,10 @@ export async function POST(req: Request) {
       throw new AppError('validation', 'このレビュー種別には未対応です')
     }
 
-    const model = await resolveModel(supabase, session.personas.ai_capability as AiCapability)
+    const { model, provider, modelId } = await resolveModel(
+      supabase,
+      session.personas.ai_capability as AiCapability,
+    )
 
     const result = streamText({
       model,
@@ -275,7 +279,15 @@ export async function POST(req: Request) {
       }),
       prompt,
       // 生成完了時にフィードバックを保存する（stop によるクライアント切断時は保存しない）
-      onFinish: async ({ text }) => {
+      onFinish: async ({ text, usage }) => {
+        // 使用量記録（Issue #45）。text が空でもトークンは消費されている
+        await recordAiUsage(supabase, {
+          feature: 'review',
+          provider,
+          modelId,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        })
         // 講評は読み切り型: 1実行1セッションで、成功時 completed / 失敗時 failed に確定する
         const finalizeCritique = async (status: 'completed' | 'failed') => {
           if (phase !== 'manuscript') return

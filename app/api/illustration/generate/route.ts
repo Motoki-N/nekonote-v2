@@ -1,6 +1,7 @@
 import { generateImage } from 'ai'
 
 import { resolveImageModel } from '@/lib/ai/models'
+import { recordAiUsage } from '@/lib/ai/usage'
 import { AppError, errorResponse } from '@/lib/errors'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import {
@@ -70,11 +71,20 @@ export async function POST(req: Request) {
       referenceImage = new Uint8Array(await blob.arrayBuffer())
     }
 
-    const model = await resolveImageModel(supabase)
-    const { image } = await generateImage({
+    const { model, provider, modelId } = await resolveImageModel(supabase)
+    const { image, usage } = await generateImage({
       model,
       prompt: referenceImage ? { images: [referenceImage], text: prompt } : prompt,
       aspectRatio: request.aspectRatio,
+    })
+
+    // 使用量記録（Issue #45）。トークン数はプロバイダが返さない場合 null で残る
+    await recordAiUsage(supabase, {
+      feature: 'illustration-generate',
+      provider,
+      modelId,
+      inputTokens: usage.inputTokens,
+      outputTokens: usage.outputTokens,
     })
 
     // バケットの許可形式のみ保存（想定外の形式はフェイルクローズ）
