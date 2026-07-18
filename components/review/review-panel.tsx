@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, CircleStop, ClipboardCheck, Loader2, Undo2, X } from "lucide-react";
+import {
+  BadgeCheck,
+  CircleStop,
+  ClipboardCheck,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Undo2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -101,6 +110,8 @@ export function ReviewPanel({
   const [createdPersonaName, setCreatedPersonaName] = useState<Record<string, string>>({});
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // コメントを広く読みたいとき用の中央拡大表示（Issue #81）
+  const [expanded, setExpanded] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
@@ -242,7 +253,11 @@ export function ReviewPanel({
   return (
     <aside
       aria-label={`${title}パネル`}
-      className="fixed inset-x-0 bottom-0 z-30 flex h-[65dvh] flex-col border-t border-border bg-background lg:static lg:z-auto lg:h-full lg:w-96 lg:shrink-0 lg:border-l lg:border-t-0"
+      className={
+        expanded
+          ? "fixed inset-0 z-30 m-auto flex h-[90dvh] w-[min(100%,48rem)] flex-col rounded-lg border border-border bg-background shadow-lg"
+          : "fixed inset-x-0 bottom-0 z-30 flex h-[65dvh] flex-col border-t border-border bg-background lg:static lg:z-auto lg:h-full lg:w-96 lg:shrink-0 lg:border-l lg:border-t-0"
+      }
     >
       <header className="flex flex-col gap-2 border-b border-border px-3 py-2">
         <div className="flex items-center gap-2">
@@ -252,6 +267,16 @@ export function ReviewPanel({
             <span className="min-w-0 truncate text-xs text-muted-foreground">{subtitle}</span>
           )}
           <div className="ml-auto flex items-center gap-0.5">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={expanded ? "サイド表示に戻す" : "中央に広く表示"}
+              aria-pressed={expanded}
+              className="text-muted-foreground"
+              onClick={() => setExpanded((v) => !v)}
+            >
+              {expanded ? <Minimize2 /> : <Maximize2 />}
+            </Button>
             <Button
               variant="ghost"
               size="icon-sm"
