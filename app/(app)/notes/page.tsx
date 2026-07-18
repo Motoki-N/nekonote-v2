@@ -8,12 +8,22 @@ import { NoteCard, type NoteListItem } from "@/components/notes/note-card";
 import { TrashCard } from "@/components/notes/trash-card";
 import { TagFilter } from "@/components/notes/tag-filter";
 import { SearchForm } from "@/components/notes/search-form";
+import { SortMenu } from "@/components/notes/sort-menu";
+import { toSortValue, type SortValue } from "@/components/notes/sort-options";
 
 // ILIKE パターンと PostgREST の or() 構文を壊す文字を除去・エスケープする
 function toSearchPattern(q: string): string {
   const cleaned = q.replaceAll(/[,()"\\]/g, "").replaceAll(/[%_]/g, (m) => `\\${m}`);
   return `%${cleaned}%`;
 }
+
+// ソート値 → Supabase の order() 引数
+const SORT_ORDERS: Record<SortValue, { column: string; ascending: boolean }> = {
+  updated_desc: { column: "updated_at", ascending: false },
+  updated_asc: { column: "updated_at", ascending: true },
+  created_desc: { column: "created_at", ascending: false },
+  created_asc: { column: "created_at", ascending: true },
+};
 
 type NoteRow = {
   id: string;
@@ -38,9 +48,10 @@ function toListItem(row: NoteRow): NoteListItem {
 export default async function NotesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; tags?: string; view?: string }>;
+  searchParams: Promise<{ q?: string; tags?: string; view?: string; sort?: string }>;
 }) {
-  const { q, tags: tagsParam, view } = await searchParams;
+  const { q, tags: tagsParam, view, sort: sortParam } = await searchParams;
+  const sort = toSortValue(sortParam);
   const isTrash = view === "trash";
   const supabase = await createClient();
 
@@ -82,7 +93,8 @@ export default async function NotesPage({
     if (isTrash) {
       query = query.not("deleted_at", "is", null).order("deleted_at", { ascending: false });
     } else {
-      query = query.is("deleted_at", null).order("updated_at", { ascending: false });
+      const order = SORT_ORDERS[sort];
+      query = query.is("deleted_at", null).order(order.column, { ascending: order.ascending });
       if (q) {
         const pattern = toSearchPattern(q);
         query = query.or(`title.ilike.${pattern},content.ilike.${pattern}`);
@@ -135,8 +147,13 @@ export default async function NotesPage({
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4 sm:p-6">
         {!isTrash && (
           <>
-            <SearchForm q={q} tagsParam={tagsParam} />
-            <TagFilter tags={allTags ?? []} selectedTagIds={selectedTagIds} q={q} />
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <SearchForm q={q} tagsParam={tagsParam} sort={sort} />
+              </div>
+              <SortMenu sort={sort} q={q} tagsParam={tagsParam} />
+            </div>
+            <TagFilter tags={allTags ?? []} selectedTagIds={selectedTagIds} q={q} sort={sort} />
           </>
         )}
 
