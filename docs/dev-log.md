@@ -637,3 +637,12 @@
 - 検証: typecheck / lint / security-reviewer / subagent 自己レビュー通過。ペインE2E（別セッションのdevサーバーを `preview_start {url}` で流用）: 相談チャット1発話→`ai_usage_logs` に chat/openai/gpt-5.4-mini・入力2,741/出力7 が記録→設定画面のテーブル表示までを縦通し確認。本番: マージ→Vercel Ready→/settings 307→/login（returnTo保持）
 - 既知の計測漏れ（受容・PRに明記): ①ストリーミング中のクライアント切断（stop）時は onFinish が発火せず未記録（既存の「切断時は保存しない」設計と整合）②illustration propose のスキーマ検証失敗（NoObjectGeneratedError）時は未記録（低頻度）
 - 残スコープの会話履歴要約・コンテキスト圧縮は **Issue #76** に分割起票（着手時は SPEC-ai-deep-dive §3.2「要約はしない」の改訂から。効果測定は今回のトークン計測で before/after 比較可能）
+
+### セッション㊸: /fix-issue #60 進捗グラフの目標線（target_pages のページ→文字数換算）——PR #78 マージ・本番反映（7/18）
+
+- **Issue #60 を `/fix-issue` フローで処理**（影響範囲分析→実装→ブラウザ実機検証→subagent自己レビュー→security-reviewer→PR #78→マージまで1セッション・スキーマ変更なしのため設計確認なしで直行）: SPEC-dashboard-critique-settings で換算係数未定義のため見送っていた目標線を、縦書きエディタPhase 3のページ数見積りロジック流用で実装
+- **換算の設計**: 新規 `lib/writing-target.ts`（server-only）がダッシュボードのサーバーレンダー時に book.config.js → テーマCSSをGitHubから読み、`extractKumiSettings`（行数×字詰め）で1ページの収容字数を得て `target_pages` を字数換算。`word-count.ts` から `charsPerPage` を抽出して `estimatePages` と共用（挙動不変）。repo/PAT なし・取得失敗はエディタと同じ既定（文庫A6: 640字/ページ）へフェイルソフトし、PAT復号は「目標×repo×PAT登録が揃うプロジェクトがあるとき」だけに最小化
+- **表示**: `progress-line.tsx` が targetChars を縦軸スケールに含めて破線＋「目標」ラベル（上端近くはラベルを線の下へ逃がす）。概況カードのメタ行に「目標 約N字（Mページ換算）」。目標が遠いうちは推移線が下寄りになる（目標までの距離の可視化を優先する仕様）
+- 検証: typecheck / lint 通過。ペインで実プロジェクトの換算表示（50ページ→約32,000字=既定640字）を確認し、目標線は一時検証ページで4ケース（目標が遠い/範囲内/達成済み/目標なし）を描画確認してコミット前に削除。subagent 自己レビュー指摘なし・security-reviewer 指摘ゼロ（PAT露出経路・joinRepoPath 迂回・RLS前提を確認）
+- **既知のトレードオフ（PRに明記）**: 目標設定済み×repo接続プロジェクトがあるとダッシュボード描画が GitHub Contents API 2回/プロジェクト（no-store）を待つ。換算係数のキャッシュ/DB保存は将来の改善余地
+- マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ Ready・本番 307→/login（returnTo保持）を確認
