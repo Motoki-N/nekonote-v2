@@ -627,3 +627,13 @@
 - 検証: typecheck / lint 通過。ペイン（ユーザーにログイン依頼）で全ハブページの表示・現在地ハイライト・ハンバーガー遷移・プロジェクト配下の2段ヘッダーとページ内スクロール・集中モードの往復（Esc／遷移後のクローム復帰）・モバイル幅・ライト/ダーク両テーマ・`/login` と `/editor-preview` へのナビ非表示をすべて確認
 - 既知の軽微事項（受容）: 集中モードの終了ボタンがインラインプレビュー（Vivliostyle）のツールバー右上とわずかに重なる（機能影響なし。執筆で邪魔なら位置調整）
 - 認証・RLS・秘密情報に非接触のため security-reviewer は不要判断。マージ後: main 取り込み済み（Vercel 自動デプロイ）
+### セッション㊷: Issue #45 AI使用量計測（トークン数）——PR #77 マージ・本番反映（7/18）
+
+- **/fix-issue 45 の一気通貫実行**: Issue #45（会話履歴の要約・トークン最適化・使用量/コスト計測）は3SPEC共通の残置項目で規模が大きく、③設計確認で AskUserQuestion 2問——①スコープは**使用量計測のみ先行**（Issue補足の「小さく入れる」案・履歴要約は分割）②**トークン数のみ**（金額換算なし＝単価表の保守を避け、プロバイダ側スペンド上限と役割分担）で合意
+- **マイグレーション `20260718000001_ai_usage_logs.sql`**（security-reviewer Critical/High/Medium ゼロ→AskUserQuestion 承認後 db push・純追加型・migration list 一致確認）: 追記専用テーブル `ai_usage_logs`（user_id default auth.uid()・RLSは所有者の select/insert のみ・update/delete ポリシーなし）＋集計関数 `ai_usage_summary(days)`（security invoker・`set search_path = ''`・anon から execute revoke）。Low 1件=自己名義の架空行を直挿入可能→表示専用統計のため許容、**将来クォータ制御に使うなら insert を revoke してサーバー専用経路へ**（マイグレーションにコメント済み）
+- **記録の組み込み**: `resolveModel` / `resolveImageModel` の戻り値を `{ model, provider, modelId }` に拡張し、AI 5ルート全部に `recordAiUsage`（lib/ai/usage.ts・throwしない）を追加。streamText / streamObject は `onFinish`、generateObject / generateImage は await 後。feature 名は rate-limit のキーと同語彙（chat / review / proofread / illustration-propose / illustration-generate）
+- **表示**: 設定画面に「AI使用量（直近30日）」セクション（`getAiUsageSummary` サーバーアクション→rpc・機能×モデルの回数/入出力トークンのテーブル）。集計はDB側＝PostgREST の1000行上限を回避
+- **技術メモ**: ①AI SDK v7 の streamText `onFinish` は `onEnd` の deprecated エイリアスで、イベントの `usage` は**全ステップ合算**（v5系の final-step-only と異なる。stopWhen のツール実行分も含む）②`generateImage` も v7 では `usage`（ImageModelUsage）を返す③型の手動先行パッチ→db push→`db:types` 再生成で**完全一致**を確認（セッション⑥の流儀を再現）
+- 検証: typecheck / lint / security-reviewer / subagent 自己レビュー通過。ペインE2E（別セッションのdevサーバーを `preview_start {url}` で流用）: 相談チャット1発話→`ai_usage_logs` に chat/openai/gpt-5.4-mini・入力2,741/出力7 が記録→設定画面のテーブル表示までを縦通し確認。本番: マージ→Vercel Ready→/settings 307→/login（returnTo保持）
+- 既知の計測漏れ（受容・PRに明記): ①ストリーミング中のクライアント切断（stop）時は onFinish が発火せず未記録（既存の「切断時は保存しない」設計と整合）②illustration propose のスキーマ検証失敗（NoObjectGeneratedError）時は未記録（低頻度）
+- 残スコープの会話履歴要約・コンテキスト圧縮は **Issue #76** に分割起票（着手時は SPEC-ai-deep-dive §3.2「要約はしない」の改訂から。効果測定は今回のトークン計測で before/after 比較可能）
