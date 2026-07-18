@@ -183,6 +183,30 @@ export function buildSceneReviewInput({
   return lines.join('\n')
 }
 
+/**
+ * 原稿中のHTMLコメント（`<!-- -->`）の説明（Issue #17）。
+ * コメントは本・PDFに一切出力されない作者のメモで（SPEC-vertical-editor §4.5）、
+ * 構成メモのほか、保留した校正提案・講評の書き戻し（SPEC-vertical-editor-phase4）も含まれる。
+ * 校正・講評の双方で、本文と区別させつつ作者の意図を知る文脈として読ませる
+ */
+export const MANUSCRIPT_COMMENT_CONTEXT = [
+  '# 原稿中のHTMLコメントについて',
+  '原稿には `<!-- ... -->` 形式のHTMLコメントが含まれることがある。これは本・PDFには一切出力されない作者のメモ（構成メモ、没にした文章の保留、`[ネコノテ校正・保留]` で始まる保留中の校正提案、`[ネコノテ講評 …]` で始まる過去の講評の記録など）である。',
+  '- コメントは作品の本文ではない。読者に届く文章として評価しない',
+  '- コメントは作者の意図・懸念・検討中の事項を知る文脈として活用する',
+].join('\n')
+
+/**
+ * 校正向けのコメント指示（system プロンプト末尾に足す）。
+ * 共通説明に加え、構造化提案（original_text の一意一致アンカーで原稿へ適用される）が
+ * コメント内を書き換えないこと・保留済み提案を蒸し返さないことを明示する
+ */
+export const PROOFREAD_COMMENT_GUIDANCE = [
+  MANUSCRIPT_COMMENT_CONTEXT,
+  '- コメント内の文字列は校正対象にしない（original_text にコメント内の文字列を含めない）',
+  '- `[ネコノテ校正・保留]` コメントは作者が判断を保留した提案の記録。同じ箇所へ同趣旨の提案を繰り返さない',
+].join('\n')
+
 /** 講評の入力に含める企画書情報の範囲（ペルソナの reference_scope から決まる） */
 export type CritiqueProposalScope = 'none' | 'target_only' | 'full'
 
@@ -214,6 +238,8 @@ export function buildManuscriptCritiqueInput({
       '',
     )
   }
+
+  lines.push(MANUSCRIPT_COMMENT_CONTEXT, '')
 
   lines.push('# 原稿（作品全体・構成順）')
   for (const file of files) {
