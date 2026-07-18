@@ -3,7 +3,7 @@ import { streamObject } from 'ai'
 import { resolveModel } from '@/lib/ai/models'
 import { PROOFREADING_PROFILE_ID } from '@/lib/ai/personas'
 import { recordAiUsage } from '@/lib/ai/usage'
-import { buildReviewSystemPrompt } from '@/lib/ai/prompts'
+import { buildReviewSystemPrompt, PROOFREAD_COMMENT_GUIDANCE } from '@/lib/ai/prompts'
 import { AppError, errorResponse } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
 import { enforceRateLimit } from '@/lib/rate-limit'
@@ -83,10 +83,15 @@ export async function POST(req: Request) {
       model,
       output: 'array',
       schema: proofreadSuggestionSchema,
-      system: buildReviewSystemPrompt({
-        personaDescription: profile.personas.description,
-        promptTemplate: profile.prompt_template,
-      }),
+      // コメントは作者のメモとして文脈に使わせ、校正対象からは外す（Issue #17）
+      system: [
+        buildReviewSystemPrompt({
+          personaDescription: profile.personas.description,
+          promptTemplate: profile.prompt_template,
+        }),
+        '',
+        PROOFREAD_COMMENT_GUIDANCE,
+      ].join('\n'),
       // 校正さんの reference_scope は「原稿テキストのみ」（企画書・ノート・シーンは渡さない）
       prompt: content,
       // ストリーム開始後のプロバイダエラーはHTTPステータスに出ないため、サーバーログに残す
