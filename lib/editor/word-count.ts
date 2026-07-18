@@ -43,12 +43,17 @@ export function extractKumiSettings(css: string): KumiSettings | null {
 // 抽出できないテーマ用の既定（文庫A6: 16行×40字）
 const DEFAULT_KUMI: KumiSettings = { lines: 16, charsPerLine: 40 }
 
+/** 1ページの収容字数（版面の行数×字詰め。設定が読めないときは文庫A6既定に落とす） */
+export function charsPerPage(kumi: KumiSettings | null): number {
+  const { lines, charsPerLine } = kumi ?? DEFAULT_KUMI
+  return lines * charsPerLine
+}
+
 /**
  * ページ数の概算（字数 ÷ 版面の収容字数）。
  * 改行・空行でページは実際には増えるため下振れしやすい概算値——
  * プレビュー完了時は Vivliostyle の実ページ数を優先表示する（SPEC §5）
  */
 export function estimatePages(chars: number, kumi: KumiSettings | null): number {
-  const { lines, charsPerLine } = kumi ?? DEFAULT_KUMI
-  return Math.max(1, Math.ceil(chars / (lines * charsPerLine)))
+  return Math.max(1, Math.ceil(chars / charsPerPage(kumi)))
 }
