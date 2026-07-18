@@ -4,7 +4,6 @@ import { Trash2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import { createNote } from "@/lib/actions/notes";
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { NoteCard, type NoteListItem } from "@/components/notes/note-card";
 import { TrashCard } from "@/components/notes/trash-card";
 import { TagFilter } from "@/components/notes/tag-filter";
@@ -99,14 +98,9 @@ export default async function NotesPage({
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="text-lg font-semibold text-foreground">
-            🐱
-          </Link>
-          <h1 className="text-lg font-semibold text-foreground">
-            {isTrash ? "ごみ箱" : "ノート"}
-          </h1>
-        </div>
+        <h1 className="text-lg font-semibold text-foreground">
+          {isTrash ? "ごみ箱" : "ノート"}
+        </h1>
         <div className="flex items-center gap-2">
           {isTrash ? (
             <Button
@@ -117,12 +111,6 @@ export default async function NotesPage({
             />
           ) : (
             <>
-              <Button
-                variant="ghost"
-                size="sm"
-                nativeButton={false}
-                render={<Link href="/projects">プロジェクト</Link>}
-              />
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -141,7 +129,6 @@ export default async function NotesPage({
               </form>
             </>
           )}
-          <ThemeToggle />
         </div>
       </header>
 

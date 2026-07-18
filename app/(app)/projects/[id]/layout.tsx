@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectStatus } from "@/lib/schemas/enums";
 import { Button } from "@/components/ui/button";
+import { ChromeHeader } from "@/components/layout/app-chrome";
 import { EditProjectButton } from "@/components/projects/edit-project-button";
 import { ProjectTabs } from "@/components/projects/project-tabs";
 import { ProjectStatusBadge } from "@/components/projects/status-badges";
@@ -32,8 +33,10 @@ export default async function ProjectLayout({
   if (!project) notFound();
 
   return (
-    <div className="flex h-dvh flex-col">
-      <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-4 py-2 sm:px-6">
+    <div className="flex h-full flex-col">
+      {/* 集中モード中は ChromeHeader がヘッダーを隠す */}
+      <ChromeHeader>
+        <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-4 py-2 sm:px-6">
         <Button
           variant="ghost"
           size="icon-sm"
@@ -60,10 +63,11 @@ export default async function ProjectLayout({
             base_path: project.base_path,
           }}
         />
-        <div className="ml-auto">
-          <ProjectTabs projectId={project.id} />
-        </div>
-      </header>
+          <div className="ml-auto">
+            <ProjectTabs projectId={project.id} />
+          </div>
+        </header>
+      </ChromeHeader>
       <div className="flex min-h-0 flex-1 flex-col">{children}</div>
     </div>
   );

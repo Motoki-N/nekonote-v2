@@ -1,11 +1,9 @@
 import Link from "next/link";
-import { Settings } from "lucide-react";
 
 import type { ProposalStatus } from "@/lib/schemas/enums";
 import { scheduleSchema } from "@/lib/schemas/schedule";
 import { createClient } from "@/lib/supabase/server";
 import { Button } from "@/components/ui/button";
-import { ThemeToggle } from "@/components/theme-toggle";
 import {
   ConsultLauncher,
   type ConsultProject,
@@ -83,30 +81,6 @@ export default async function Home({
 
   return (
     <div className="flex flex-1 flex-col">
-      <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <h1 className="text-lg font-semibold text-foreground">🐱 ネコノテAI</h1>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="設定"
-            className="text-muted-foreground"
-            nativeButton={false}
-            render={
-              <Link href="/settings">
-                <Settings />
-              </Link>
-            }
-          />
-          <ThemeToggle />
-          <form action="/logout" method="post">
-            <Button type="submit" variant="ghost" size="sm">
-              ログアウト
-            </Button>
-          </form>
-        </div>
-      </header>
-
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
           <h2 className="text-base font-semibold text-foreground">プロジェクト概況</h2>
