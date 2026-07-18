@@ -1,8 +1,10 @@
 import Link from "next/link";
 
+import { patCredentialProvider } from "@/lib/git/credentials";
 import type { ProposalStatus } from "@/lib/schemas/enums";
 import { scheduleSchema } from "@/lib/schemas/schedule";
 import { createClient } from "@/lib/supabase/server";
+import { convertTargetPagesToChars } from "@/lib/writing-target";
 import { Button } from "@/components/ui/button";
 import {
   ConsultLauncher,
@@ -32,7 +34,9 @@ export default async function Home({
   const [{ data: projects }, { data: settingsRow }] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, title, event_name, deadline, repo, schedule, proposals (status)")
+      .select(
+        "id, title, event_name, deadline, target_pages, repo, base_path, schedule, proposals (status)",
+      )
       .order("updated_at", { ascending: false }),
     supabase.from("user_settings").select("github_pat_ciphertext").maybeSingle(),
   ]);
@@ -60,6 +64,33 @@ export default async function Home({
   const today = jstDate(now);
   const cutoff = jstDate(new Date(now.getTime() - 29 * 86_400_000)); // 今日を含む直近30日
 
+  // 目標線の字数換算（Issue #60）: 判型・組み設定はリポジトリのテーマCSS由来のため、
+  // 目標ページ数×repo×PAT が揃うプロジェクトがあるときだけPATを復号する。
+  // 復号や取得に失敗しても既定換算（文庫A6）に落ちてダッシュボード自体は表示する
+  let token: string | null = null;
+  if (patRegistered && (projects ?? []).some((p) => p.target_pages !== null && p.repo)) {
+    try {
+      token = (await patCredentialProvider.getCredential(supabase))?.token ?? null;
+    } catch (credentialError) {
+      console.error("PATの復号に失敗（目標換算は既定値で継続）:", credentialError);
+    }
+  }
+  const targetCharsById = new Map<string, number>();
+  await Promise.all(
+    (projects ?? []).map(async (project) => {
+      if (project.target_pages === null) return;
+      targetCharsById.set(
+        project.id,
+        await convertTargetPagesToChars({
+          targetPages: project.target_pages,
+          token,
+          repo: project.repo,
+          basePath: (project.base_path ?? "").replace(/\/$/, ""),
+        }),
+      );
+    }),
+  );
+
   const items: DashboardProject[] = (projects ?? []).map((project) => {
     const rows: ProgressPoint[] = (progressRows ?? [])
       .filter((row) => row.project_id === project.id)
@@ -75,6 +106,8 @@ export default async function Home({
       canCollect: Boolean(project.repo) && patRegistered,
       latest: rows.at(-1) ?? null,
       series: rows.filter((row) => row.date >= cutoff),
+      targetChars: targetCharsById.get(project.id) ?? null,
+      targetPages: project.target_pages,
       schedule: schedule.success ? schedule.data : null,
     };
   });

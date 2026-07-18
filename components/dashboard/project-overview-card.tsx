@@ -46,6 +46,10 @@ export type DashboardProject = {
   latest: ProgressPoint | null;
   /** 直近30日の記録（日付昇順） */
   series: ProgressPoint[];
+  /** target_pages の字数換算（Issue #60。目標未設定なら null） */
+  targetChars: number | null;
+  /** 換算元の目標ページ数（表示用） */
+  targetPages: number | null;
   /** アシスタントが確定保存した執筆スケジュール（SPEC-schedule-and-memo-tools） */
   schedule: Schedule | null;
 };
@@ -299,9 +303,15 @@ export function ProjectOverviewCard({
             {dateFormat.format(new Date(project.latest.date))}時点）
           </span>
         )}
+        {project.targetChars !== null && (
+          <span>
+            目標 約{project.targetChars.toLocaleString("ja-JP")}字
+            {project.targetPages !== null && `（${project.targetPages}ページ換算）`}
+          </span>
+        )}
       </div>
 
-      <ProgressLine points={project.series} />
+      <ProgressLine points={project.series} targetChars={project.targetChars} />
 
       {project.schedule && (
         <ScheduleBlock
