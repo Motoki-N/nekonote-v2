@@ -69,6 +69,39 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_usage_logs: {
+        Row: {
+          created_at: string
+          feature: string
+          id: string
+          input_tokens: number | null
+          model_id: string
+          output_tokens: number | null
+          provider: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          feature: string
+          id?: string
+          input_tokens?: number | null
+          model_id: string
+          output_tokens?: number | null
+          provider: string
+          user_id?: string
+        }
+        Update: {
+          created_at?: string
+          feature?: string
+          id?: string
+          input_tokens?: number | null
+          model_id?: string
+          output_tokens?: number | null
+          provider?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       chat_messages: {
         Row: {
           content: string
@@ -828,7 +861,17 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      ai_usage_summary: {
+        Args: { days: number }
+        Returns: {
+          call_count: number
+          feature: string
+          input_tokens: number
+          model_id: string
+          output_tokens: number
+          provider: string
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never

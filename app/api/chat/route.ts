@@ -11,6 +11,7 @@ import {
 
 import { resolveModel } from '@/lib/ai/models'
 import { ASSISTANT_PERSONA_ID } from '@/lib/ai/personas'
+import { recordAiUsage } from '@/lib/ai/usage'
 import { chatTitleFrom } from '@/lib/chat-title'
 import {
   buildDashboardChatPrompt,
@@ -240,7 +241,10 @@ export async function POST(req: Request) {
       })
     }
 
-    const model = await resolveModel(supabase, thread.personas.ai_capability as AiCapability)
+    const { model, provider, modelId } = await resolveModel(
+      supabase,
+      thread.personas.ai_capability as AiCapability,
+    )
     const recent = messages.slice(-HISTORY_LIMIT)
 
     const result = streamText({
@@ -250,6 +254,16 @@ export async function POST(req: Request) {
       tools,
       // ツール実行後に締めのテキストを続けて生成させる（SPEC §5.1）
       stopWhen: stepCountIs(3),
+      // 使用量記録（Issue #45）。usage は全ステップの合算
+      onFinish: async ({ usage }) => {
+        await recordAiUsage(supabase, {
+          feature: 'chat',
+          provider,
+          modelId,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        })
+      },
     })
 
     return createUIMessageStreamResponse({

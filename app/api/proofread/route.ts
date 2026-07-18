@@ -2,6 +2,7 @@ import { streamObject } from 'ai'
 
 import { resolveModel } from '@/lib/ai/models'
 import { PROOFREADING_PROFILE_ID } from '@/lib/ai/personas'
+import { recordAiUsage } from '@/lib/ai/usage'
 import { buildReviewSystemPrompt } from '@/lib/ai/prompts'
 import { AppError, errorResponse } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
@@ -73,7 +74,10 @@ export async function POST(req: Request) {
       throw new AppError('internal', '校正プロファイルまたは担当ペルソナが見つかりません')
     }
 
-    const model = await resolveModel(supabase, profile.personas.ai_capability as AiCapability)
+    const { model, provider, modelId } = await resolveModel(
+      supabase,
+      profile.personas.ai_capability as AiCapability,
+    )
 
     const result = streamObject({
       model,
@@ -90,7 +94,15 @@ export async function POST(req: Request) {
         console.error('校正ストリームでエラー:', error)
       },
       // 完了時にまとめて保存する（stop による切断時は保存せず、半端な提案を残さない）
-      onFinish: async ({ object }) => {
+      onFinish: async ({ object, usage }) => {
+        // 使用量記録（Issue #45）。object が検証に失敗してもトークンは消費されている
+        await recordAiUsage(supabase, {
+          feature: 'proofread',
+          provider,
+          modelId,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        })
         // スキーマ検証に失敗した場合は object が undefined（既存 pending は温存する）
         if (!object) return
         try {

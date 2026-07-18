@@ -61,21 +61,22 @@ async function resolveModelConfig(
 
 /**
  * capability を実モデルインスタンスに解決する（AI基盤の中核。レビュー機能も共用する）。
- * 解決順: ai_model_settings のユーザー行 → DEFAULT_MODEL_MAP
+ * 解決順: ai_model_settings のユーザー行 → DEFAULT_MODEL_MAP。
+ * provider / modelId は使用量記録（lib/ai/usage.ts）用に併せて返す
  */
 export async function resolveModel(
   supabase: SupabaseServerClient,
   capability: AiCapability,
-): Promise<LanguageModel> {
+): Promise<{ model: LanguageModel; provider: AiProvider; modelId: string }> {
   const { provider, modelId, apiKey } = await resolveModelConfig(supabase, capability)
 
   switch (provider) {
     case 'anthropic':
-      return createAnthropic({ apiKey })(modelId)
+      return { model: createAnthropic({ apiKey })(modelId), provider, modelId }
     case 'openai':
-      return createOpenAI({ apiKey })(modelId)
+      return { model: createOpenAI({ apiKey })(modelId), provider, modelId }
     case 'google':
-      return createGoogleGenerativeAI({ apiKey })(modelId)
+      return { model: createGoogleGenerativeAI({ apiKey })(modelId), provider, modelId }
   }
 }
 
@@ -83,7 +84,9 @@ export async function resolveModel(
  * capability 'image' を画像生成モデルに解決する（SPEC-illustrator §5.3）。
  * Anthropic は画像生成モデルを提供していないため validation エラーにする
  */
-export async function resolveImageModel(supabase: SupabaseServerClient): Promise<ImageModel> {
+export async function resolveImageModel(
+  supabase: SupabaseServerClient,
+): Promise<{ model: ImageModel; provider: AiProvider; modelId: string }> {
   const { provider, modelId, apiKey } = await resolveModelConfig(supabase, 'image')
 
   switch (provider) {
@@ -93,8 +96,8 @@ export async function resolveImageModel(supabase: SupabaseServerClient): Promise
         'Anthropic は画像生成に対応していません。設定画面で「画像生成」のプロバイダを Google または OpenAI に変更してください',
       )
     case 'openai':
-      return createOpenAI({ apiKey }).image(modelId)
+      return { model: createOpenAI({ apiKey }).image(modelId), provider, modelId }
     case 'google':
-      return createGoogleGenerativeAI({ apiKey }).image(modelId)
+      return { model: createGoogleGenerativeAI({ apiKey }).image(modelId), provider, modelId }
   }
 }
