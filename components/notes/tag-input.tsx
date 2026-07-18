@@ -49,6 +49,9 @@ export function TagInput({
       setValue("");
     } finally {
       setPending(false);
+      // pending中はInputがdisabledになり、blurイベントなしでフォーカスが失われるため
+      // onBlurに頼らず、成功・失敗どちらでもここで候補リストを閉じる
+      setOpen(false);
     }
   }
 
