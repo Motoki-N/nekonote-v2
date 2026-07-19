@@ -681,3 +681,10 @@
 - **修正は3行のみ**: `attach()` の `finally` で `setOpen(false)` を明示的に呼び、成功・失敗どちらでも候補リストを閉じる。`onBlur` 経路（候補を選ばず外をクリック）は従来どおり
 - **subagent 自己レビューが失敗パスの取りこぼしを検出**: 初回実装は成功時のみ `setOpen(false)` で、`attachTag` 失敗（`result.ok` false／throw）の早期 return 時に元のバグがそのまま残る指摘→ `finally` へ移動して解消→再レビューで「問題なし」（失敗時に value が残る挙動はリトライ動線としてむしろ妥当・blurTimeout との干渉なしも確認）
 - 検証: typecheck / lint 通過。ペイン実機で修正前の再現→修正後はタグ選択の瞬間に候補リストが閉じることを確認（検証用ノート2件はごみ箱へ移動して後片付け済み）。認証・RLS・秘密情報に非接触のため security-reviewer 不要判断。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
+
+### セッション㊽: /fix-issue #85 ノート一覧のソート機能——PR #86 マージ・本番反映（7/19）
+
+- **Issue #85 を `/fix-issue` フローで処理**（影響範囲分析→実装→ペイン実機検証→subagent自己レビュー→PR #86→マージまで1セッション・設計確認基準に非該当のため確認なしで直行）: ノート一覧が更新日時降順固定で、加筆を繰り返す運用（P1・enhancement）に合わせたソート切替がなかった
+- **実装は5ファイル（+114/-10）**: URLパラメータ `sort`（updated_desc / updated_asc / created_desc / created_asc・デフォルトの updated_desc はURLに付けない）を追加。新規 `components/notes/sort-options.ts` に server/client 共有のソート定義（4種＋`toSortValue` バリデーション）、新規 `sort-menu.tsx` に DropdownMenu + Link のソート切替UI（選択状態はURLが正・タグフィルタと同じ思想）。page.tsx は sort を Supabase の `order()` にマッピング。検索フォーム（hidden input）・タグチップ（buildHref）とソートは相互に状態を維持。ごみ箱ビューは従来どおり削除日時降順（スコープ外）
+- **途中の学び: "use client" ファイルの関数はサーバーから呼べない**——当初ソート定義を sort-menu.tsx（"use client"）に同居させたため、page.tsx（Server Component）からの `toSortValue()` 呼び出しが実行時500（Attempted to call from the server）。typecheck では検出されずペイン実機で発覚 → 定義を "use client" なしの `sort-options.ts` に分離して解決。server/client 共有の定数・純関数はディレクティブなしの専用モジュールに置くのが定石
+- 検証: typecheck / lint 通過。ペイン実機で4種すべての並び替え（URL直指定＋メニュー選択の両経路）、選択後のメニュークローズとトリガーラベル更新、タグ絞り込み・検索フォームとのソート状態併用（`/notes?tags=…&sort=updated_asc`）を確認。subagent 自己レビュー指摘なし（デフォルト時にURLパラメータを付けない方針の3箇所一貫・テーマ変数のみ・スコープ外変更なし）。認証・RLS・秘密情報に非接触のため security-reviewer 不要判断。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
