@@ -271,6 +271,16 @@ export async function POST(req: Request) {
       session.personas.ai_capability as AiCapability,
     )
 
+    // 講評は読み切り型: 1実行1セッションで、成功時 completed / 失敗・中断時 failed に確定する
+    const finalizeCritique = async (status: 'completed' | 'failed') => {
+      if (phase !== 'manuscript') return
+      const { error: statusError } = await supabase
+        .from('review_sessions')
+        .update({ status })
+        .eq('id', session.id)
+      if (statusError) console.error('講評セッションの確定に失敗:', statusError.message)
+    }
+
     const result = streamText({
       model,
       system: buildReviewSystemPrompt({
@@ -278,7 +288,9 @@ export async function POST(req: Request) {
         promptTemplate: session.review_profiles.prompt_template,
       }),
       prompt,
-      // 生成完了時にフィードバックを保存する（stop によるクライアント切断時は保存しない）
+      // stop によるクライアント切断で生成そのものを中断する（Issue #98。中断時は onAbort へ）
+      abortSignal: req.signal,
+      // 生成完了時にフィードバックを保存する
       onFinish: async ({ text, usage }) => {
         // 使用量記録（Issue #45）。text が空でもトークンは消費されている
         await recordAiUsage(supabase, {
@@ -288,15 +300,6 @@ export async function POST(req: Request) {
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
         })
-        // 講評は読み切り型: 1実行1セッションで、成功時 completed / 失敗時 failed に確定する
-        const finalizeCritique = async (status: 'completed' | 'failed') => {
-          if (phase !== 'manuscript') return
-          const { error: statusError } = await supabase
-            .from('review_sessions')
-            .update({ status })
-            .eq('id', session.id)
-          if (statusError) console.error('講評セッションの確定に失敗:', statusError.message)
-        }
         if (!text) {
           await finalizeCritique('failed')
           return
@@ -328,16 +331,15 @@ export async function POST(req: Request) {
           await finalizeCritique('failed')
         }
       },
+      // 中断時は onFinish が呼ばれない＝フィードバックは保存されず、次回レビューの履歴にも入らない。
+      // SDK が中断時の usage を提供しないため使用量記録も残せない（割り切り。レート制限が下限ガード）
+      onAbort: async () => {
+        await finalizeCritique('failed')
+      },
       onError: async ({ error }) => {
         console.error('レビュー生成でエラー:', error)
         // 講評セッションを running のまま残さない（読み切り型）
-        if (phase === 'manuscript') {
-          const { error: statusError } = await supabase
-            .from('review_sessions')
-            .update({ status: 'failed' })
-            .eq('id', session.id)
-          if (statusError) console.error('講評セッションの確定に失敗:', statusError.message)
-        }
+        await finalizeCritique('failed')
       },
     })
 
