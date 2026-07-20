@@ -688,3 +688,11 @@
 - **実装は5ファイル（+114/-10）**: URLパラメータ `sort`（updated_desc / updated_asc / created_desc / created_asc・デフォルトの updated_desc はURLに付けない）を追加。新規 `components/notes/sort-options.ts` に server/client 共有のソート定義（4種＋`toSortValue` バリデーション）、新規 `sort-menu.tsx` に DropdownMenu + Link のソート切替UI（選択状態はURLが正・タグフィルタと同じ思想）。page.tsx は sort を Supabase の `order()` にマッピング。検索フォーム（hidden input）・タグチップ（buildHref）とソートは相互に状態を維持。ごみ箱ビューは従来どおり削除日時降順（スコープ外）
 - **途中の学び: "use client" ファイルの関数はサーバーから呼べない**——当初ソート定義を sort-menu.tsx（"use client"）に同居させたため、page.tsx（Server Component）からの `toSortValue()` 呼び出しが実行時500（Attempted to call from the server）。typecheck では検出されずペイン実機で発覚 → 定義を "use client" なしの `sort-options.ts` に分離して解決。server/client 共有の定数・純関数はディレクティブなしの専用モジュールに置くのが定石
 - 検証: typecheck / lint 通過。ペイン実機で4種すべての並び替え（URL直指定＋メニュー選択の両経路）、選択後のメニュークローズとトリガーラベル更新、タグ絞り込み・検索フォームとのソート状態併用（`/notes?tags=…&sort=updated_asc`）を確認。subagent 自己レビュー指摘なし（デフォルト時にURLパラメータを付けない方針の3箇所一貫・テーマ変数のみ・スコープ外変更なし）。認証・RLS・秘密情報に非接触のため security-reviewer 不要判断。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
+
+### セッション㊾: マルチユーザー対応の影響範囲調査・Issue起票（#87〜#92）——コード変更なし（7/20）
+
+- **今期スコープ外・影響大の「マルチユーザー対応」を将来に向けて調査しIssue化**（実装なし・起票のみ）: プランモードで現状調査→AskUserQuestion 8問の仕様インタビュー→親Issue #87＋子Issue 5件（#88〜#92・enhancement/P3）を依存順に起票。粒度は「土台（管理者ロール・ユーザー管理）→機能3本（使用量上限・お知らせ・問い合わせ）→最終ゲート（セキュリティ再評価）」の5分割
+- **調査の最重要所見: RLSは第一期設計から全テーブルでユーザー分離済み**（`user_id` + `auth.uid()` ポリシー・GitHub PAT / ai_usage_logs / illustrations Storage もユーザー単位）——「ログインユーザーに紐づく情報のみ閲覧」はDBレベルでほぼ達成済みで、マルチユーザー化の実体は ①管理者ロールの新設（現状 role 概念ゼロ・service_role も未使用）②許可リスト（private.auth_allowlist＋ALLOWED_EMAILS の手動2層）の管理画面化 ③ai_usage_logs の上限制御転用（クライアント直挿入 revoke がコメントで予告済み）④お知らせ・問い合わせの新規2機能 ⑤security-audit L-5 等「単一ユーザー前提で受容」した判断の再評価
+- **インタビューで確定した主要仕様**: 上限はトークン数ベース・月次・到達でAI機能ブロック／APIキーは運営者共有継続／ユーザー追加は許可リスト登録方式（招待メールなし）／削除は二段階（無効化→完全削除。Storage 物理削除は cascade では消えない点をIssueに明記）／お知らせは全員一斉＋既読管理／問い合わせはスレッド式（管理者返信あり）
+- 各Issueには確定仕様・現状所見（該当ファイル・マイグレーションのパス付き）・想定修正内容・見積もり・設計判断ポイント（例: proxy 二次ゲートの毎リクエストDB照会 vs JWT クレーム）を記載し、将来の着手時に調査をやり直さなくて済む形にした。全Issueが認証・RLSに触れるため security-reviewer 必須ゲートである旨も明記
+- 検証: `gh issue view` で親子の相互リンク・プレースホルダ解消を確認（#92 に置換漏れ1件があり修正済み）。コード変更なしのため typecheck / lint 対象外
