@@ -53,6 +53,7 @@ export function ProposalReviewPanel({
       title="企画書レビュー"
       emptyText="企画書がまとまってきたら、担当編集のレビューを受けましょう。承認が出るまで、指摘 → 改稿 → 再レビューを繰り返します。"
       showVerdict
+      enableCopyToNote
       flushSave={flushSave}
       onClose={onClose}
       renderFooter={({ latestVerdict, busy, sessionId }) => {

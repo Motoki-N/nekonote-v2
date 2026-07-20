@@ -5,6 +5,7 @@ import { z } from 'zod'
 
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
+import { attachTag } from '@/lib/actions/notes'
 import { resolveProfileForPhase, resolveReviewerPersona } from '@/lib/review-validation'
 import type { ReviewVerdict } from '@/lib/schemas/enums'
 import { createClient } from '@/lib/supabase/server'
@@ -295,6 +296,71 @@ export async function saveFeedbackResponse(
     if (error) throw new AppError('internal', error.message)
     if (!data || data.length === 0) throw new AppError('not_found', 'フィードバックが見つかりません')
     return { ok: true }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * フィードバックをノートに転記して保存する（Issue #99）。
+ * レビュー指摘の対応状況をノート上でメモしながら追えるようにする。
+ * ノートのタイトルに企画書（プロジェクト）タイトルと第何回のレビューかを付記し、
+ * プロジェクトタイトルの仮タイトルタグを付与して作品単位で束ねる。
+ * 本文はDBから読み直す＝クライアント改変の混入を防ぐ（saveChatMessageAsNote と同じ流儀）
+ */
+export async function saveFeedbackAsNote(
+  feedbackId: string,
+): Promise<ActionResult<{ noteId: string }>> {
+  try {
+    const fid = uuidSchema.parse(feedbackId)
+    const supabase = await createClient()
+
+    // RLS越しの取得＝所有確認を兼ねる。セッション経由で企画書レビューかどうかとタイトルを引く
+    const { data: feedback, error: selectError } = await supabase
+      .from('review_feedbacks')
+      .select(
+        'id, content, created_at, review_session_id, review_sessions (review_profiles (name, target_phase), projects (title))',
+      )
+      .eq('id', fid)
+      .maybeSingle()
+    if (selectError) throw new AppError('internal', selectError.message)
+    if (!feedback) throw new AppError('not_found', 'フィードバックが見つかりません')
+
+    const session = feedback.review_sessions
+    if (session?.review_profiles?.target_phase !== 'proposal') {
+      throw new AppError('validation', '企画書レビューのフィードバックのみノートに転記できます')
+    }
+    const projectTitle = session.projects?.title
+    if (!projectTitle) throw new AppError('internal', 'プロジェクトが見つかりません')
+
+    // 第何回か = 同一セッション内でこのフィードバック以前に作られた件数（パネルの「第N回」と同じ数え方）
+    const { count, error: countError } = await supabase
+      .from('review_feedbacks')
+      .select('id', { count: 'exact', head: true })
+      .eq('review_session_id', feedback.review_session_id)
+      .lte('created_at', feedback.created_at)
+    if (countError) throw new AppError('internal', countError.message)
+    const round = count ?? 1
+
+    const date = new Date(feedback.created_at).toLocaleDateString('ja-JP', {
+      timeZone: 'Asia/Tokyo',
+    })
+    const title = `「${projectTitle}」${session.review_profiles.name} 第${round}回（${date}）`
+
+    const { data: note, error: insertError } = await supabase
+      .from('notes')
+      .insert({ title, content: feedback.content })
+      .select('id')
+      .single()
+    if (insertError || !note) {
+      throw new AppError('internal', insertError?.message ?? 'ノートの作成に失敗しました')
+    }
+
+    // 企画書タイトルの仮タイトルタグを get-or-create して付与（attachTag が /notes を revalidate する）
+    const tagResult = await attachTag(note.id, { name: projectTitle, kind: 'working_title' })
+    if (!tagResult.ok) return tagResult
+
+    return { ok: true, data: { noteId: note.id } }
   } catch (error) {
     return toActionError(error)
   }

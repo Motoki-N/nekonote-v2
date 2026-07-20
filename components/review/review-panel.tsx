@@ -9,6 +9,7 @@ import {
   Loader2,
   Maximize2,
   Minimize2,
+  NotebookPen,
   Undo2,
   X,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import {
   getOrCreateReviewSession,
   getReviewPanelBootstrap,
   getReviewSessionState,
+  saveFeedbackAsNote,
   saveFeedbackResponse,
   type FeedbackRecord,
   type ReviewPanelBootstrap,
@@ -78,6 +80,7 @@ export function ReviewPanel({
   subtitle,
   emptyText,
   showVerdict,
+  enableCopyToNote = false,
   flushSave,
   onClose,
   renderFooter,
@@ -90,6 +93,8 @@ export function ReviewPanel({
   emptyText: string;
   /** 判定バッジの表示（企画書レビューのみ true。構成・シーンは都度フィードバック型） */
   showVerdict: boolean;
+  /** 「ノートに転記」ボタンの表示（企画書レビューのみ true。Issue #99） */
+  enableCopyToNote?: boolean;
   /** レビュー実行前に編集内容をDBへ確定させる（レビューは保存済みDB値で行う） */
   flushSave?: () => Promise<void>;
   onClose: () => void;
@@ -350,6 +355,7 @@ export function ReviewPanel({
                 feedback={feedback}
                 round={index + 1}
                 showVerdict={showVerdict}
+                enableCopyToNote={enableCopyToNote}
                 disabled={busy}
               />
             ))}
@@ -399,16 +405,39 @@ function FeedbackCard({
   feedback,
   round,
   showVerdict,
+  enableCopyToNote,
   disabled,
 }: {
   feedback: FeedbackRecord;
   round: number;
   showVerdict: boolean;
+  enableCopyToNote: boolean;
   disabled: boolean;
 }) {
+  const router = useRouter();
   const [response, setResponse] = useState(feedback.user_response ?? "");
   const [savedResponse, setSavedResponse] = useState(feedback.user_response ?? "");
   const [saving, setSaving] = useState(false);
+  const [copying, setCopying] = useState(false);
+
+  // 指摘対応をメモしながら進められるよう、フィードバック本文をノートへ転記する（Issue #99）
+  async function handleCopyToNote() {
+    if (copying) return;
+    setCopying(true);
+    try {
+      const result = await saveFeedbackAsNote(feedback.id);
+      if (!result.ok || !result.data) {
+        toast.error(result.ok ? "ノートへの転記に失敗しました" : result.error.message);
+        return;
+      }
+      const noteId = result.data.noteId;
+      toast("レビューをノートに転記しました", {
+        action: { label: "ノートをひらく", onClick: () => router.push(`/notes/${noteId}`) },
+      });
+    } finally {
+      setCopying(false);
+    }
+  }
 
   async function handleSaveResponse() {
     if (saving || response === savedResponse) return;
@@ -431,6 +460,18 @@ function FeedbackCard({
       <header className="mb-2 flex items-center gap-2">
         <span className="text-xs text-muted-foreground">第{round}回</span>
         {showVerdict && <VerdictBadge verdict={feedback.verdict} />}
+        {enableCopyToNote && (
+          <Button
+            size="xs"
+            variant="ghost"
+            className="ml-auto text-muted-foreground"
+            onClick={() => void handleCopyToNote()}
+            disabled={disabled || copying}
+          >
+            <NotebookPen data-icon="inline-start" />
+            ノートに転記
+          </Button>
+        )}
       </header>
       <div className="text-sm whitespace-pre-wrap text-card-foreground">{feedback.content}</div>
       <div className="mt-3 flex flex-col gap-1.5 border-t border-border pt-2">
