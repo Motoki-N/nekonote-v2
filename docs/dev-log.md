@@ -714,3 +714,12 @@
 - **実装は3ファイル（+108）**: Server Action `saveFeedbackAsNote(feedbackId)`（lib/actions/review.ts）は RLS 越しにフィードバック＋セッション＋プロジェクトを取得（所有確認を兼ねる・本文はDBから読み直し＝`saveChatMessageAsNote` と同じ流儀）→ ノート作成 → タグ付与（既存 `attachTag` を再利用）。共通 ReviewPanel の FeedbackCard ヘッダーに「ノートに転記」ボタン（成功トースト＋「ノートをひらく」アクション・多重実行ガード）。構成・シーン等でも使われる共通パネルのため opt-in の `enableCopyToNote` prop とし企画書レビューパネルのみ有効化、サーバー側でも `target_phase = 'proposal'` を検証
 - 設計メモ: 企画書（proposals）に独自タイトルがないため「企画書のタイトル」=プロジェクトタイトルと解釈。ノートタイトルは `「{プロジェクトタイトル}」{プロファイル名} 第{N}回（{日付}）`（「第N回」は同一セッション内 created_at 順の件数でパネル表示と一致）。タグは草稿→浄書モデルの「作品名で束ねる」流儀どおり `working_title` 種別でプロジェクトタイトル名を get-or-create。転記ノートは proposal_notes には紐づけない（レビュー結果が次回レビューの入力に混入するのを避ける）
 - 検証: typecheck / lint 通過。ペイン実機で第5回フィードバックの転記→ノート「「人魚の唄［Siren Song from Deep Ocean］」企画書レビュー 第5回（2026/7/20）」＋仮タイトルタグの生成を確認（検証ノートは開発DBに残置）。subagent 自己レビュー: 要件充足・ブロッカーなし（低深刻度2件は既存パターン踏襲・仕様上許容と判断し対応せず）。認証・RLS・秘密情報に非接触のため security-reviewer 不要判断。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
+
+### セッション51: /fix-issue #98 レビュー停止時のサーバー側中断——PR #100 マージ・本番反映（7/20）
+
+- **Issue #98 を `/fix-issue` フローで処理**（影響範囲分析→実装→subagent自己レビュー→PR #100→ユーザーのペインログイン後に実機E2E→マージまで1セッション・設計確認基準に非該当のため確認なしで直行）: 企画書レビューを停止ボタンでキャンセルしても内部的にはキャンセルされず、生成が完走して保存され、再レビュー時の履歴にも混入するバグ（P1・bug）
+- **原因: `/api/review` の `streamText` に `abortSignal` 未指定**——クライアント（review-panel）は AbortController で fetch を中断していたが、サーバー側はプロバイダ呼び出しが継続し `onFinish` で `review_feedbacks` に保存されていた。旧コメント「stop によるクライアント切断時は保存しない」は実態と不一致（セッション㊷で「切断時は onFinish が発火せず未記録」と記した既知の計測漏れ①も同根の誤認で、実際は発火・保存されていた）
+- **修正は route.ts 1ファイル（+19/-17）**: `abortSignal: req.signal` を追加し切断で生成そのものを中断。AI SDK v7 は abort 時に `onAbort` のみ呼び `onFinish` はスキップする（dist 実装の abort 経路を追跡し、`finish` パート未記録→flush で onEnd 通知スキップを確認）＝フィードバック非保存・履歴非混入・draft→in_review 遷移も走らない。講評（読み切り型）が running のまま残らないよう `finalizeCritique` を onFinish 外へ抽出し `onAbort` / `onError` から failed 確定
+- **割り切り（コメント・PRに明記）**: ①中断時の AI 使用量記録は SDK が abort 時に usage を提供しないため不可（レート制限 3回/分・60回/日 が下限ガード）②Vercel での切断後処理の継続保証は、本Issueの症状（切断後も生成完走・保存）自体が継続実態の証拠と判断し waitUntil 等の新規依存は追加せず。万一 onAbort の DB 更新が落ちても講評セッションが running で残るだけ（一覧は completed のみ表示で実害なし）
+- **実機E2E（ユーザーにペインのGoogleログインを依頼して実施）**: 実データ（人魚の唄・既存フィードバック6件）でレビュー実行→約2秒で停止→ `POST /api/review` が**7.9秒で終了**（完走なら1分前後・abort伝播の証跡）→ `review_feedbacks` は停止直後も**60秒後も6件のまま**（遅延保存なし）→パネル再表示で第1回〜第6回のカードのみ。検証結果はPRコメントに記録
+- 検証: typecheck / lint 通過。subagent 自己レビュー指摘2件（使用量記録の後退・Vercel継続リスク）はいずれも上記の割り切りとして整理。認証・RLS・秘密情報に非接触のため security-reviewer 不要判断。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
