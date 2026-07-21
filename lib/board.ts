@@ -16,6 +16,8 @@ export type SceneRecord = {
   emotion_end: Emotion | null
   /** シーンレビューのゲート状態（Issue #57。「通す」で approved になる） */
   status: ApprovalStatus
+  /** 紐づく原稿ファイルのパス（Issue #56。null = 未紐づけ） */
+  manuscript_path: string | null
 }
 
 export const PART_LABEL: Record<ScenePart, string> = {

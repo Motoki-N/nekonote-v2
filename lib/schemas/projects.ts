@@ -6,6 +6,7 @@ import {
   sceneAnchors,
   sceneParts,
 } from './enums'
+import { manuscriptFilePathSchema } from './manuscript'
 
 // 原稿リポジトリ（owner/repo 形式）の検証。
 // owner は GitHub 実仕様（英数字とハイフン）。repo 名は . / .. 単体を拒否（URL正規化による別エンドポイント到達の防止）。
@@ -78,6 +79,8 @@ export const sceneEditSchema = z.object({
   anchor: z.enum(sceneAnchors).nullable(),
   emotion_start: z.enum(emotions).nullable(),
   emotion_end: z.enum(emotions).nullable(),
+  // 紐づく原稿ファイル（Issue #56）。形式検証のみ（開く際のbase_path検証はエディタ側が行う）
+  manuscript_path: manuscriptFilePathSchema.nullable(),
 })
 export type SceneEdit = z.infer<typeof sceneEditSchema>
 

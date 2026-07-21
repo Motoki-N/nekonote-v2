@@ -13,10 +13,12 @@ import { SceneCardContent } from "@/components/board/scene-card";
 export function AnchorSlot({
   anchor,
   scene,
+  noteCount,
   onEdit,
 }: {
   anchor: BoundaryAnchor;
   scene: SceneRecord | undefined;
+  noteCount?: number;
   onEdit: (scene: SceneRecord) => void;
 }) {
   return (
@@ -26,7 +28,9 @@ export function AnchorSlot({
         {ANCHOR_LABEL[anchor]}
         {!scene && "（未設定）"}
       </span>
-      {scene && <SceneCardContent scene={scene} onClick={() => onEdit(scene)} />}
+      {scene && (
+        <SceneCardContent scene={scene} noteCount={noteCount} onClick={() => onEdit(scene)} />
+      )}
     </div>
   );
 }
