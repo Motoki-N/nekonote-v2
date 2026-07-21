@@ -732,3 +732,14 @@
 - **subagent 自己レビュー指摘2件を修正して再レビュークローズ**: ①VerdictBadge が verdict=null（ゲート化前の構成/シーン履歴）を「差し戻し」誤表示→null ガード追加 ②シーン系アクションの upsert が取得時点の status を書き戻し `approveBoardReview` との競合で承認が巻き戻る窓→upsert ペイロードから status を除外（新規行は DB default 'draft'）
 - **security-reviewer 指摘ゼロ**（列追加は既存 FOR ALL ポリシーがテーブル単位で自動保護・所有確認と対象すり替え遮断は approveProposal と同一パターン・「通す」出現条件はクライアント値だがサーバー側で verdict 再検証・sceneEditSchema に status が無くクライアントから承認状態を直接操作する経路なし）
 - 検証: typecheck / lint 通過。`db push` 適用（migration list 一致・`db:types` 再生成が手動先行パッチと完全一致）。ペイン実機で構成レビュー実行→更新済みプロンプトが最終行に「判定: 差し戻し」を出力→「第1回 差し戻し」バッジ表示→差し戻し時に「通す」非表示を確認（人魚の唄に構成レビュー第1回・差し戻しが1件残置。実レビューとしてそのまま使える）。承認→「通す」の実経路は実データで承認判定が出た際に確認できる（サーバー検証は2重レビュー済み）。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
+
+### セッション53: /fix-issue #56 シーンカードへのノート・原稿ファイル紐づけ——PR #103 マージ・本番反映（7/21）
+
+- **Issue #56 を `/fix-issue` フローで処理**（影響範囲分析→設計確認2問→security-reviewer→マイグレーション適用→実装→ペイン実機検証→subagent自己レビュー→PR #103→マージまで1セッション）: シーンカードにノート（設定資料）・原稿ファイル（章）を紐づける導線がなかった（SPEC-beat-board スコープ外項目の昇格。構成と執筆が対応づき、シーンから該当章のエディタへ飛べる）
+- **設計確認（AskUserQuestion 2問・DBスキーマ変更のため着手前に実施）**: ①原稿ファイルの持ち方→**1シーン=1ファイルの `scenes.manuscript_path` 列**（中間テーブル案は不採用。複数シーンが同じ章を指すのは列でも自然に可能）②カード表示→**小さなアイコンバッジ**（原稿ありバッジ=クリックでエディタへ・ノート件数バッジ。ダイアログ内のみ案は不採用）
+- **実装は14ファイル（+522/-118）**: マイグレーション `20260721000002`（`scene_notes` 中間テーブル=proposal_notes と同型のRLS（シーン所有 AND ノート所有・using/with check 対称）＋`scenes.manuscript_path` nullable text）→ Server Action `attachSceneNote` / `detachSceneNote`（attachProposalNote と同型・ノート検索は既存 `searchNotesForLink` 再利用）→ シーン編集ダイアログに紐づけセクション（ノートチップは即時保存・原稿 select は `getManuscriptTree` 遅延取得＋repo/PAT 未設定は誘導文・「エディタで開く」リンク）→ カードバッジ（カード全体が `<button>` のため原稿バッジは `role="link"` span＋stopPropagation で `router.push`）
+- **企画書の紐づけノートUIを `LinkedNoteChips`（components/notes/）として抽出・共通化**——チップ・検索ポップオーバーを1:1で切り出し、attach/detach のサーバー保存・state・トーストは呼び出し側の責務（LinkedNotes は薄いラッパー化・見た目挙動不変）。ボード側は BeatBoard が `notesMap` を state 管理してダイアログ・カード件数へ配布
+- **subagent 自己レビュー指摘3件を修正して再レビュークローズ**: ①原稿 select の候補が base_path 配下の全 .md/.txt で、エディタが開ける章（`manuscripts/*.md`・listChapters の規則）と不一致＝無言のデッドリンクが作れる→章集合にフィルタ（末尾スラッシュ処理まで listChapters と同一規則を確認済み）②`/api/review` の fetchScenes が manuscript_path 非取得のまま `as SceneRecord[]`（型の嘘）→列追加 ③scene_notes 初期表示に order 未指定→`created_at` 順（企画書と同型）
+- **security-reviewer 通過（Critical/High/Medium なし・Low 2件は実害なし記録のみ）**: 新RLSは作成と同時に有効化・FOR ALL の using/with check 完全対称で行の付け替えも遮断・anon は default privileges revoke と to authenticated の二重遮断。manuscript_path は保存時形式検証（`manuscriptFilePathSchema`）のみだが、エディタ側が章一覧完全一致＋base_path 再検証で開くため越権参照に至らない（多層防御の整理をレビュー報告に記録）
+- 検証: typecheck / lint 通過。`db push` 適用（migration list 一致・`db:types` 再生成が手動先行パッチと一致）。ペイン実機でノート検索→紐づけ→チップ→リロード復元→解除、カードの「紐づけノート 1件」バッジ、企画書ページの回帰（チップ・ポップオーバー）を確認（検証シーンは削除済み）。原稿 select は対象リポジトリの `manuscripts/` にまだ章ファイルがなく描画（gate=ok・選択肢なし）までの確認——初章作成後に実導線が通る。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
+- ペイン検証メモ: 同一フォルダの別セッション dev サーバーは Next 16 の二重起動ロックで自前起動不可→既存サーバー（同じ作業ツリー配信）を `preview_start {url}` で流用する定石（セッション㊵）を追認
