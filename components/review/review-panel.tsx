@@ -43,6 +43,8 @@ async function toDisplayError(res: Response): Promise<string> {
 }
 
 function VerdictBadge({ verdict }: { verdict: FeedbackRecord["verdict"] }) {
+  // null = 判定なし（ゲート化前の構成/シーンレビュー履歴等）。差し戻し扱いにせずバッジを出さない
+  if (verdict === null || verdict === undefined) return null;
   if (verdict === "approved") {
     return (
       <Badge variant="default">

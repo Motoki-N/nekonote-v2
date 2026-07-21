@@ -2,7 +2,7 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Minus, MoveRight, Plus } from "lucide-react";
+import { BadgeCheck, Minus, MoveRight, Plus } from "lucide-react";
 
 import { ANCHOR_BADGE, EMOTION_LABEL, type SceneRecord } from "@/lib/board";
 import type { Emotion } from "@/lib/schemas/enums";
@@ -53,10 +53,20 @@ export function SceneCardContent({
           {scene.content}
         </p>
       )}
-      {(scene.anchor !== null || scene.emotion_start !== null || scene.emotion_end !== null) && (
+      {(scene.anchor !== null ||
+        scene.emotion_start !== null ||
+        scene.emotion_end !== null ||
+        scene.status === "approved") && (
         <span className="flex flex-wrap gap-1">
           {scene.anchor !== null && <Badge variant="secondary">{ANCHOR_BADGE[scene.anchor]}</Badge>}
           <EmotionBadge scene={scene} />
+          {/* シーンレビューのゲート状態（Issue #57） */}
+          {scene.status === "approved" && (
+            <Badge variant="outline" aria-label="シーンレビュー承認済み">
+              <BadgeCheck data-icon="inline-start" />
+              承認済み
+            </Badge>
+          )}
         </span>
       )}
     </button>

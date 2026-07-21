@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { SceneRecord } from "@/lib/board";
+import type { ApprovalStatus } from "@/lib/schemas/enums";
 import { BeatBoard } from "@/components/board/beat-board";
 
 /**
@@ -10,11 +11,23 @@ export default async function BoardPage({ params }: { params: Promise<{ id: stri
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: scenes } = await supabase
-    .from("scenes")
-    .select("id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end")
-    .eq("project_id", id)
-    .order("order_index");
+  const [{ data: scenes }, { data: project }] = await Promise.all([
+    supabase
+      .from("scenes")
+      .select(
+        "id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status",
+      )
+      .eq("project_id", id)
+      .order("order_index"),
+    // 構成レビューのゲート状態（Issue #57）
+    supabase.from("projects").select("structure_status").eq("id", id).maybeSingle(),
+  ]);
 
-  return <BeatBoard projectId={id} initialScenes={(scenes ?? []) as SceneRecord[]} />;
+  return (
+    <BeatBoard
+      projectId={id}
+      initialScenes={(scenes ?? []) as SceneRecord[]}
+      structureStatus={(project?.structure_status ?? "draft") as ApprovalStatus}
+    />
+  );
 }

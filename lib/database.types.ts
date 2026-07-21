@@ -383,6 +383,7 @@ export type Database = {
           repo: string | null
           schedule: Json | null
           status: string
+          structure_status: string
           target_pages: number | null
           title: string
           updated_at: string
@@ -397,6 +398,7 @@ export type Database = {
           repo?: string | null
           schedule?: Json | null
           status?: string
+          structure_status?: string
           target_pages?: number | null
           title: string
           updated_at?: string
@@ -411,6 +413,7 @@ export type Database = {
           repo?: string | null
           schedule?: Json | null
           status?: string
+          structure_status?: string
           target_pages?: number | null
           title?: string
           updated_at?: string
@@ -687,6 +690,7 @@ export type Database = {
           order_index: number
           part: string
           project_id: string
+          status: string
           title: string
           updated_at: string
         }
@@ -700,6 +704,7 @@ export type Database = {
           order_index?: number
           part: string
           project_id: string
+          status?: string
           title?: string
           updated_at?: string
         }
@@ -713,6 +718,7 @@ export type Database = {
           order_index?: number
           part?: string
           project_id?: string
+          status?: string
           title?: string
           updated_at?: string
         }

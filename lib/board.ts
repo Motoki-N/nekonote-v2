@@ -1,7 +1,7 @@
 // ビートボードの純関数ヘルパー（SPEC-beat-board §4）。
 // Server Actions / API / クライアントUI で共用するため副作用を持たない
 
-import type { Emotion, SceneAnchor, ScenePart } from '@/lib/schemas/enums'
+import type { ApprovalStatus, Emotion, SceneAnchor, ScenePart } from '@/lib/schemas/enums'
 import { sceneParts } from '@/lib/schemas/enums'
 
 export type SceneRecord = {
@@ -14,6 +14,8 @@ export type SceneRecord = {
   content: string
   emotion_start: Emotion | null
   emotion_end: Emotion | null
+  /** シーンレビューのゲート状態（Issue #57。「通す」で approved になる） */
+  status: ApprovalStatus
 }
 
 export const PART_LABEL: Record<ScenePart, string> = {

@@ -16,7 +16,7 @@ const uuidSchema = z.uuid()
 const partSchema = z.enum(sceneParts)
 
 const SCENE_COLUMNS =
-  'id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end'
+  'id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
@@ -65,7 +65,20 @@ async function persistChanges(
     )
   })
   if (changed.length === 0) return
-  const { error } = await supabase.from('scenes').upsert(changed)
+  // status はシーン系アクションの管理外（approveBoardReview だけが更新する）。取得時点の値を
+  // 書き戻して承認を巻き戻さないよう upsert ペイロードから除外する（新規行は default 'draft'）
+  const payload = changed.map((scene) => ({
+    id: scene.id,
+    project_id: scene.project_id,
+    part: scene.part,
+    anchor: scene.anchor,
+    order_index: scene.order_index,
+    title: scene.title,
+    content: scene.content,
+    emotion_start: scene.emotion_start,
+    emotion_end: scene.emotion_end,
+  }))
+  const { error } = await supabase.from('scenes').upsert(payload)
   if (error) throw new AppError('internal', error.message)
 }
 
@@ -95,6 +108,7 @@ export async function createScene(
       content: '',
       emotion_start: null,
       emotion_end: null,
+      status: 'draft',
     }
     // 配列末尾に足すと、正準順序では該当レーンの通常カード末尾（境界スロット手前）に入る
     const next = toCanonicalOrder([...scenes, created])

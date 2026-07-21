@@ -31,8 +31,11 @@ const uuidSchema = z.uuid()
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
+// 判定行を持つレビュー種別（企画書＋構成・シーン。Issue #57 でゲート化）
+const VERDICT_PHASES = ['proposal', 'structure', 'scene']
+
 /**
- * フィードバック末尾の固定判定行をパースする（SPEC-proposal-review §3.3。企画書レビューのみ）。
+ * フィードバック末尾の固定判定行をパースする（SPEC-proposal-review §3.3）。
  * パース不能は差し戻し扱い（フェイルクローズ）
  */
 function parseVerdict(text: string): ReviewVerdict {
@@ -95,7 +98,9 @@ async function fetchProposalWithNotes(supabase: Supabase, proposalId: string, pr
 async function fetchScenes(supabase: Supabase, projectId: string): Promise<SceneRecord[]> {
   const { data, error } = await supabase
     .from('scenes')
-    .select('id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end')
+    .select(
+      'id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status',
+    )
     .eq('project_id', projectId)
     .order('order_index')
   if (error) throw new AppError('internal', error.message)
@@ -307,9 +312,9 @@ export async function POST(req: Request) {
         try {
           const { error: insertError } = await supabase.from('review_feedbacks').insert({
             review_session_id: session.id,
-            // 構成・シーンレビューは都度フィードバック型、講評は合否を持たないため判定は企画書のみ
+            // キャラクターレビュー・講評は合否を持たないため判定なし（null）
             content: text,
-            verdict: phase === 'proposal' ? parseVerdict(text) : null,
+            verdict: VERDICT_PHASES.includes(phase) ? parseVerdict(text) : null,
           })
           if (insertError) {
             console.error('フィードバックの保存に失敗:', insertError.message)
