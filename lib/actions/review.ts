@@ -430,3 +430,84 @@ export async function approveProposal(sessionId: string): Promise<ActionResult> 
     return toActionError(error)
   }
 }
+
+/**
+ * 構成/シーンレビューの「通す」確定（Issue #57）。
+ * approveProposal と同じ流儀: パネルが表示中のセッション id を受け取り、
+ * 最新フィードバックの判定が承認であることをサーバー側でも検証したうえで、
+ * 対象のステータスを approved ＋セッション completed にする。
+ * 永続先は構成 = projects.structure_status / シーン = scenes.status（draft/approved の2状態）
+ */
+export async function approveBoardReview(sessionId: string): Promise<ActionResult> {
+  try {
+    const sid = uuidSchema.parse(sessionId)
+    const supabase = await createClient()
+
+    // RLS越しの取得＝所有確認を兼ねる
+    const { data: session, error: sessionError } = await supabase
+      .from('review_sessions')
+      .select('id, project_id, target_ref, status, review_profiles (target_phase)')
+      .eq('id', sid)
+      .maybeSingle()
+    if (sessionError) throw new AppError('internal', sessionError.message)
+    if (!session) throw new AppError('not_found', 'レビューセッションが見つかりません')
+    if (session.status !== 'running') {
+      throw new AppError('validation', 'このレビューセッションは終了しています')
+    }
+    // 構成/シーンレビューのセッションであること（他フェーズのセッションで通させない）
+    const phase = session.review_profiles?.target_phase
+    if (phase !== 'structure' && phase !== 'scene') {
+      throw new AppError('validation', '構成・シーンレビューのセッションではありません')
+    }
+    const targetRef = uuidSchema.safeParse(session.target_ref)
+    if (!targetRef.success) throw new AppError('internal', 'レビュー対象が不正です')
+
+    const { data: latest, error: latestError } = await supabase
+      .from('review_feedbacks')
+      .select('verdict')
+      .eq('review_session_id', session.id)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (latestError) throw new AppError('internal', latestError.message)
+    if (latest?.verdict !== 'approved') {
+      throw new AppError('validation', '最新のレビューで承認が出ていないため、通せません')
+    }
+
+    if (phase === 'structure') {
+      // 構成レビューの target_ref = プロジェクト id（セッションのプロジェクトと一致していること）
+      if (targetRef.data !== session.project_id) {
+        throw new AppError('not_found', 'レビュー対象が見つかりません')
+      }
+      const { data: updated, error: updateError } = await supabase
+        .from('projects')
+        .update({ structure_status: 'approved' })
+        .eq('id', session.project_id)
+        .select('id')
+      if (updateError) throw new AppError('internal', updateError.message)
+      if (!updated || updated.length === 0) {
+        throw new AppError('not_found', 'プロジェクトが見つかりません')
+      }
+    } else {
+      const { data: updated, error: updateError } = await supabase
+        .from('scenes')
+        .update({ status: 'approved' })
+        .eq('id', targetRef.data)
+        .eq('project_id', session.project_id) // セッションとシーンの対応を担保
+        .select('id')
+      if (updateError) throw new AppError('internal', updateError.message)
+      if (!updated || updated.length === 0) throw new AppError('not_found', 'シーンが見つかりません')
+    }
+
+    const { error: completeError } = await supabase
+      .from('review_sessions')
+      .update({ status: 'completed' })
+      .eq('id', session.id)
+    if (completeError) throw new AppError('internal', completeError.message)
+
+    revalidatePath(`/projects/${session.project_id}/board`)
+    return { ok: true }
+  } catch (error) {
+    return toActionError(error)
+  }
+}

@@ -15,9 +15,11 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
-import { ClipboardCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { BadgeCheck, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 
+import { approveBoardReview } from "@/lib/actions/review";
 import { createScene, deleteScene, reorderScenes, updateScene } from "@/lib/actions/scenes";
 import {
   BOUNDARY_ANCHOR_BY_PART,
@@ -26,8 +28,9 @@ import {
   toCanonicalOrder,
   type SceneRecord,
 } from "@/lib/board";
-import { sceneParts, type ScenePart } from "@/lib/schemas/enums";
+import { sceneParts, type ApprovalStatus, type ScenePart } from "@/lib/schemas/enums";
 import type { SceneEdit } from "@/lib/schemas/projects";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmotionLine } from "@/components/board/emotion-line";
 import { Lane } from "@/components/board/lane";
@@ -52,15 +55,22 @@ function sameOrder(a: SceneRecord[], b: SceneRecord[]): boolean {
 export function BeatBoard({
   projectId,
   initialScenes,
+  structureStatus,
 }: {
   projectId: string;
   initialScenes: SceneRecord[];
+  /** 構成レビューのゲート状態（projects.structure_status。Issue #57） */
+  structureStatus: ApprovalStatus;
 }) {
+  const router = useRouter();
   const [scenes, setScenes] = useState<SceneRecord[]>(() => toCanonicalOrder(initialScenes));
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<SceneRecord | null>(null);
   const [review, setReview] = useState<ReviewTarget | null>(null);
   const [adding, setAdding] = useState(false);
+  // 「通す」確定の楽観的反映（サーバー確定後に setState。router.refresh は props に効かないため）
+  const [structureApproved, setStructureApproved] = useState(structureStatus === "approved");
+  const [approving, setApproving] = useState(false);
   // ドラッグ開始時点の状態（キャンセル・保存失敗時のロールバック先）
   const snapshotRef = useRef<SceneRecord[] | null>(null);
 
@@ -178,6 +188,31 @@ export function BeatBoard({
     return true;
   }
 
+  /** 「通す」確定（Issue #57）。サーバー検証成功後にゲート状態をローカルへ反映する */
+  async function handleApprove(sessionId: string, target: ReviewTarget) {
+    if (approving) return;
+    setApproving(true);
+    try {
+      const result = await approveBoardReview(sessionId);
+      if (!result.ok) {
+        toast.error(result.error.message);
+        return;
+      }
+      if (target.kind === "structure") {
+        setStructureApproved(true);
+        toast("構成が通りました！シーンの執筆に進みましょう");
+      } else {
+        setScenes((prev) =>
+          prev.map((s) => (s.id === target.scene.id ? { ...s, status: "approved" } : s)),
+        );
+        toast("シーンが通りました！");
+      }
+      router.refresh();
+    } finally {
+      setApproving(false);
+    }
+  }
+
   async function handleDelete(sceneId: string): Promise<boolean> {
     const result = await deleteScene(sceneId);
     if (!result.ok) {
@@ -196,6 +231,12 @@ export function BeatBoard({
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">シーン {scenes.length}枚</span>
+          {structureApproved && (
+            <Badge variant="secondary">
+              <BadgeCheck data-icon="inline-start" />
+              構成承認済み
+            </Badge>
+          )}
           <Button
             variant={review?.kind === "structure" ? "secondary" : "outline"}
             size="sm"
@@ -254,9 +295,30 @@ export function BeatBoard({
           kind="structure"
           targetId={projectId}
           title="構成レビュー"
-          emptyText="4部構成・5転換点の観点で、担当編集がボード全体（シーン構成と企画書）を見ます。"
-          showVerdict={false}
+          emptyText="4部構成・5転換点の観点で、担当編集がボード全体（シーン構成と企画書）を見ます。承認が出るまで、指摘 → 改稿 → 再レビューを繰り返します。"
+          showVerdict
           onClose={() => setReview(null)}
+          renderFooter={({ latestVerdict, busy, sessionId }) => {
+            if (latestVerdict === "approved" && !structureApproved && !busy && sessionId !== null) {
+              return (
+                <Button
+                  onClick={() => void handleApprove(sessionId, { kind: "structure" })}
+                  disabled={approving}
+                >
+                  <BadgeCheck data-icon="inline-start" />
+                  構成を通す
+                </Button>
+              );
+            }
+            if (structureApproved) {
+              return (
+                <p className="text-center text-xs text-muted-foreground">
+                  この構成は承認済みです。再審査したいときは、もう一度レビューを受けてください
+                </p>
+              );
+            }
+            return null;
+          }}
         />
       )}
       {review?.kind === "scene" && (
@@ -266,9 +328,34 @@ export function BeatBoard({
           targetId={review.scene.id}
           title="シーンレビュー"
           subtitle={review.scene.title || "（無題）"}
-          emptyText="対象シーンを4観点（シチュエーション・出来事・感情の変化・葛藤）で見ます。"
-          showVerdict={false}
+          emptyText="対象シーンを4観点（シチュエーション・出来事・感情の変化・葛藤）で見ます。承認が出るまで、指摘 → 改稿 → 再レビューを繰り返します。"
+          showVerdict
           onClose={() => setReview(null)}
+          renderFooter={({ latestVerdict, busy, sessionId }) => {
+            // review.scene は開いた時点のスナップショットなので、最新の承認状態は scenes から引く
+            const target = review;
+            const approved =
+              scenes.find((s) => s.id === target.scene.id)?.status === "approved";
+            if (latestVerdict === "approved" && !approved && !busy && sessionId !== null) {
+              return (
+                <Button
+                  onClick={() => void handleApprove(sessionId, target)}
+                  disabled={approving}
+                >
+                  <BadgeCheck data-icon="inline-start" />
+                  シーンを通す
+                </Button>
+              );
+            }
+            if (approved) {
+              return (
+                <p className="text-center text-xs text-muted-foreground">
+                  このシーンは承認済みです。再審査したいときは、もう一度レビューを受けてください
+                </p>
+              );
+            }
+            return null;
+          }}
         />
       )}
 

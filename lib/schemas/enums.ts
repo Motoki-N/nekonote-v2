@@ -11,6 +11,11 @@ export type ProjectStatus = (typeof projectStatuses)[number]
 export const proposalStatuses = ['draft', 'in_review', 'approved'] as const
 export type ProposalStatus = (typeof proposalStatuses)[number]
 
+// 構成・シーンレビューのゲート状態（scenes.status / projects.structure_status。
+// 20260721000001 の CHECK 制約と対応。企画書と違い in_review は持たない2状態）
+export const approvalStatuses = ['draft', 'approved'] as const
+export type ApprovalStatus = (typeof approvalStatuses)[number]
+
 // 4部構成のレーン（設定・反応・攻撃・解決）
 export const sceneParts = ['setup', 'response', 'attack', 'resolution'] as const
 export type ScenePart = (typeof sceneParts)[number]
