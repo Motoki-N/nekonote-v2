@@ -19,8 +19,16 @@ import { useRouter } from "next/navigation";
 import { BadgeCheck, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 
+import type { LinkedNote } from "@/lib/actions/projects";
 import { approveBoardReview } from "@/lib/actions/review";
-import { createScene, deleteScene, reorderScenes, updateScene } from "@/lib/actions/scenes";
+import {
+  attachSceneNote,
+  createScene,
+  deleteScene,
+  detachSceneNote,
+  reorderScenes,
+  updateScene,
+} from "@/lib/actions/scenes";
 import {
   BOUNDARY_ANCHOR_BY_PART,
   isBoundaryAnchor,
@@ -55,15 +63,19 @@ function sameOrder(a: SceneRecord[], b: SceneRecord[]): boolean {
 export function BeatBoard({
   projectId,
   initialScenes,
+  initialLinkedNotes,
   structureStatus,
 }: {
   projectId: string;
   initialScenes: SceneRecord[];
+  /** シーンごとの紐づけノート（Issue #56。ごみ箱中はサーバー側で除外済み） */
+  initialLinkedNotes: Record<string, LinkedNote[]>;
   /** 構成レビューのゲート状態（projects.structure_status。Issue #57） */
   structureStatus: ApprovalStatus;
 }) {
   const router = useRouter();
   const [scenes, setScenes] = useState<SceneRecord[]>(() => toCanonicalOrder(initialScenes));
+  const [notesMap, setNotesMap] = useState<Record<string, LinkedNote[]>>(initialLinkedNotes);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<SceneRecord | null>(null);
   const [review, setReview] = useState<ReviewTarget | null>(null);
@@ -83,6 +95,12 @@ export function BeatBoard({
   const activeScene = useMemo(
     () => (activeId ? scenes.find((s) => s.id === activeId) : undefined),
     [activeId, scenes],
+  );
+
+  const noteCounts = useMemo(
+    () =>
+      Object.fromEntries(Object.entries(notesMap).map(([sceneId, notes]) => [sceneId, notes.length])),
+    [notesMap],
   );
 
   /** over 先のレーンを解決する（レーン id か、レーン内カードの id） */
@@ -213,6 +231,32 @@ export function BeatBoard({
     }
   }
 
+  /** ノート紐づけ（Issue #56）。ダイアログの保存ボタンとは独立に即時保存する */
+  async function handleAttachNote(sceneId: string, note: LinkedNote) {
+    const result = await attachSceneNote(sceneId, note.id);
+    if (!result.ok) {
+      toast.error(result.error.message);
+      return;
+    }
+    setNotesMap((prev) => {
+      const current = prev[sceneId] ?? [];
+      if (current.some((n) => n.id === note.id)) return prev;
+      return { ...prev, [sceneId]: [...current, note] };
+    });
+  }
+
+  async function handleDetachNote(sceneId: string, noteId: string) {
+    const result = await detachSceneNote(sceneId, noteId);
+    if (!result.ok) {
+      toast.error(result.error.message);
+      return;
+    }
+    setNotesMap((prev) => ({
+      ...prev,
+      [sceneId]: (prev[sceneId] ?? []).filter((n) => n.id !== noteId),
+    }));
+  }
+
   async function handleDelete(sceneId: string): Promise<boolean> {
     const result = await deleteScene(sceneId);
     if (!result.ok) {
@@ -270,6 +314,7 @@ export function BeatBoard({
                   part={part}
                   scenes={laneScenes.filter((s) => !(boundary && s.anchor === boundary))}
                   boundaryScene={boundary ? laneScenes.find((s) => s.anchor === boundary) : undefined}
+                  noteCounts={noteCounts}
                   adding={adding}
                   onAdd={(p) => void handleAdd(p)}
                   onEdit={setEditing}
@@ -279,7 +324,7 @@ export function BeatBoard({
           </div>
           <DragOverlay>
             {activeScene && !isBoundaryAnchor(activeScene.anchor) ? (
-              <SceneCardContent scene={activeScene} />
+              <SceneCardContent scene={activeScene} noteCount={noteCounts[activeScene.id]} />
             ) : null}
           </DragOverlay>
         </DndContext>
@@ -364,6 +409,9 @@ export function BeatBoard({
           key={`dialog-${editing.id}`}
           scene={editing}
           allScenes={scenes}
+          linkedNotes={notesMap[editing.id] ?? []}
+          onAttachNote={(note) => handleAttachNote(editing.id, note)}
+          onDetachNote={(noteId) => handleDetachNote(editing.id, noteId)}
           onSave={handleSave}
           onDelete={handleDelete}
           onReview={(scene) => {

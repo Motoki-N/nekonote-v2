@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
+import type { LinkedNote } from '@/lib/actions/projects'
 import { normalizeAnchor, toCanonicalOrder, type SceneRecord } from '@/lib/board'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
@@ -16,7 +17,7 @@ const uuidSchema = z.uuid()
 const partSchema = z.enum(sceneParts)
 
 const SCENE_COLUMNS =
-  'id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status'
+  'id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status, manuscript_path'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
@@ -61,7 +62,8 @@ async function persistChanges(
       prev.title !== scene.title ||
       prev.content !== scene.content ||
       prev.emotion_start !== scene.emotion_start ||
-      prev.emotion_end !== scene.emotion_end
+      prev.emotion_end !== scene.emotion_end ||
+      prev.manuscript_path !== scene.manuscript_path
     )
   })
   if (changed.length === 0) return
@@ -77,6 +79,7 @@ async function persistChanges(
     content: scene.content,
     emotion_start: scene.emotion_start,
     emotion_end: scene.emotion_end,
+    manuscript_path: scene.manuscript_path,
   }))
   const { error } = await supabase.from('scenes').upsert(payload)
   if (error) throw new AppError('internal', error.message)
@@ -109,6 +112,7 @@ export async function createScene(
       emotion_start: null,
       emotion_end: null,
       status: 'draft',
+      manuscript_path: null,
     }
     // 配列末尾に足すと、正準順序では該当レーンの通常カード末尾（境界スロット手前）に入る
     const next = toCanonicalOrder([...scenes, created])
@@ -240,6 +244,78 @@ export async function deleteScene(sceneId: string): Promise<ActionResult> {
     if (deleteError) throw new AppError('internal', deleteError.message)
 
     revalidatePath(`/projects/${target.project_id}/board`)
+    return { ok: true }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/** RLS越しのシーン取得（revalidate 用の project_id 確認を兼ねる。他人・不存在は not_found） */
+async function fetchSceneRef(
+  supabase: Supabase,
+  sceneId: string,
+): Promise<{ id: string; project_id: string }> {
+  const { data, error } = await supabase
+    .from('scenes')
+    .select('id, project_id')
+    .eq('id', sceneId)
+    .maybeSingle()
+  if (error) throw new AppError('internal', error.message)
+  if (!data) throw new AppError('not_found', 'シーンが見つかりません')
+  return data
+}
+
+/** シーンにノートを紐づける（Issue #56。attachProposalNote と同型。紐づけ済みなら成功扱い） */
+export async function attachSceneNote(
+  sceneId: string,
+  noteId: string,
+): Promise<ActionResult<LinkedNote>> {
+  try {
+    const sid = uuidSchema.parse(sceneId)
+    const nid = uuidSchema.parse(noteId)
+    const supabase = await createClient()
+
+    const scene = await fetchSceneRef(supabase, sid)
+
+    // RLS越しで所有確認（他人・実在しない・ごみ箱中のノートは not_found に正規化する）
+    const { data: note, error: noteError } = await supabase
+      .from('notes')
+      .select('id, title')
+      .eq('id', nid)
+      .is('deleted_at', null)
+      .maybeSingle()
+    if (noteError) throw new AppError('internal', noteError.message)
+    if (!note) throw new AppError('not_found', 'ノートが見つかりません')
+
+    const { error } = await supabase
+      .from('scene_notes')
+      .upsert({ scene_id: sid, note_id: nid }, { ignoreDuplicates: true })
+    if (error) throw new AppError('internal', error.message)
+
+    revalidatePath(`/projects/${scene.project_id}/board`)
+    return { ok: true, data: note }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/** シーンからノートの紐づけを解除する（Issue #56） */
+export async function detachSceneNote(sceneId: string, noteId: string): Promise<ActionResult> {
+  try {
+    const sid = uuidSchema.parse(sceneId)
+    const nid = uuidSchema.parse(noteId)
+    const supabase = await createClient()
+
+    const scene = await fetchSceneRef(supabase, sid)
+
+    const { error } = await supabase
+      .from('scene_notes')
+      .delete()
+      .eq('scene_id', sid)
+      .eq('note_id', nid)
+    if (error) throw new AppError('internal', error.message)
+
+    revalidatePath(`/projects/${scene.project_id}/board`)
     return { ok: true }
   } catch (error) {
     return toActionError(error)

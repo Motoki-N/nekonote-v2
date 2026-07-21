@@ -679,6 +679,39 @@ export type Database = {
           },
         ]
       }
+      scene_notes: {
+        Row: {
+          created_at: string
+          note_id: string
+          scene_id: string
+        }
+        Insert: {
+          created_at?: string
+          note_id: string
+          scene_id: string
+        }
+        Update: {
+          created_at?: string
+          note_id?: string
+          scene_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scene_notes_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scene_notes_scene_id_fkey"
+            columns: ["scene_id"]
+            isOneToOne: false
+            referencedRelation: "scenes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       scenes: {
         Row: {
           anchor: string | null
@@ -687,6 +720,7 @@ export type Database = {
           emotion_end: string | null
           emotion_start: string | null
           id: string
+          manuscript_path: string | null
           order_index: number
           part: string
           project_id: string
@@ -701,6 +735,7 @@ export type Database = {
           emotion_end?: string | null
           emotion_start?: string | null
           id?: string
+          manuscript_path?: string | null
           order_index?: number
           part: string
           project_id: string
@@ -715,6 +750,7 @@ export type Database = {
           emotion_end?: string | null
           emotion_start?: string | null
           id?: string
+          manuscript_path?: string | null
           order_index?: number
           part?: string
           project_id?: string

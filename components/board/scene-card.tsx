@@ -2,7 +2,8 @@
 
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { BadgeCheck, Minus, MoveRight, Plus } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { BadgeCheck, FileText, Minus, MoveRight, Plus, StickyNote } from "lucide-react";
 
 import { ANCHOR_BADGE, EMOTION_LABEL, type SceneRecord } from "@/lib/board";
 import type { Emotion } from "@/lib/schemas/enums";
@@ -32,12 +33,45 @@ function EmotionBadge({ scene }: { scene: SceneRecord }) {
   );
 }
 
+/**
+ * 紐づけ原稿バッジ（Issue #56）。クリックでエディタの該当ファイルへ。
+ * カード全体が <button>（<a> をネストできない）ため role="link" の span で実装する
+ */
+function ManuscriptBadge({ scene }: { scene: SceneRecord }) {
+  const router = useRouter();
+  if (scene.manuscript_path === null) return null;
+  const href = `/projects/${scene.project_id}/editor?file=${encodeURIComponent(scene.manuscript_path)}`;
+  const open = (e: React.SyntheticEvent) => {
+    e.stopPropagation(); // カードの編集ダイアログを開かせない
+    router.push(href);
+  };
+  return (
+    <Badge
+      variant="outline"
+      role="link"
+      tabIndex={0}
+      aria-label={`原稿をエディタで開く: ${scene.manuscript_path}`}
+      className="cursor-pointer hover:bg-accent hover:text-accent-foreground"
+      onClick={open}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") open(e);
+      }}
+    >
+      <FileText data-icon="inline-start" />
+      原稿
+    </Badge>
+  );
+}
+
 /** シーンカードの見た目（通常カード・境界スロット内・DragOverlay で共用） */
 export function SceneCardContent({
   scene,
+  noteCount = 0,
   onClick,
 }: {
   scene: SceneRecord;
+  /** 紐づけノート件数（Issue #56） */
+  noteCount?: number;
   onClick?: () => void;
 }) {
   return (
@@ -56,7 +90,9 @@ export function SceneCardContent({
       {(scene.anchor !== null ||
         scene.emotion_start !== null ||
         scene.emotion_end !== null ||
-        scene.status === "approved") && (
+        scene.status === "approved" ||
+        scene.manuscript_path !== null ||
+        noteCount > 0) && (
         <span className="flex flex-wrap gap-1">
           {scene.anchor !== null && <Badge variant="secondary">{ANCHOR_BADGE[scene.anchor]}</Badge>}
           <EmotionBadge scene={scene} />
@@ -65,6 +101,14 @@ export function SceneCardContent({
             <Badge variant="outline" aria-label="シーンレビュー承認済み">
               <BadgeCheck data-icon="inline-start" />
               承認済み
+            </Badge>
+          )}
+          {/* 紐づけ（Issue #56） */}
+          <ManuscriptBadge scene={scene} />
+          {noteCount > 0 && (
+            <Badge variant="outline" aria-label={`紐づけノート ${noteCount}件`}>
+              <StickyNote data-icon="inline-start" />
+              {noteCount}
             </Badge>
           )}
         </span>
@@ -76,9 +120,11 @@ export function SceneCardContent({
 /** レーン内でドラッグできるシーンカード（境界アンカー付きはスロット側で固定表示する） */
 export function SortableSceneCard({
   scene,
+  noteCount,
   onEdit,
 }: {
   scene: SceneRecord;
+  noteCount?: number;
   onEdit: (scene: SceneRecord) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
@@ -93,7 +139,7 @@ export function SortableSceneCard({
       {...attributes}
       {...listeners}
     >
-      <SceneCardContent scene={scene} onClick={() => onEdit(scene)} />
+      <SceneCardContent scene={scene} noteCount={noteCount} onClick={() => onEdit(scene)} />
     </div>
   );
 }

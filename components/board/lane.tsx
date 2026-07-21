@@ -23,6 +23,7 @@ export function Lane({
   part,
   scenes,
   boundaryScene,
+  noteCounts,
   adding,
   onAdd,
   onEdit,
@@ -32,6 +33,8 @@ export function Lane({
   scenes: SceneRecord[];
   /** レーン末尾スロットに固定する境界アンカー付きシーン */
   boundaryScene: SceneRecord | undefined;
+  /** シーンごとの紐づけノート件数（Issue #56） */
+  noteCounts: Record<string, number>;
   adding: boolean;
   onAdd: (part: ScenePart) => void;
   onEdit: (scene: SceneRecord) => void;
@@ -53,7 +56,12 @@ export function Lane({
       <SortableContext items={scenes.map((s) => s.id)} strategy={verticalListSortingStrategy}>
         <div ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-2">
           {scenes.map((scene) => (
-            <SortableSceneCard key={scene.id} scene={scene} onEdit={onEdit} />
+            <SortableSceneCard
+              key={scene.id}
+              scene={scene}
+              noteCount={noteCounts[scene.id]}
+              onEdit={onEdit}
+            />
           ))}
         </div>
       </SortableContext>
@@ -69,7 +77,14 @@ export function Lane({
         シーンを追加
       </Button>
 
-      {boundary && <AnchorSlot anchor={boundary} scene={boundaryScene} onEdit={onEdit} />}
+      {boundary && (
+        <AnchorSlot
+          anchor={boundary}
+          scene={boundaryScene}
+          noteCount={boundaryScene ? noteCounts[boundaryScene.id] : undefined}
+          onEdit={onEdit}
+        />
+      )}
     </section>
   );
 }
