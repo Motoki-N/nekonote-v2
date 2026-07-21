@@ -723,3 +723,12 @@
 - **割り切り（コメント・PRに明記）**: ①中断時の AI 使用量記録は SDK が abort 時に usage を提供しないため不可（レート制限 3回/分・60回/日 が下限ガード）②Vercel での切断後処理の継続保証は、本Issueの症状（切断後も生成完走・保存）自体が継続実態の証拠と判断し waitUntil 等の新規依存は追加せず。万一 onAbort の DB 更新が落ちても講評セッションが running で残るだけ（一覧は completed のみ表示で実害なし）
 - **実機E2E（ユーザーにペインのGoogleログインを依頼して実施）**: 実データ（人魚の唄・既存フィードバック6件）でレビュー実行→約2秒で停止→ `POST /api/review` が**7.9秒で終了**（完走なら1分前後・abort伝播の証跡）→ `review_feedbacks` は停止直後も**60秒後も6件のまま**（遅延保存なし）→パネル再表示で第1回〜第6回のカードのみ。検証結果はPRコメントに記録
 - 検証: typecheck / lint 通過。subagent 自己レビュー指摘2件（使用量記録の後退・Vercel継続リスク）はいずれも上記の割り切りとして整理。認証・RLS・秘密情報に非接触のため security-reviewer 不要判断。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
+
+### セッション52: /fix-issue #57 構成/シーンレビューのゲート化——PR #102 マージ・本番反映（7/21）
+
+- **Issue #57 を `/fix-issue` フローで処理**（影響範囲分析→設計確認2問→マイグレーション適用→実装→ペイン実機検証→security-reviewer→subagent自己レビュー→PR #102→マージまで1セッション）: 構成・シーンレビューは読み物として受け取る都度フィードバック型で、企画書のような判定（verdict）・「通す」ボタンのゲートがなかった（P2・enhancement・SPEC-beat-board スコープ外項目の昇格）
+- **設計確認（AskUserQuestion 2問・DBスキーマ変更のため着手前に実施）**: ①「通す」の永続先→**ステータス列を追加**（セッション完了のみの軽量案は不採用）②列設計→**draft / approved の2状態**（企画書の in_review は持たない。3状態完全一致案は不採用）
+- **実装は12ファイル（+288/-28）**: マイグレーション `20260721000001`（`scenes.status` / `projects.structure_status` 追加＋標準「構成レビュー」「シーンレビュー」プロファイル（固定UUID 1003/1004）の prompt_template に判定行指示を追記・書式は企画書と同一）→ `/api/review` の verdict パースを `VERDICT_PHASES`（proposal/structure/scene）に拡張 → Server Action `approveBoardReview(sessionId)` 新設（RLS越し取得＋running＋target_phase 限定＋最新 verdict=approved のサーバー側再検証→対象ステータス approved＋セッション completed。`approveProposal` と同水準）→ ビートボードの両パネルに判定バッジ・「構成を通す」「シーンを通す」フッター・承認済みメッセージ、ボードヘッダーに「構成承認済み」バッジ、シーンカードに「承認済み」バッジ
+- **subagent 自己レビュー指摘2件を修正して再レビュークローズ**: ①VerdictBadge が verdict=null（ゲート化前の構成/シーン履歴）を「差し戻し」誤表示→null ガード追加 ②シーン系アクションの upsert が取得時点の status を書き戻し `approveBoardReview` との競合で承認が巻き戻る窓→upsert ペイロードから status を除外（新規行は DB default 'draft'）
+- **security-reviewer 指摘ゼロ**（列追加は既存 FOR ALL ポリシーがテーブル単位で自動保護・所有確認と対象すり替え遮断は approveProposal と同一パターン・「通す」出現条件はクライアント値だがサーバー側で verdict 再検証・sceneEditSchema に status が無くクライアントから承認状態を直接操作する経路なし）
+- 検証: typecheck / lint 通過。`db push` 適用（migration list 一致・`db:types` 再生成が手動先行パッチと完全一致）。ペイン実機で構成レビュー実行→更新済みプロンプトが最終行に「判定: 差し戻し」を出力→「第1回 差し戻し」バッジ表示→差し戻し時に「通す」非表示を確認（人魚の唄に構成レビュー第1回・差し戻しが1件残置。実レビューとしてそのまま使える）。承認→「通す」の実経路は実データで承認判定が出た際に確認できる（サーバー検証は2重レビュー済み）。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
