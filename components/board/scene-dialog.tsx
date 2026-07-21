@@ -139,6 +139,14 @@ export function SceneDialog({
 
   // 現在のパートに応じたアンカー選択肢のみ出す（解決レーンはなし）
   const anchorOptions = sceneAnchors.filter((a) => ANCHOR_TO_PART[a] === part);
+  // 選択肢はエディタが開ける章のみ（base_path/manuscripts/*.md。editor.ts の listChapters と同じ規則）。
+  // ツリー全部を出すと、エディタ側で選択されない「開けない紐づけ」が作れてしまう
+  const chapterFiles = (() => {
+    if (tree === null || tree.gate !== "ok") return [];
+    const base = tree.basePath.replace(/\/$/, "");
+    const prefix = base === "" ? "" : `${base}/`;
+    return tree.files.filter((f) => f.startsWith(`${prefix}manuscripts/`) && f.endsWith(".md"));
+  })();
   // 付け替えの対象（すでに他のシーンに付いている同アンカー）
   const holder =
     anchor !== null
@@ -292,11 +300,11 @@ export function SceneDialog({
                   onChange={(e) => setManuscriptPath(e.target.value === "" ? null : e.target.value)}
                 >
                   <option value="">なし</option>
-                  {/* 保存済みパスがツリーから消えていても（改名・削除）現在値は選択肢に残す */}
-                  {manuscriptPath !== null && !tree.files.includes(manuscriptPath) && (
+                  {/* 保存済みパスが章一覧から消えていても（改名・削除）現在値は選択肢に残す */}
+                  {manuscriptPath !== null && !chapterFiles.includes(manuscriptPath) && (
                     <option value={manuscriptPath}>{manuscriptPath}（見つかりません）</option>
                   )}
-                  {tree.files.map((file) => (
+                  {chapterFiles.map((file) => (
                     <option key={file} value={file}>
                       {file}
                     </option>

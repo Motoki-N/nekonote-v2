@@ -99,7 +99,7 @@ async function fetchScenes(supabase: Supabase, projectId: string): Promise<Scene
   const { data, error } = await supabase
     .from('scenes')
     .select(
-      'id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status',
+      'id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status, manuscript_path',
     )
     .eq('project_id', projectId)
     .order('order_index')

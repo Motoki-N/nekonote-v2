@@ -26,7 +26,8 @@ export default async function BoardPage({ params }: { params: Promise<{ id: stri
     supabase
       .from("scene_notes")
       .select("scene_id, notes (id, title, deleted_at), scenes!inner (project_id)")
-      .eq("scenes.project_id", id),
+      .eq("scenes.project_id", id)
+      .order("created_at"),
   ]);
 
   const linkedNotes: Record<string, LinkedNote[]> = {};
