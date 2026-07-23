@@ -46,6 +46,26 @@ function proposalSection(proposal: ProposalContext): string[] {
   ]
 }
 
+/** ノート一覧の整形（見出し・ノート見出しの階層は呼び出し側で指定。企画書・構成・シーンレビューで共用） */
+function notesSection(heading: string, notes: NoteContext[], notePrefix = '##'): string[] {
+  const lines: string[] = [heading]
+  if (notes.length === 0) {
+    lines.push('（紐づけノートなし）')
+    return lines
+  }
+  for (const note of notes) {
+    lines.push(
+      `${notePrefix} ${note.title || '（無題）'}`,
+      `タグ: ${note.tags.length > 0 ? note.tags.join('、') : '（なし）'}`,
+      '"""',
+      note.content || '（本文なし）',
+      '"""',
+      '',
+    )
+  }
+  return lines
+}
+
 /** 同一セッションの過去フィードバック・返答メモの整形（反復の文脈。全レビュー共用） */
 function historySection(history: FeedbackHistoryItem[]): string[] {
   if (history.length === 0) return []
@@ -86,38 +106,30 @@ export function buildProposalReviewInput({
   notes: NoteContext[]
   history: FeedbackHistoryItem[]
 }): string {
-  const lines: string[] = [...proposalSection(proposal), '', '# 紐づけノート（設定資料）']
-
-  if (notes.length === 0) {
-    lines.push('（紐づけノートなし）')
-  } else {
-    for (const note of notes) {
-      lines.push(
-        `## ${note.title || '（無題）'}`,
-        `タグ: ${note.tags.length > 0 ? note.tags.join('、') : '（なし）'}`,
-        '"""',
-        note.content || '（本文なし）',
-        '"""',
-        '',
-      )
-    }
-  }
+  const lines: string[] = [
+    ...proposalSection(proposal),
+    '',
+    ...notesSection('# 紐づけノート（設定資料）', notes),
+  ]
 
   lines.push(...historySection(history))
   return lines.join('\n')
 }
 
 /**
- * 構成レビューの user 入力（SPEC-beat-board §3.5）。
- * 企画書＋全シーンを構成順に整形（パート・アンカー・タイトル・本文・感情の起点→終点）
+ * 構成レビューの user 入力（SPEC-beat-board §3.5。紐づけノート全文はIssue #58）。
+ * 企画書＋全シーンを構成順に整形（パート・アンカー・タイトル・本文・感情の起点→終点・紐づけノート全文）
  */
 export function buildStructureReviewInput({
   proposal,
   scenes,
+  sceneNotes,
   history,
 }: {
   proposal: ProposalContext
   scenes: SceneRecord[]
+  /** シーンID→紐づけノート全文（Issue #58） */
+  sceneNotes: Record<string, NoteContext[]>
   history: FeedbackHistoryItem[]
 }): string {
   const lines: string[] = [...proposalSection(proposal), '', '# 構成（4部構成・構成順）']
@@ -132,8 +144,12 @@ export function buildStructureReviewInput({
         '"""',
         scene.content || '（本文なし）',
         '"""',
-        '',
       )
+      const notes = sceneNotes[scene.id] ?? []
+      if (notes.length > 0) {
+        lines.push(...notesSection('紐づけノート（設定資料）:', notes, '###'))
+      }
+      lines.push('')
     })
   }
 
@@ -142,18 +158,21 @@ export function buildStructureReviewInput({
 }
 
 /**
- * シーンレビューの user 入力（SPEC-beat-board §3.5）。
- * 企画書＋対象シーン全文＋前後の流れが分かる全シーンのタイトル・アンカー・感情の一覧
+ * シーンレビューの user 入力（SPEC-beat-board §3.5。紐づけノート全文はIssue #58）。
+ * 企画書＋対象シーン全文＋対象シーンの紐づけノート全文＋前後の流れが分かる全シーンのタイトル・アンカー・感情の一覧
  */
 export function buildSceneReviewInput({
   proposal,
   scene,
   scenes,
+  notes,
   history,
 }: {
   proposal: ProposalContext
   scene: SceneRecord
   scenes: SceneRecord[]
+  /** 対象シーンの紐づけノート全文（Issue #58） */
+  notes: NoteContext[]
   history: FeedbackHistoryItem[]
 }): string {
   const lines: string[] = [
@@ -167,6 +186,8 @@ export function buildSceneReviewInput({
     '"""',
     scene.content || '（本文なし）',
     '"""',
+    '',
+    ...notesSection('# 対象シーンの紐づけノート（設定資料）', notes),
     '',
     '# 全シーン一覧（構成順。→ が対象シーン）',
   ]
