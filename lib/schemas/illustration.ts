@@ -1,16 +1,28 @@
 import { z } from 'zod'
-import { illustrationKinds, type IllustrationKind } from './enums'
+import { illustrationKinds, type IllustrationKind, type StoredIllustrationKind } from './enums'
 import { manuscriptFilePathSchema } from './manuscript'
 
 // イラスト依頼・生成のスキーマ（SPEC-illustrator §4.2・§5.3）
 
 /** 種別の表示ラベル（依頼フォーム・ギャラリー・初期タイトルで共用） */
-export const ILLUSTRATION_KIND_LABEL: Record<IllustrationKind, string> = {
+export const ILLUSTRATION_KIND_LABEL: Record<StoredIllustrationKind, string> = {
   cover: '表紙',
   insert: '挿絵',
   character: 'キャラクター',
   concept: 'コンセプトアート',
+  reference: '参照用',
 }
+
+// 保存を許可する画像形式と拡張子（バケットの allowed_mime_types と対応させる。20260717000004）。
+// 生成画像の保存とアップロード参照画像（Issue #104）で共用する
+export const ILLUSTRATION_EXTENSION_BY_MIME: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+}
+
+/** アップロード参照画像のサイズ上限（バケットの file_size_limit と対応。Issue #104） */
+export const REFERENCE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024
 
 // アスペクト比は縦/横/正方形の3種（SPEC §3）。値は generateImage にそのまま渡す
 export const illustrationAspectRatios = ['2:3', '16:9', '1:1'] as const
@@ -93,7 +105,7 @@ export const generateRequestSchema = z.object({
 export type IllustrationItem = {
   id: string
   projectId: string
-  kind: IllustrationKind
+  kind: StoredIllustrationKind
   title: string
   prompt: string
   referenceIllustrationId: string | null

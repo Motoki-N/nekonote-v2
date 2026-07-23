@@ -93,13 +93,16 @@ export function RequestFlow({
     setResult(null);
   }
 
-  // 参照画像が設定されたら、そのプロンプトを下敷きにする（SPEC §4.4「引き継ぎ」）
+  // 参照画像が設定されたら、そのプロンプトを下敷きにする（SPEC §4.4「引き継ぎ」）。
+  // アップロード参照画像（kind 'reference'）はプロンプトを持たないため、入力中の内容を消さない
   const [prefilledFor, setPrefilledFor] = useState<string | null>(null);
   if (reference && prefilledFor !== reference.id) {
     setPrefilledFor(reference.id);
-    setPrompt(reference.prompt);
-    setProposals(null);
-    setSelectedProposal(null);
+    if (reference.prompt !== "") {
+      setPrompt(reference.prompt);
+      setProposals(null);
+      setSelectedProposal(null);
+    }
   }
   if (!reference && prefilledFor !== null) {
     setPrefilledFor(null);

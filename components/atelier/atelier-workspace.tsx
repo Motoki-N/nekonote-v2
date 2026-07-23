@@ -150,9 +150,11 @@ export function AtelierWorkspace({
             }}
           />
           <AtelierGallery
+            projectId={project.id}
             items={gallery?.items ?? null}
             error={gallery?.error ?? null}
             onSetReference={setReference}
+            onUploaded={handleGenerated}
             onDeleted={handleDeleted}
             onTitleChanged={handleTitleChanged}
           />

@@ -6,6 +6,7 @@ import { AppError, errorResponse } from '@/lib/errors'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import {
   generateRequestSchema,
+  ILLUSTRATION_EXTENSION_BY_MIME,
   ILLUSTRATION_KIND_LABEL,
   type IllustrationItem,
 } from '@/lib/schemas/illustration'
@@ -16,14 +17,6 @@ export const maxDuration = 60
 
 /** 署名URLの寿命（SPEC §6: 短寿命） */
 const SIGNED_URL_TTL_SECONDS = 3600
-
-// 保存を許可する画像形式（バケットの allowed_mime_types と対応させる。20260717000004）。
-// 出力形式はモデル依存（Gemini系は jpeg を返すことがある）のため決め打ちにしない
-const EXTENSION_BY_MEDIA_TYPE: Record<string, string> = {
-  'image/png': 'png',
-  'image/jpeg': 'jpg',
-  'image/webp': 'webp',
-}
 
 export async function POST(req: Request) {
   try {
@@ -87,8 +80,9 @@ export async function POST(req: Request) {
       outputTokens: usage.outputTokens,
     })
 
-    // バケットの許可形式のみ保存（想定外の形式はフェイルクローズ）
-    const extension = EXTENSION_BY_MEDIA_TYPE[image.mediaType]
+    // バケットの許可形式のみ保存（想定外の形式はフェイルクローズ）。
+    // 出力形式はモデル依存（Gemini系は jpeg を返すことがある）のため決め打ちにしない
+    const extension = ILLUSTRATION_EXTENSION_BY_MIME[image.mediaType]
     if (!extension) {
       throw new AppError('internal', `生成画像の形式が想定外です: ${image.mediaType}`)
     }
