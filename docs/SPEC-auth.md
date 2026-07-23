@@ -19,7 +19,7 @@
 | セッション寿命 | 使い続ける限り無期限（リフレッシュトークン自動更新）。長期放置時のみ再ログイン |
 | 複数デバイス | PC・スマホ・複数タブの同時利用を無制限に許可。強制ログアウト機能は作らない |
 | セッション切断時UX | 執筆中の入力内容をローカルに保持し、再認証後に復元・保存する |
-| 環境分離 | Google OAuth対応は本番URL＋localhostのみ。Vercelプレビューデプロイでのログインは非対応 |
+| 環境分離 | Google OAuth対応は本番URL＋localhost＋Vercelプレビューデプロイ（2026-07-23 Issue #28 で追加。詳細は 3.4） |
 
 ## 3. アーキテクチャ
 
@@ -46,6 +46,29 @@
 - **全ページ認証必須**。例外（公開ルート）は `/login` と `/auth/callback` のみ
 - API Route / Server Action も同様に認証チェックを通す（proxyのmatcherで静的アセット以外を対象にする）
 - 例外: `/api/cron/*`（Issue #51）はユーザーセッションを持たない Vercel Cron から叩かれるため、proxy のセッションチェックを素通りし、ルートハンドラ内で `CRON_SECRET` の Bearer 認証を行う（未設定時はフェイルクローズで拒否）
+
+### 3.4 環境分離（プレビューデプロイ対応・2026-07-23 Issue #28）
+
+Vercelプレビューデプロイでもログイン可能とする。必要な設定は以下の2点のみで、アプリコードの変更はない
+（ログインボタンの `redirectTo` は `location.origin` ベースのため、許可リストに載れば任意のプレビューURLで動作する）。
+
+- **Supabase Redirect URLs**（Dashboard > Authentication > URL Configuration）に
+  `https://nekonote-v2-*-motokis-projects-b4ffebfe.vercel.app/**` を追加。
+  Vercelのチームスコープ付きワイルドカードのため、第三者のデプロイが許可リストに乗ることはない
+- **Vercel Preview 環境の環境変数**: 本番と同値の
+  `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `ALLOWED_EMAILS` /
+  `ENCRYPTION_KEY` / AI 3キーを登録済み（`vercel env add <KEY> preview`）
+
+注意点:
+
+- **プレビューは本番と同一のSupabaseプロジェクト（本番DB）に接続する**。プレビュー上の操作は本番データに書き込まれる
+- **cron関連キー（`SUPABASE_SERVICE_ROLE_KEY` / `CRON_SECRET` / `RESEND_API_KEY`）は Production 専用**とし、Preview には置かない
+  （security-reviewer M-1 対応。Vercel Cron は本番でしか実行されず、マージ前のブランチコードが動くプレビューに
+  RLSバイパス可能な service_role キーを置くリスクを避ける。プレビューの cron ルートはフェイルクローズで401になるだけ）
+- **Vercel の Deployment Protection（Vercel Authentication）を有効のまま維持することが本構成の前提**
+  （security-reviewer L-1 対応。プレビューは本番DB・本番キーを持つため、無効化すると未レビューコードが公開URLで動くことになる）
+- Google Cloud Console 側の変更は不要（Googleの redirect URI は常に Supabase の `/auth/v1/callback` 固定で、アプリのURLは関与しない）
+- 許可リスト（DBトリガー＋`ALLOWED_EMAILS`）はプレビューでも同様に効く
 
 ## 4. 許可リスト（サインイン制限）
 
@@ -103,7 +126,6 @@
 
 - **GitHub PAT の登録・暗号化保存**（GitHub連携機能のSPECで扱う）
 - マルチユーザー管理UI・招待機能（許可リストのテーブル化を含む）
-- Vercelプレビューデプロイでのログイン対応
 - メール/パスワード認証・パスワードリセット
 - アカウント削除・退会処理
 - 全デバイス一括ログアウト機能
