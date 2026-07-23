@@ -1186,7 +1186,7 @@ export function VerticalEditor({
             <Settings />
           </Button>
           <Button size="sm" variant="outline" onClick={() => setBuildOpen(true)}>
-            入稿ビルド
+            ビルド
           </Button>
           <Button
             size="sm"

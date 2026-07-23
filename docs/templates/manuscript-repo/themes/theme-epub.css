@@ -1,0 +1,120 @@
+/*
+ * EPUB用テーマ（Issue #119）
+ * 印刷用テーマ（theme-bunko派生）とは独立した自己完結CSS。
+ * - リフロー型前提: 判型・版面設計・トンボ・塗り足し・ノンブルなどページ固定系の指定を持たない
+ * - @import しない: EPUBにはこのファイルがそのまま収録されるため、node_modules への参照は不可
+ * - 書体はリーダー側の設定を尊重し、総称ファミリのみ指定する
+ * - 挿絵の高度なレイアウト（見開きまたぎ・回り込み・カラー口絵）はスコープ外（Issue #26）
+ */
+
+html {
+  /* 縦書き。-epub- プレフィックスは旧世代リーダー互換のため併記する */
+  writing-mode: vertical-rl;
+  -epub-writing-mode: vertical-rl;
+  -webkit-writing-mode: vertical-rl;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: serif;
+  line-height: 1.8;
+  text-align: justify;
+}
+
+/* 小説様式: 段落間を空けず、段落頭を1字下げ */
+p {
+  margin: 0;
+  text-indent: 1em;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: normal;
+  margin-block-start: 2em;
+  margin-block-end: 2em;
+}
+
+/* ---- 扉 ---- */
+/* 印刷用の @page titlepage は持たない（EPUBでは各章が独立ファイルになるため専用ページ指定は不要） */
+body.titlepage h1 {
+  margin-block-start: 30%;
+  font-size: 1.6em;
+  letter-spacing: 0.5em;
+}
+body.titlepage .author {
+  margin-block-start: 4em;
+  font-size: 1em;
+  letter-spacing: 0.25em;
+}
+
+/* ---- 奥付 ---- */
+body.colophon .okuzuke-title {
+  font-size: 1.2em;
+  letter-spacing: 0.25em;
+}
+body.colophon .okuzuke-info {
+  margin-block-start: 3em;
+  font-size: 0.85em;
+  line-height: 1.8;
+}
+body.colophon dl dt {
+  font-weight: normal;
+}
+body.colophon dl dd {
+  margin-inline-start: 1em;
+  margin-block-end: 1em;
+}
+
+/* ---- 挿絵 ---- */
+/* 全面挿絵（.illust-full）も裁ち落としはできないため、画面内最大表示に留める */
+figure {
+  margin: 1em 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+img.illust-full,
+img.illust-inline {
+  display: block;
+  max-inline-size: 100%;
+  max-block-size: 100%;
+  margin: auto;
+}
+img.illust-full + figcaption {
+  display: none; /* 印刷版と同じく全面挿絵にキャプションは出さない */
+}
+
+/* ---- 傍点（圏点）---- */
+.tenten {
+  text-emphasis: filled sesame;
+  -webkit-text-emphasis: filled sesame;
+  -epub-text-emphasis: filled sesame;
+}
+
+/* ---- 縦中横 ---- */
+.tcy {
+  text-combine-upright: all;
+  -webkit-text-combine: horizontal;
+  -epub-text-combine: horizontal;
+}
+
+/* ---- 割注 ---- */
+/* 記法は印刷版と同一: <span class="warichu"><span>前半</span><span>後半</span></span> */
+.warichu {
+  display: inline-block;
+  font-size: 0.6em;
+  line-height: 1.3;
+  vertical-align: middle;
+  text-indent: 0;
+}
+.warichu > span {
+  display: block;
+}
+
+/* ---- 改ページ ---- */
+/* <div class="page-break"></div>。page-break-after は旧世代リーダー互換のため併記 */
+.page-break {
+  break-after: page;
+  page-break-after: always;
+}

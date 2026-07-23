@@ -864,44 +864,53 @@ export async function uploadImage(
   }
 }
 
-// ---- 入稿ビルド（SPEC-vertical-editor-phase3 §8） ----
+// ---- 入稿ビルド（SPEC-vertical-editor-phase3 §8）・EPUBビルド（Issue #119） ----
 
-// 原稿リポジトリの Actions ワークフローのトリガー（`v*-nyuko` タグ push）に合わせる
-const buildTagSchema = z.string().regex(/^v[0-9A-Za-z._-]{1,30}-nyuko$/, {
-  error: 'タグは「v0.3-nyuko」の形式で入力してください',
+/** ビルド種別。タグのサフィックス＝原稿リポジトリ側ワークフローのトリガーに対応する */
+export type BuildKind = 'nyuko' | 'epub'
+
+// 原稿リポジトリの Actions ワークフローのトリガー（`v*-nyuko` / `v*-epub` タグ push）に合わせる
+const buildTagSchema = z.string().regex(/^v[0-9A-Za-z._-]{1,30}-(nyuko|epub)$/, {
+  error: 'タグは「v0.3-nyuko」「v0.3-epub」の形式で入力してください',
 })
 
-/** 既存の入稿タグから次のタグ名を提案する（v{major}.{minor}-nyuko の minor をインクリメント） */
-function suggestNextTag(tags: string[]): string {
+/** 既存タグから次のタグ名を提案する（v{major}.{minor}-<種別> の minor をインクリメント） */
+function suggestNextTag(tags: string[], kind: BuildKind): string {
   let best: [number, number] | null = null
+  const pattern = new RegExp(`^v(\\d+)\\.(\\d+)-${kind}$`)
   for (const tag of tags) {
-    const match = tag.match(/^v(\d+)\.(\d+)-nyuko$/)
+    const match = tag.match(pattern)
     if (!match) continue
     const version: [number, number] = [Number(match[1]), Number(match[2])]
     if (!best || version[0] > best[0] || (version[0] === best[0] && version[1] > best[1])) {
       best = version
     }
   }
-  return best ? `v${best[0]}.${best[1] + 1}-nyuko` : 'v1.0-nyuko'
+  return best ? `v${best[0]}.${best[1] + 1}-${kind}` : `v1.0-${kind}`
 }
 
 export type BuildTagInfo = {
-  /** 既存の入稿タグ（新しい判定はできないためAPI返却順） */
-  nyukoTags: string[]
-  suggestedTag: string
+  /** ビルド種別ごとの既存タグ（新しい順の判定はできないためAPI返却順）と次タグ提案 */
+  nyuko: { tags: string[]; suggestedTag: string }
+  epub: { tags: string[]; suggestedTag: string }
   /** Actions ページへのリンク用 */
   repo: string
 }
 
-/** 入稿ビルドダイアログの初期情報（既存タグ・次タグ提案） */
+/** ビルドダイアログの初期情報（既存タグ・次タグ提案） */
 export async function getBuildTagInfo(projectId: string): Promise<ActionResult<BuildTagInfo>> {
   try {
     const ctx = await loadEditorContext(projectId)
     const tags = await listTags(ctx.token, ctx.repo)
     const nyukoTags = tags.filter((tag) => /-nyuko$/.test(tag))
+    const epubTags = tags.filter((tag) => /-epub$/.test(tag))
     return {
       ok: true,
-      data: { nyukoTags, suggestedTag: suggestNextTag(nyukoTags), repo: ctx.repo },
+      data: {
+        nyuko: { tags: nyukoTags, suggestedTag: suggestNextTag(nyukoTags, 'nyuko') },
+        epub: { tags: epubTags, suggestedTag: suggestNextTag(epubTags, 'epub') },
+        repo: ctx.repo,
+      },
     }
   } catch (error) {
     return toActionError(error)
@@ -909,7 +918,7 @@ export async function getBuildTagInfo(projectId: string): Promise<ActionResult<B
 }
 
 /**
- * 入稿タグの作成＝Actions ビルドの起動（SPEC-phase3 §8。タグ作成の代行。
+ * ビルドタグ（入稿PDF / EPUB）の作成＝Actions ビルドの起動（SPEC-phase3 §8。タグ作成の代行。
  * 対象はデフォルトブランチのHEAD。Contents権限で可能——PATスコープ変更なし）
  */
 export async function createBuildTag(
@@ -934,8 +943,9 @@ export type BuildStatus =
   | { state: 'done'; assets: ReleaseAsset[] }
 
 /**
- * 入稿ビルドの完了検知（SPEC-phase3 §8・論点B）。
- * 同タグの Release と PDF アセットの出現をもって完了とみなす（Actions API は使わない）
+ * ビルドの完了検知（SPEC-phase3 §8・論点B）。
+ * 同タグの Release と成果物（-nyuko: PDF / -epub: EPUB）の出現をもって完了とみなす
+ * （Actions API は使わない）
  */
 export async function getBuildStatus(
   projectId: string,
@@ -946,9 +956,10 @@ export async function getBuildStatus(
     enforceRateLimit(ctx.userId, 'editor-build-status', { perMinute: 10, perDay: 500 })
     const tag = buildTagSchema.parse(tagName)
     const release = await getReleaseByTag(ctx.token, ctx.repo, tag)
-    const pdfAssets = release?.assets.filter((asset) => asset.name.endsWith('.pdf')) ?? []
-    if (pdfAssets.length === 0) return { ok: true, data: { state: 'pending' } }
-    return { ok: true, data: { state: 'done', assets: pdfAssets } }
+    const extension = tag.endsWith('-epub') ? '.epub' : '.pdf'
+    const assets = release?.assets.filter((asset) => asset.name.endsWith(extension)) ?? []
+    if (assets.length === 0) return { ok: true, data: { state: 'pending' } }
+    return { ok: true, data: { state: 'done', assets } }
   } catch (error) {
     return toActionError(error)
   }
