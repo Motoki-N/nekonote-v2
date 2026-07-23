@@ -19,6 +19,11 @@ export const milestoneSchema = z.object({
   ...milestoneInputFields,
   /** 手動チェック（上書き保存時は false 初期化） */
   done: z.boolean(),
+  /**
+   * 最後にリマインドメールを送った日（JST・YYYY-MM-DD）。cron の同日二重送信防止用（Issue #51）。
+   * 上書き保存時は milestone ごと新規IDになるため null に初期化される
+   */
+  remindedAt: z.iso.date().nullable().default(null),
 })
 
 export const scheduleSchema = z.object({

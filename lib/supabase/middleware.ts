@@ -6,6 +6,15 @@ function isPublicRoute(pathname: string): boolean {
   return pathname === "/login" || pathname === "/auth/callback";
 }
 
+/**
+ * ユーザーセッションではなく Bearer トークン（CRON_SECRET）で認証するルート
+ * （SPEC-auth 3.3 / Issue #51）。Vercel Cron はSupabaseセッションCookieを持たないため、
+ * ここでセッションチェックをスキップし、認証自体はルートハンドラ側で行う
+ */
+function isCronRoute(pathname: string): boolean {
+  return pathname.startsWith("/api/cron/");
+}
+
 /** ALLOWED_EMAILS（カンマ区切り）との照合。未設定・リスト外は拒否（フェイルクローズ） */
 function isEmailAllowed(email: string | undefined): boolean {
   if (!email) return false;
@@ -22,6 +31,8 @@ function isEmailAllowed(email: string | undefined): boolean {
  */
 export async function updateSession(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request });
+
+  if (isCronRoute(request.nextUrl.pathname)) return supabaseResponse;
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
