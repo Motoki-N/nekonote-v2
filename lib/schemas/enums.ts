@@ -37,6 +37,11 @@ export type ModelCapability = (typeof modelCapabilities)[number]
 export const illustrationKinds = ['cover', 'insert', 'character', 'concept'] as const
 export type IllustrationKind = (typeof illustrationKinds)[number]
 
+// DBに保存されうる種別の全体。'reference' はアップロードされた参照用画像で、
+// 生成の依頼種別ではない（illustrationKinds には含めず、propose/generate の入力から遮断する）
+export const storedIllustrationKinds = [...illustrationKinds, 'reference'] as const
+export type StoredIllustrationKind = (typeof storedIllustrationKinds)[number]
+
 export const referenceScopes = [
   'all',
   'manuscript_only',

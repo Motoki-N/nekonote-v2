@@ -1,11 +1,20 @@
 "use client";
 
-import { useState } from "react";
-import { Check, Download, Loader2, Pencil, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { Check, Download, Loader2, Pencil, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 
-import { deleteIllustration, updateIllustrationTitle } from "@/lib/actions/illustrations";
-import { ILLUSTRATION_KIND_LABEL, type IllustrationItem } from "@/lib/schemas/illustration";
+import {
+  deleteIllustration,
+  updateIllustrationTitle,
+  uploadReferenceImage,
+} from "@/lib/actions/illustrations";
+import {
+  ILLUSTRATION_EXTENSION_BY_MIME,
+  ILLUSTRATION_KIND_LABEL,
+  REFERENCE_UPLOAD_MAX_BYTES,
+  type IllustrationItem,
+} from "@/lib/schemas/illustration";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -51,19 +60,23 @@ async function downloadImage(item: IllustrationItem): Promise<void> {
 /**
  * ギャラリー（SPEC-illustrator §4.4）。
  * グリッド表示＋タイトルのインライン編集＋拡大表示（プロンプト=説明文）＋
- * ダウンロード・削除（被参照は警告）・参照画像にして依頼
+ * ダウンロード・削除（被参照は警告）・参照画像にして依頼・参照画像のアップロード（Issue #104）
  */
 export function AtelierGallery({
+  projectId,
   items,
   error,
   onSetReference,
+  onUploaded,
   onDeleted,
   onTitleChanged,
 }: {
+  projectId: string;
   /** null = 読み込み中 */
   items: IllustrationItem[] | null;
   error: string | null;
   onSetReference: (item: IllustrationItem) => void;
+  onUploaded: (item: IllustrationItem) => void;
   onDeleted: (id: string) => void;
   onTitleChanged: (id: string, title: string) => void;
 }) {
@@ -72,6 +85,33 @@ export function AtelierGallery({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  async function handleUpload(file: File) {
+    // Server Action の bodySizeLimit（15mb）超過はアクション到達前に reject され
+    // サーバー側の検証文言が出せないため、サイズはクライアントでも先に検査する
+    if (file.size > REFERENCE_UPLOAD_MAX_BYTES) {
+      toast.error("ファイルサイズは10MB以下にしてください");
+      return;
+    }
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const result = await uploadReferenceImage(projectId, formData);
+      if (!result.ok || !result.data) {
+        toast.error(result.ok ? "アップロードに失敗しました" : result.error.message);
+        return;
+      }
+      onUploaded(result.data);
+      toast("参照画像をアップロードしました");
+    } catch {
+      toast.error("アップロードに失敗しました。通信環境を確認してください");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   async function handleSaveTitle(item: IllustrationItem) {
     const title = editingTitle.trim();
@@ -111,7 +151,36 @@ export function AtelierGallery({
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-      <h2 className="text-base font-semibold text-card-foreground">ギャラリー</h2>
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-base font-semibold text-card-foreground">ギャラリー</h2>
+        {/* 参照画像のアップロード（Issue #104）。絵柄・キャラの統一に使う外部画像を取り込む */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={Object.keys(ILLUSTRATION_EXTENSION_BY_MIME).join(",")}
+          className="hidden"
+          aria-hidden
+          tabIndex={-1}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = ""; // 同じファイルの再選択でも change を発火させる
+            if (file) void handleUpload(file);
+          }}
+        />
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {uploading ? (
+            <Loader2 className="animate-spin" data-icon="inline-start" />
+          ) : (
+            <Upload data-icon="inline-start" />
+          )}
+          参照画像をアップロード
+        </Button>
+      </div>
 
       {error ? (
         <p className="py-8 text-center text-sm text-destructive">{error}</p>
@@ -254,9 +323,12 @@ export function AtelierGallery({
                 alt={zoomed.title}
                 className="max-h-[60vh] w-full rounded object-contain"
               />
-              <div className="max-h-32 overflow-y-auto rounded-md bg-muted/50 p-2">
-                <p className="whitespace-pre-wrap text-xs text-muted-foreground">{zoomed.prompt}</p>
-              </div>
+              {/* アップロード参照画像（kind 'reference'）にはプロンプトがない */}
+              {zoomed.prompt !== "" && (
+                <div className="max-h-32 overflow-y-auto rounded-md bg-muted/50 p-2">
+                  <p className="whitespace-pre-wrap text-xs text-muted-foreground">{zoomed.prompt}</p>
+                </div>
+              )}
             </>
           )}
         </DialogContent>

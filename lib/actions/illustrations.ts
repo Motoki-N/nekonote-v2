@@ -4,11 +4,18 @@ import { z } from 'zod'
 
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
-import type { IllustrationKind } from '@/lib/schemas/enums'
-import { illustrationTitleSchema, type IllustrationItem } from '@/lib/schemas/illustration'
+import { enforceRateLimit } from '@/lib/rate-limit'
+import type { StoredIllustrationKind } from '@/lib/schemas/enums'
+import {
+  ILLUSTRATION_EXTENSION_BY_MIME,
+  ILLUSTRATION_KIND_LABEL,
+  illustrationTitleSchema,
+  REFERENCE_UPLOAD_MAX_BYTES,
+  type IllustrationItem,
+} from '@/lib/schemas/illustration'
 import { createClient } from '@/lib/supabase/server'
 
-// ギャラリーの取得・タイトル編集・削除（SPEC-illustrator §5.4）。
+// ギャラリーの取得・タイトル編集・削除（SPEC-illustrator §5.4）＋参照画像のアップロード（Issue #104）。
 // 生成は /api/illustration/*（レートリミット・長時間実行のためAPI Route側）
 
 const uuidSchema = z.uuid()
@@ -64,7 +71,7 @@ export async function listIllustrations(
       return {
         id: row.id,
         projectId: row.project_id,
-        kind: row.kind as IllustrationKind,
+        kind: row.kind as StoredIllustrationKind,
         title: row.title,
         prompt: row.prompt,
         referenceIllustrationId: row.reference_illustration_id,
@@ -74,6 +81,115 @@ export async function listIllustrations(
       }
     })
     return { ok: true, data: items }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * 参照画像のアップロード（Issue #104）。
+ * 外部画像を kind 'reference' の illustrations 行として保存し、ギャラリーと
+ * 既存の参照フロー（reference_illustration_id）にそのまま乗せる。
+ * 生成の依頼種別には 'reference' を追加しない（propose/generate の zod が遮断する）
+ */
+export async function uploadReferenceImage(
+  projectId: string,
+  formData: FormData,
+): Promise<ActionResult<IllustrationItem>> {
+  try {
+    const parsedProjectId = uuidSchema.parse(projectId)
+    const file = formData.get('file')
+    if (!(file instanceof File)) {
+      throw new AppError('validation', '画像ファイルを選択してください')
+    }
+    // バケットの制限（allowed_mime_types・file_size_limit）と同値の事前検証。
+    // MIME は申告値ベース（Storage 側の検証も同様）。バケットは非公開＋署名URLの
+    // Content-Type は保存時の値に固定されるため、偽装ファイルが混じっても配信経路で実行されない
+    const extension = ILLUSTRATION_EXTENSION_BY_MIME[file.type]
+    if (!extension) {
+      throw new AppError('validation', '対応している形式は PNG / JPEG / WebP です')
+    }
+    if (file.size === 0) {
+      throw new AppError('validation', 'ファイルが空です')
+    }
+    if (file.size > REFERENCE_UPLOAD_MAX_BYTES) {
+      throw new AppError('validation', 'ファイルサイズは10MB以下にしてください')
+    }
+
+    const supabase = await createClient()
+    const {
+      data: { user },
+    } = await supabase.auth.getUser()
+    if (!user) throw new AppError('unauthorized', 'ログインが必要です')
+
+    // AI呼び出しではないがストレージ書き込みの暴走は防ぐ（生成より緩め）
+    enforceRateLimit(user.id, 'illustration-upload', { perMinute: 10, perDay: 100 })
+
+    // RLS越しの取得＝所有確認。title は初期タイトルのフォールバックに使う
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id, title')
+      .eq('id', parsedProjectId)
+      .maybeSingle()
+    if (projectError) throw new AppError('internal', projectError.message)
+    if (!project) throw new AppError('not_found', 'プロジェクトが見つかりません')
+
+    // パスは生成画像と同じ {user_id}/{illustration_id}.{拡張子}（SPEC §5.1）
+    const illustrationId = crypto.randomUUID()
+    const storagePath = `${user.id}/${illustrationId}.${extension}`
+    const { error: uploadError } = await supabase.storage
+      .from('illustrations')
+      .upload(storagePath, file, { contentType: file.type })
+    if (uploadError) {
+      throw new AppError('internal', `画像の保存に失敗しました: ${uploadError.message}`)
+    }
+
+    // 初期タイトルはファイル名（拡張子抜き）。空になる場合は「プロジェクト名＋種別」の流儀に合わせる
+    const fileBase = file.name.replace(/\.[^.]+$/, '').trim()
+    const title = (
+      fileBase !== '' ? fileBase : `${project.title} ${ILLUSTRATION_KIND_LABEL.reference}`
+    ).slice(0, 100)
+
+    const { data: row, error: insertError } = await supabase
+      .from('illustrations')
+      .insert({
+        id: illustrationId,
+        project_id: project.id,
+        kind: 'reference',
+        title,
+        // 依頼由来ではないため request は出所の記録のみ。prompt は空（ギャラリーでは非表示）。
+        // multipart の filename は任意長になりうるため上限を切って保存する
+        request: { source: 'upload', fileName: file.name.slice(0, 255) },
+        prompt: '',
+        storage_path: storagePath,
+      })
+      .select('id, project_id, kind, title, prompt, reference_illustration_id, created_at')
+      .single()
+    if (insertError || !row) {
+      // 行のないオブジェクトを残さない（ベストエフォート。失敗してもRLSで本人以外は見えない）
+      await supabase.storage.from('illustrations').remove([storagePath])
+      throw new AppError('internal', `参照画像の保存に失敗しました: ${insertError?.message}`)
+    }
+
+    const { data: signed, error: signError } = await supabase.storage
+      .from('illustrations')
+      .createSignedUrl(storagePath, SIGNED_URL_TTL_SECONDS)
+    if (signError || !signed) {
+      throw new AppError('internal', `画像URLの発行に失敗しました: ${signError?.message}`)
+    }
+
+    const item: IllustrationItem = {
+      id: row.id,
+      projectId: row.project_id,
+      kind: row.kind as StoredIllustrationKind,
+      title: row.title,
+      prompt: row.prompt,
+      referenceIllustrationId: row.reference_illustration_id,
+      createdAt: row.created_at,
+      signedUrl: signed.signedUrl,
+      referencedCount: 0, // アップロード直後を参照するイラストはまだ存在しない
+    }
+    return { ok: true, data: item }
   } catch (error) {
     return toActionError(error)
   }
