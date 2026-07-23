@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { EditorContent, type Editor } from "@tiptap/react";
-import { ArrowLeft, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, ClipboardCheck, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -27,6 +27,7 @@ import {
   type SaveStatus,
 } from "@/components/editor/use-autosave";
 import { DeepDivePanel } from "@/components/notes/deep-dive-panel";
+import { NoteCharacterReviewPanel } from "@/components/notes/note-character-review-panel";
 import { TagInput } from "@/components/notes/tag-input";
 import { TemplateMenu, type Template } from "@/components/notes/template-menu";
 import { tagVariant } from "@/components/notes/note-card";
@@ -52,7 +53,8 @@ export function NoteEditor({
   const [title, setTitle] = useState(note.title);
   const [tags, setTags] = useState<AttachedTag[]>(initialTags);
   const [restorableDraft, setRestorableDraft] = useState<NotePayload | null>(null);
-  const [showDeepDive, setShowDeepDive] = useState(false);
+  // パネルは排他表示（掘り下げ / キャラクターレビューのどちらか一方。Issue #47）
+  const [openPanel, setOpenPanel] = useState<"deep-dive" | "character-review" | null>(null);
 
   const titleRef = useRef(note.title);
   const editorRef = useRef<Editor | null>(null);
@@ -264,13 +266,24 @@ export function NoteEditor({
           <div className="ml-auto flex items-center gap-1">
             <TemplateMenu templates={templates} onInsert={insertTemplate} />
             <Button
-              variant={showDeepDive ? "secondary" : "outline"}
+              variant={openPanel === "deep-dive" ? "secondary" : "outline"}
               size="sm"
-              aria-pressed={showDeepDive}
-              onClick={() => setShowDeepDive((v) => !v)}
+              aria-pressed={openPanel === "deep-dive"}
+              onClick={() => setOpenPanel((v) => (v === "deep-dive" ? null : "deep-dive"))}
             >
               <Sparkles data-icon="inline-start" />
               掘り下げ
+            </Button>
+            <Button
+              variant={openPanel === "character-review" ? "secondary" : "outline"}
+              size="sm"
+              aria-pressed={openPanel === "character-review"}
+              onClick={() =>
+                setOpenPanel((v) => (v === "character-review" ? null : "character-review"))
+              }
+            >
+              <ClipboardCheck data-icon="inline-start" />
+              キャラクターレビュー
             </Button>
           </div>
         </div>
@@ -278,12 +291,19 @@ export function NoteEditor({
         <EditorContent editor={editor} className="flex flex-1 flex-col" />
         </main>
 
-        {showDeepDive && (
+        {openPanel === "deep-dive" && (
           <DeepDivePanel
             noteId={note.id}
             getNoteContext={getNoteContext}
             onInsert={insertFromDeepDive}
-            onClose={() => setShowDeepDive(false)}
+            onClose={() => setOpenPanel(null)}
+          />
+        )}
+        {openPanel === "character-review" && (
+          <NoteCharacterReviewPanel
+            noteId={note.id}
+            flushSave={flush}
+            onClose={() => setOpenPanel(null)}
           />
         )}
       </div>

@@ -73,11 +73,12 @@ export type ReviewFooterContext = {
  * lg以上は右サイドパネル、lg未満はボトムシート。
  * プロファイルごとにセッションが並存し、セレクタで切り替える（SPEC-dashboard-critique-settings §3.2）。
  * セッション状態はプロファイル別にキャッシュし、担当ペルソナは新規セッション開始時のみ選択できる。
- * 対象（kind + targetId）を切り替えて使う場合は key={targetId} で使い分けること
+ * 対象（kind + targetId + noteId）を切り替えて使う場合は key で使い分けること
  */
 export function ReviewPanel({
   kind,
   targetId,
+  noteId,
   title,
   subtitle,
   emptyText,
@@ -86,9 +87,12 @@ export function ReviewPanel({
   flushSave,
   onClose,
   renderFooter,
+  headerExtra,
 }: {
   kind: ReviewTargetKind;
   targetId: string;
+  /** キャラクターレビューをノート1枚に絞る場合のみ指定（Issue #47） */
+  noteId?: string;
   title: string;
   /** 対象名の補足表示（シーンレビューのシーン名等） */
   subtitle?: string;
@@ -102,6 +106,8 @@ export function ReviewPanel({
   onClose: () => void;
   /** フッター拡張（企画書レビューの「企画を通す」等） */
   renderFooter?: (context: ReviewFooterContext) => React.ReactNode;
+  /** ヘッダー拡張（キャラクターレビューの対象ノート絞り込みセレクタ等。Issue #47） */
+  headerExtra?: React.ReactNode;
 }) {
   const router = useRouter();
   const [bootstrap, setBootstrap] = useState<ReviewPanelBootstrap | null>(null);
@@ -127,7 +133,7 @@ export function ReviewPanel({
   // 開いたときにプロファイル・ペルソナ一覧と既定選択を読む
   useEffect(() => {
     let cancelled = false;
-    void getReviewPanelBootstrap(kind, targetId).then((result) => {
+    void getReviewPanelBootstrap(kind, targetId, noteId).then((result) => {
       if (cancelled) return;
       if (result.ok && result.data) {
         setBootstrap(result.data);
@@ -140,14 +146,14 @@ export function ReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [kind, targetId]);
+  }, [kind, targetId, noteId]);
 
   // 選択中プロファイルのセッション状態が未ロードなら読む（キャッシュヒット時は何もしない）
   useEffect(() => {
     if (selectedProfileId === null || sessionByProfile[selectedProfileId] !== undefined) return;
     const profileId = selectedProfileId;
     let cancelled = false;
-    void getReviewSessionState(kind, targetId, profileId).then((result) => {
+    void getReviewSessionState(kind, targetId, profileId, noteId).then((result) => {
       if (cancelled) return;
       if (!result.ok) setError(result.error.message);
       setSessionByProfile((prev) => ({
@@ -158,7 +164,7 @@ export function ReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [selectedProfileId, sessionByProfile, kind, targetId]);
+  }, [selectedProfileId, sessionByProfile, kind, targetId, noteId]);
 
   // 表示用の導出値（プロファイル切り替えで自動的に切り替わる）
   const profile = bootstrap?.profiles.find((p) => p.id === selectedProfileId) ?? null;
@@ -190,7 +196,13 @@ export function ReviewPanel({
     // 編集中の内容を保存してから、保存済みDB値でレビューする
     if (flushSave) await flushSave();
 
-    const session = await getOrCreateReviewSession(kind, targetId, profileId, effectivePersonaId);
+    const session = await getOrCreateReviewSession(
+      kind,
+      targetId,
+      profileId,
+      effectivePersonaId,
+      noteId,
+    );
     if (!session.ok || !session.data) {
       setError(session.ok ? "セッションの取得に失敗しました" : session.error.message);
       return;
@@ -226,7 +238,7 @@ export function ReviewPanel({
         setStreamingText((prev) => (prev ?? "") + chunk);
       }
       // 完了: 保存済みフィードバック（verdict込み）を取り直し、status バッジ等も更新する
-      const refreshed = await getReviewSessionState(kind, targetId, profileId);
+      const refreshed = await getReviewSessionState(kind, targetId, profileId, noteId);
       if (refreshed.ok) {
         setSessionByProfile((prev) => ({
           ...prev,
@@ -244,7 +256,7 @@ export function ReviewPanel({
       abortRef.current = null;
       setStreamingText(null);
     }
-  }, [busy, flushSave, kind, targetId, selectedProfileId, effectivePersonaId, bootstrap, router]);
+  }, [busy, flushSave, kind, targetId, noteId, selectedProfileId, effectivePersonaId, bootstrap, router]);
 
   const latest = feedbacks.at(-1);
   const footerExtra =
@@ -295,6 +307,7 @@ export function ReviewPanel({
             </Button>
           </div>
         </div>
+        {headerExtra}
         {bootstrap && bootstrap.profiles.length > 0 && (
           <div className="flex items-center gap-2">
             <select

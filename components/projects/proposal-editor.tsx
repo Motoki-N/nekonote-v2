@@ -15,9 +15,9 @@ import {
   useAutosave,
   type SaveStatus,
 } from "@/components/editor/use-autosave";
+import { CharacterReviewPanel } from "@/components/projects/character-review-panel";
 import { LinkedNotes } from "@/components/projects/linked-notes";
 import { ProposalReviewPanel } from "@/components/projects/review-panel";
-import { ReviewPanel } from "@/components/review/review-panel";
 import { ProposalStatusBadge } from "@/components/projects/status-badges";
 
 type ProposalPayload = { genre: string | null; target_audience: string | null; content: string };
@@ -213,12 +213,9 @@ export function ProposalEditor({
           />
         )}
         {openPanel === "character" && (
-          <ReviewPanel
-            kind="character"
-            targetId={proposal.id}
-            title="キャラクターレビュー"
-            emptyText="5つの問い（誰が・何を・なぜ・失敗の代償・どう変わるか）でキャラクター設計を見てもらいましょう。キャラクターノートを企画書に紐づけると、レビューの材料になります。"
-            showVerdict={false}
+          <CharacterReviewPanel
+            proposalId={proposal.id}
+            linkedNotes={linkedNotes}
             flushSave={flush}
             onClose={() => setOpenPanel(null)}
           />
