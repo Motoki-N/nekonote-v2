@@ -9,6 +9,7 @@ import {
   type UIMessage,
 } from 'ai'
 
+import { generateChatThreadTitle } from '@/lib/ai/chat-title'
 import { resolveModel } from '@/lib/ai/models'
 import { ASSISTANT_PERSONA_ID } from '@/lib/ai/personas'
 import { recordAiUsage } from '@/lib/ai/usage'
@@ -200,7 +201,7 @@ export async function POST(req: Request) {
     const { data: thread, error: threadError } = await supabase
       .from('chat_threads')
       .select(
-        'id, note_id, persona_id, personas (description, ai_capability, persona_type), notes (deleted_at)',
+        'id, note_id, persona_id, title, personas (description, ai_capability, persona_type), notes (deleted_at)',
       )
       .eq('id', threadId)
       .maybeSingle()
@@ -292,12 +293,16 @@ export async function POST(req: Request) {
               const { error } = await supabase.from('chat_messages').insert(rows)
               if (error) console.error('チャット履歴の保存に失敗:', error.message)
             }
-            // ダッシュボード相談のみ: タイトル未設定なら今回の user 発言から自動設定し
-            // （サーバー側で本文から生成＝クライアント注入不可・リネーム済みは is null で守る）、
+            // ダッシュボード相談のみ: タイトル未設定なら今回の user 発言からAIで自動設定し
+            // （サーバー側で本文から生成＝クライアント注入不可・リネーム済みは is null で守る。
+            // Issue #44。生成失敗時は chatTitleFrom にフォールバック）、
             // updated_at をバンプする（「最後に更新したスレッドを継続」「一覧の更新日時降順」の
             // 基盤。SPEC-chat-thread-list §5.2）
             if (context.kind === 'dashboard') {
-              const title = lastUser ? chatTitleFrom(textOf(lastUser)) : ''
+              const title =
+                thread.title === null && lastUser
+                  ? await generateChatThreadTitle(supabase, textOf(lastUser))
+                  : ''
               const { data: titled } = title
                 ? await supabase
                     .from('chat_threads')
