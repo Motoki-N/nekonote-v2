@@ -26,6 +26,57 @@ export async function createNote(): Promise<never> {
   redirect(`/notes/${data.id}`)
 }
 
+/** 履歴スナップショットの間引き間隔（前回バージョンからこの時間経過していたら保存。Issue #111） */
+const VERSION_INTERVAL_MS = 10 * 60 * 1000
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
+type NoteSnapshot = { title: string; content: string }
+
+/** 上書き前のノート行を note_versions へ保存する */
+async function insertSnapshot(
+  supabase: SupabaseServerClient,
+  noteId: string,
+  row: NoteSnapshot,
+): Promise<void> {
+  const { error } = await supabase
+    .from('note_versions')
+    .insert({ note_id: noteId, title: row.title, content: row.content })
+  if (error) throw new AppError('internal', error.message)
+}
+
+/** 時間ベース間引き: 最新バージョンから一定時間経過していたら上書き前の行をスナップショットする */
+async function snapshotIfStale(
+  supabase: SupabaseServerClient,
+  noteId: string,
+  current: NoteSnapshot,
+): Promise<void> {
+  const { data: latest, error } = await supabase
+    .from('note_versions')
+    .select('created_at')
+    .eq('note_id', noteId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new AppError('internal', error.message)
+  if (latest && Date.now() - Date.parse(latest.created_at) < VERSION_INTERVAL_MS) return
+  await insertSnapshot(supabase, noteId, current)
+}
+
+/** 現在のノート行を取得する（存在しなければ not_found） */
+async function fetchNoteSnapshot(
+  supabase: SupabaseServerClient,
+  id: string,
+): Promise<NoteSnapshot> {
+  const { data, error } = await supabase
+    .from('notes')
+    .select('title, content')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw new AppError('internal', error.message)
+  if (!data) throw new AppError('not_found', 'ノートが見つかりません')
+  return data
+}
+
 /** 自動保存の受け口 */
 export async function updateNote(
   id: string,
@@ -34,10 +85,75 @@ export async function updateNote(
   try {
     const parsed = noteUpdateSchema.parse(input)
     const supabase = await createClient()
+    const current = await fetchNoteSnapshot(supabase, id)
+    // 内容が変わらない保存（復元直後のフラッシュ等）は更新もスナップショットもしない
+    if (
+      (parsed.title ?? current.title) === current.title &&
+      (parsed.content ?? current.content) === current.content
+    ) {
+      return { ok: true }
+    }
+    // 「上書き前の状態」を残す: 編集セッション開始前の行が必ず1つ版に残る（Issue #111）
+    await snapshotIfStale(supabase, id, current)
     const { data, error } = await supabase
       .from('notes')
       .update(parsed)
       .eq('id', id)
+      .select('id')
+    if (error) throw new AppError('internal', error.message)
+    if (!data || data.length === 0) throw new AppError('not_found', 'ノートが見つかりません')
+    revalidatePath('/notes')
+    return { ok: true }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+export type NoteVersion = { id: string; title: string; content: string; created_at: string }
+
+/** バージョン履歴の一覧（新しい順。プレビュー用に content も返す） */
+export async function listNoteVersions(noteId: string): Promise<ActionResult<NoteVersion[]>> {
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('note_versions')
+      .select('id, title, content, created_at')
+      .eq('note_id', noteId)
+      .order('created_at', { ascending: false })
+    if (error) throw new AppError('internal', error.message)
+    return { ok: true, data: data ?? [] }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/** 指定バージョンの内容へ復元する。復元自体を取り消せるよう、現在行を間引きなしでスナップショットする */
+export async function restoreNoteVersion(
+  noteId: string,
+  versionId: string,
+): Promise<ActionResult> {
+  try {
+    const supabase = await createClient()
+    const { data: version, error: versionError } = await supabase
+      .from('note_versions')
+      .select('title, content')
+      .eq('id', versionId)
+      .eq('note_id', noteId)
+      .maybeSingle()
+    if (versionError) throw new AppError('internal', versionError.message)
+    if (!version) throw new AppError('not_found', 'バージョンが見つかりません')
+
+    const current = await fetchNoteSnapshot(supabase, noteId)
+    // 現在と同一内容への復元は何もしない（無駄な版を作らない）
+    if (version.title === current.title && version.content === current.content) {
+      return { ok: true }
+    }
+    await insertSnapshot(supabase, noteId, current)
+
+    const { data, error } = await supabase
+      .from('notes')
+      .update({ title: version.title, content: version.content })
+      .eq('id', noteId)
       .select('id')
     if (error) throw new AppError('internal', error.message)
     if (!data || data.length === 0) throw new AppError('not_found', 'ノートが見つかりません')

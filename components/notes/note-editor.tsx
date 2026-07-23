@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { EditorContent, type Editor } from "@tiptap/react";
-import { ArrowLeft, ClipboardCheck, Sparkles, Trash2, X } from "lucide-react";
+import { ArrowLeft, ClipboardCheck, History, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -27,6 +27,7 @@ import {
   type SaveStatus,
 } from "@/components/editor/use-autosave";
 import { DeepDivePanel } from "@/components/notes/deep-dive-panel";
+import { NoteHistoryPanel } from "@/components/notes/note-history-panel";
 import { NoteCharacterReviewPanel } from "@/components/notes/note-character-review-panel";
 import { TagInput } from "@/components/notes/tag-input";
 import { TemplateMenu, type Template } from "@/components/notes/template-menu";
@@ -53,8 +54,10 @@ export function NoteEditor({
   const [title, setTitle] = useState(note.title);
   const [tags, setTags] = useState<AttachedTag[]>(initialTags);
   const [restorableDraft, setRestorableDraft] = useState<NotePayload | null>(null);
-  // パネルは排他表示（掘り下げ / キャラクターレビューのどちらか一方。Issue #47）
-  const [openPanel, setOpenPanel] = useState<"deep-dive" | "character-review" | null>(null);
+  // パネルは排他表示（掘り下げ / キャラクターレビュー / バージョン履歴のいずれか一方。Issue #47）
+  const [openPanel, setOpenPanel] = useState<"deep-dive" | "character-review" | "history" | null>(
+    null,
+  );
 
   const titleRef = useRef(note.title);
   const editorRef = useRef<Editor | null>(null);
@@ -151,6 +154,23 @@ export function NoteEditor({
     editor.chain().focus().insertContent(markdown, { contentType: "markdown" }).run();
   }
 
+  async function toggleHistory() {
+    if (openPanel === "history") {
+      setOpenPanel(null);
+      return;
+    }
+    // 未保存分を確定してから履歴を開く（開いた瞬間の一覧と実際の保存状態を揃える）
+    await flush();
+    setOpenPanel("history");
+  }
+
+  /** 復元された版をエディタへ反映する（サーバー側は復元済み） */
+  function applyRestoredVersion(version: { title: string; content: string }) {
+    setTitle(version.title);
+    titleRef.current = version.title;
+    editor?.commands.setContent(version.content, { contentType: "markdown" });
+  }
+
   async function handleTrash() {
     await flush();
     const result = await trashNote(note.id);
@@ -198,6 +218,16 @@ export function NoteEditor({
           >
             {statusLabel[status]}
           </span>
+          <Button
+            variant={openPanel === "history" ? "secondary" : "ghost"}
+            size="icon-sm"
+            aria-label="バージョン履歴"
+            aria-pressed={openPanel === "history"}
+            className="text-muted-foreground"
+            onClick={toggleHistory}
+          >
+            <History />
+          </Button>
           <Button
             variant="ghost"
             size="icon-sm"
@@ -303,6 +333,14 @@ export function NoteEditor({
           <NoteCharacterReviewPanel
             noteId={note.id}
             flushSave={flush}
+            onClose={() => setOpenPanel(null)}
+          />
+        )}
+        {openPanel === "history" && (
+          <NoteHistoryPanel
+            noteId={note.id}
+            flushSave={flush}
+            onRestore={applyRestoredVersion}
             onClose={() => setOpenPanel(null)}
           />
         )}
