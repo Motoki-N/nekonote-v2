@@ -107,6 +107,48 @@ async function fetchScenes(supabase: Supabase, projectId: string): Promise<Scene
   return (data ?? []) as SceneRecord[]
 }
 
+/**
+ * プロジェクト内全シーンの紐づけノート全文をシーンID単位でまとめて取得
+ * （構成レビュー用。ごみ箱中は除外。Issue #58）
+ */
+async function fetchSceneNotesByScene(
+  supabase: Supabase,
+  projectId: string,
+): Promise<Record<string, NoteContext[]>> {
+  const { data, error } = await supabase
+    .from('scene_notes')
+    .select('scene_id, notes (title, content, deleted_at, note_tags (tags (name))), scenes!inner (project_id)')
+    .eq('scenes.project_id', projectId)
+  if (error) throw new AppError('internal', error.message)
+  const bySceneId: Record<string, NoteContext[]> = {}
+  for (const row of data ?? []) {
+    if (!row.notes || row.notes.deleted_at !== null) continue
+    ;(bySceneId[row.scene_id] ??= []).push({
+      title: row.notes.title,
+      content: row.notes.content,
+      tags: row.notes.note_tags.flatMap((nt) => (nt.tags ? [nt.tags.name] : [])),
+    })
+  }
+  return bySceneId
+}
+
+/** 単一シーンの紐づけノート全文（シーンレビュー用。ごみ箱中は除外。Issue #58） */
+async function fetchNotesForScene(supabase: Supabase, sceneId: string): Promise<NoteContext[]> {
+  const { data, error } = await supabase
+    .from('scene_notes')
+    .select('notes (title, content, deleted_at, note_tags (tags (name)))')
+    .eq('scene_id', sceneId)
+  if (error) throw new AppError('internal', error.message)
+  return (data ?? [])
+    .flatMap((row) => (row.notes ? [row.notes] : []))
+    .filter((note) => note.deleted_at === null)
+    .map((note) => ({
+      title: note.title,
+      content: note.content,
+      tags: note.note_tags.flatMap((nt) => (nt.tags ? [nt.tags.name] : [])),
+    }))
+}
+
 export async function POST(req: Request) {
   try {
     const supabase = await createClient()
@@ -195,14 +237,41 @@ export async function POST(req: Request) {
       }
       const proposal = await fetchProposalContext(supabase, session.project_id)
       const scenes = await fetchScenes(supabase, session.project_id)
-      prompt = buildStructureReviewInput({ proposal, scenes, history })
+      const sceneNotes = await fetchSceneNotesByScene(supabase, session.project_id)
+      // 紐づけノート経由のLLM入力肥大化ガード（監査L-3。全シーン×紐づけノートで肥大化しうるためIssue #58で追加）
+      const structureInputChars =
+        countChars(proposal.content) +
+        scenes.reduce((sum, scene) => sum + countChars(scene.content), 0) +
+        Object.values(sceneNotes).reduce(
+          (sum, notes) => sum + notes.reduce((s, note) => s + countChars(note.content), 0),
+          0,
+        )
+      if (structureInputChars > CRITIQUE_MAX_CHARS) {
+        throw new AppError(
+          'validation',
+          `構成（企画書・シーン・紐づけノート）の合計が約${structureInputChars.toLocaleString('ja-JP')}字あり、レビューの上限（${CRITIQUE_MAX_CHARS.toLocaleString('ja-JP')}字）を超えています。シーンの紐づけノートを減らしてください`,
+        )
+      }
+      prompt = buildStructureReviewInput({ proposal, scenes, sceneNotes, history })
     } else if (phase === 'scene') {
       // シーンレビュー: target_ref = scene id（RLS越し取得＋プロジェクト一致の検証）
       const scenes = await fetchScenes(supabase, session.project_id)
       const scene = scenes.find((s) => s.id === targetRef.data)
       if (!scene) throw new AppError('not_found', 'シーンが見つかりません')
       const proposal = await fetchProposalContext(supabase, session.project_id)
-      prompt = buildSceneReviewInput({ proposal, scene, scenes, history })
+      const notes = await fetchNotesForScene(supabase, scene.id)
+      // 紐づけノート経由のLLM入力肥大化ガード（監査L-3。Issue #58で追加）
+      const sceneInputChars =
+        countChars(proposal.content) +
+        countChars(scene.content) +
+        notes.reduce((sum, note) => sum + countChars(note.content), 0)
+      if (sceneInputChars > CRITIQUE_MAX_CHARS) {
+        throw new AppError(
+          'validation',
+          `シーンと紐づけノートの合計が約${sceneInputChars.toLocaleString('ja-JP')}字あり、レビューの上限（${CRITIQUE_MAX_CHARS.toLocaleString('ja-JP')}字）を超えています。紐づけノートを減らしてください`,
+        )
+      }
+      prompt = buildSceneReviewInput({ proposal, scene, scenes, notes, history })
     } else if (phase === 'manuscript') {
       // 講評: target_ref = project id（SPEC-dashboard-critique-settings §3.3。作品全体が対象）
       if (targetRef.data !== session.project_id) {
