@@ -17,8 +17,8 @@ cpSync(join(root, 'node_modules', '@vivliostyle', 'viewer', 'lib'), join(dest, '
 })
 
 // 組版テーマ。原稿リポジトリの判型CSSが `@import url(../node_modules/@vivliostyle/theme-bunko/theme.css)`
-// を参照するため、同じ相対構造（theme-bunko → ../theme-base）を保ってホストする
-for (const pkg of ['theme-bunko', 'theme-base']) {
+// を参照するため、同じ相対構造（theme-bunko / theme-techbook → ../theme-base）を保ってホストする
+for (const pkg of ['theme-bunko', 'theme-techbook', 'theme-base']) {
   cpSync(join(root, 'node_modules', '@vivliostyle', pkg), join(dest, 'themes', pkg), {
     recursive: true,
     filter: (src) => !src.includes(`${pkg}/example`),

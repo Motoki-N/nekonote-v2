@@ -20,6 +20,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import type { WritingDirection } from '@/lib/editor/preview'
 
 // ルビ記法 `{親文字|よみ}` に使えない文字（VFM記法の区切りと衝突する）
 const RUBY_FORBIDDEN = /[{}|\n]/
@@ -27,13 +28,17 @@ const RUBY_FORBIDDEN = /[{}|\n]/
 /**
  * 入力補助ツールバー（SPEC-vertical-editor-phase3 §4）。
  * 記法を知らなくてもルビ・傍点・縦中横・コメントが使える。
- * 挿入結果はすべて素のVFMテキスト（組版はテーマCSSの責務のまま）
+ * 挿入結果はすべて素のVFMテキスト（組版はテーマCSSの責務のまま）。
+ * 傍点・縦中横は縦書きテーマ専用UIのため横書きテーマでは出さない（ルビは両方で有効。Issue #97）
  */
 export function EditorToolbar({
   viewRef,
+  direction,
   onImageRequest,
 }: {
   viewRef: React.RefObject<EditorView | null>
+  /** テーマの書字方向（縦書き専用ボタンの出し分けに使う） */
+  direction: WritingDirection
   /** 画像挿入（SPEC §6）。未指定ならボタンを出さない */
   onImageRequest?: () => void
 }) {
@@ -73,16 +78,20 @@ export function EditorToolbar({
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-2 py-1">
       <ToolbarButton label="ルビ" title="選択範囲にルビを振る（{親文字|よみ}）" onClick={openRuby} />
-      <ToolbarButton
-        label="傍点"
-        title="選択範囲に傍点（圏点）を付ける"
-        onClick={() => wrapSpan('tenten', '傍点')}
-      />
-      <ToolbarButton
-        label="縦中横"
-        title="選択範囲を縦中横にする（2〜3桁の半角英数向け）"
-        onClick={() => wrapSpan('tcy', '縦中横')}
-      />
+      {direction === 'vertical' && (
+        <>
+          <ToolbarButton
+            label="傍点"
+            title="選択範囲に傍点（圏点）を付ける"
+            onClick={() => wrapSpan('tenten', '傍点')}
+          />
+          <ToolbarButton
+            label="縦中横"
+            title="選択範囲を縦中横にする（2〜3桁の半角英数向け）"
+            onClick={() => wrapSpan('tcy', '縦中横')}
+          />
+        </>
+      )}
       <ToolbarButton
         label="コメント"
         title="コメントの挿入・解除（Cmd/Ctrl+/。プレビュー・PDFには出ません）"

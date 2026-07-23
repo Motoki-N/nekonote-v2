@@ -92,12 +92,12 @@ export function PreviewPane({
     <div className="relative h-full min-h-0">
       {html === null ? (
         <div className="flex h-full items-center justify-center p-6">
-          <p className="text-sm text-muted-foreground">章を開くと縦書きプレビューが表示されます</p>
+          <p className="text-sm text-muted-foreground">章を開くと組版プレビューが表示されます</p>
         </div>
       ) : (
         <iframe
           ref={iframeRef}
-          title="縦書きプレビュー"
+          title="組版プレビュー"
           className="h-full w-full border-0"
           onLoad={handleLoad}
         />

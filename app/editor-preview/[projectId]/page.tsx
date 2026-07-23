@@ -36,7 +36,7 @@ export default function DetachedPreviewPage({
       }
       if (message.type !== 'document') return
       fullRef.current = message.full
-      document.title = `${message.title} — 縦書きプレビュー`
+      document.title = `${message.title} — 組版プレビュー`
       // 同一HTMLの再送（ready への応答等）では iframe が再ロードされず onLoaded も
       // 来ないため、組版中表示を立てない
       if (message.html !== lastHtmlRef.current) {
@@ -62,7 +62,7 @@ export default function DetachedPreviewPage({
       {html === null ? (
         <div className="flex h-full items-center justify-center p-6">
           <p className="text-sm text-muted-foreground">
-            エディタで章を開くと、ここに縦書きプレビューが表示されます
+            エディタで章を開くと、ここに組版プレビューが表示されます
           </p>
         </div>
       ) : (
