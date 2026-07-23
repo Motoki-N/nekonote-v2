@@ -125,13 +125,16 @@ alter table public.projects add column schedule jsonb;
 | `components/dashboard/consult-panel.tsx` | tool part のカード表示 |
 | `components/dashboard/project-overview-card.tsx` | スケジュールブロック（一覧・チェック・削除） |
 | `app/page.tsx` | projects の select に schedule を追加して受け渡し |
+| `app/api/cron/milestone-reminders/route.ts` | マイルストーン締切リマインド（§9・Issue #51） |
+| `lib/email.ts` | Resend 経由のリマインドメール送信 |
+| `lib/supabase/admin.ts` | cron 専用の service_role クライアント |
+| `vercel.json` | Vercel Cron のスケジュール設定 |
 
 ## 7. スコープ外
 
 - スケジュールの手動編集フォーム（修正は「アシスタントに再提案→確定」で上書き）
 - 世代管理・提案履歴の比較 UI
 - 掘り下げ（note）スレッドへのツール導入
-- マイルストーンの通知・リマインド
 - 日次目標の自動再計算（進捗との乖離はアシスタントに相談して再確定する運用）
 - メモノート化時の自動タグ付け（後からノート側で整理＝手帳→浄書の思想どおり）
 - ツール結果カードの永続化（chat_messages のスキーマ変更）
@@ -154,3 +157,33 @@ alter table public.projects add column schedule jsonb;
 14. **モバイル375px**: 概況カードのスケジュールブロック・チェック・削除、パネルのツールカードが成立する
 
 ※ マイグレーション・ツールの execute（RLS 経由の書き込み・zod 検証・プロンプトインジェクション耐性=ツールは本人のデータにしか書けないことの確認）・`toggleMilestone` / `deleteSchedule` の所有境界は **security-reviewer 必須ゲート**の対象。
+
+## 9. マイルストーン締切リマインド（Issue #51 追補）
+
+§7 でスコープ外としていた通知・リマインドを実装。新テーブルは作らず、milestone に `remindedAt`（最後にリマインドを送った日・JST）を追加するのみ（§4.2 のマイグレーション不要＝jsonb 内の zod スキーマ拡張のみ）。
+
+- **通知チャネル**: メール（Resend）。本アプリは許可リスト方式の実質シングルユーザー運用（SPEC-auth）のため、プッシュ通知・アプリ内通知バッジは見送り
+- **トリガー**: Vercel Cron が1日1回（`vercel.json`・09:00 JST）`GET /api/cron/milestone-reminders` を叩く。`CRON_SECRET` で認証
+- **判定**: 全プロジェクトの `schedule.milestones` を走査し、「締切3日前」または「前日」かつ未達成（`isMilestoneAchieved` が false）かつ当日まだ未通知（`remindedAt !== today`）のものだけメール送信。送信後 `remindedAt` を今日の日付で更新（`toggleMilestone` と同じ `savedAt` 楽観ロックで書き込む）
+- **送信先**: `auth.users` の email（`supabase.auth.admin.getUserById`。service_role キーが必要なため `lib/supabase/admin.ts` の専用クライアントを使う。通常のリクエスト処理では使わない）
+- **上書き保存との関係**: `saveSchedule` ツールで丸ごと上書きすると milestone は新規 id になり `remindedAt` も null に初期化される（`done` リセットと同じ「仕切り直し」の設計）
+
+### 対象ファイル（追加分）
+
+- `lib/schemas/schedule.ts`: `milestoneSchema` に `remindedAt` を追加
+- `app/api/chat/route.ts`: `saveSchedule` ツールの milestone 生成で `remindedAt: null` を付与
+- `app/api/cron/milestone-reminders/route.ts`: 判定・送信・書き戻しの本体
+- `lib/email.ts`: Resend 送信ラッパー（`RESEND_API_KEY` / `REMINDER_FROM_EMAIL`）
+- `lib/supabase/admin.ts`: service_role クライアント（`SUPABASE_SERVICE_ROLE_KEY`）
+- `vercel.json`: cron スケジュール
+
+### E2E検証手順（追補）
+
+1. **3日前リマインド**: 締切が3日後のマイルストーンを持つプロジェクトで cron を実行→メールが届く→DB の `remindedAt` が更新される
+2. **前日リマインド**: 締切1日前でも同様に届く（3日前と別日なので独立して送られる）
+3. **同日二重送信なし**: 同じ日に cron を2回実行しても2通目は送られない（`remindedAt === today` でスキップ）
+4. **達成済みはスキップ**: `done=true` または `targetChars` 達成済みのマイルストーンは対象外
+5. **認証**: `CRON_SECRET` 不一致のリクエストは 401
+6. **他人のプロジェクトへ波及しない**: service_role はRLSを越えるため、対象範囲が「全プロジェクトの棚卸し」のみに限定されていること（書き込みは対象プロジェクトの schedule のみ）をコードレビューで確認
+
+※ service_role キーの利用・cron認証・メール送信（プロンプトインジェクション経由でメール本文が汚染されないこと=milestone.label はユーザー入力由来だがメール本文はテキストのみでHTML注入不可）は **security-reviewer 必須ゲート**の対象。

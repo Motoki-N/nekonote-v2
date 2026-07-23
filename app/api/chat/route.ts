@@ -151,7 +151,12 @@ function buildDashboardTools(
           dailyTargetChars: input.dailyTargetChars,
           milestones: [...input.milestones]
             .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
-            .map((milestone) => ({ ...milestone, id: crypto.randomUUID(), done: false })),
+            .map((milestone) => ({
+              ...milestone,
+              id: crypto.randomUUID(),
+              done: false,
+              remindedAt: null,
+            })),
           savedAt: new Date().toISOString(),
         })
         if (!parsed.success) {

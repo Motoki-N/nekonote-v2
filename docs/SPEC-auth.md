@@ -45,6 +45,7 @@
 
 - **全ページ認証必須**。例外（公開ルート）は `/login` と `/auth/callback` のみ
 - API Route / Server Action も同様に認証チェックを通す（proxyのmatcherで静的アセット以外を対象にする）
+- 例外: `/api/cron/*`（Issue #51）はユーザーセッションを持たない Vercel Cron から叩かれるため、proxy のセッションチェックを素通りし、ルートハンドラ内で `CRON_SECRET` の Bearer 認証を行う（未設定時はフェイルクローズで拒否）
 
 ## 4. 許可リスト（サインイン制限）
 
