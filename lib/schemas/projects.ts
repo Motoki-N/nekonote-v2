@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import {
-  emotions,
+  EMOTION_MAX,
+  EMOTION_MIN,
   projectStatuses,
   proposalStatuses,
   sceneAnchors,
@@ -56,6 +57,9 @@ export const proposalNoteInputSchema = z.object({
 
 export type ProposalNoteInput = z.infer<typeof proposalNoteInputSchema>
 
+// 感情の強度（-5〜+5の整数。0=中立）。emotion_start/emotion_end 共通の検証
+const emotionIntensitySchema = z.number().int().min(EMOTION_MIN).max(EMOTION_MAX)
+
 export const sceneInputSchema = z.object({
   project_id: z.uuid(),
   part: z.enum(sceneParts),
@@ -63,8 +67,8 @@ export const sceneInputSchema = z.object({
   order_index: z.number().int().min(0).default(0),
   title: z.string().default(''),
   content: z.string().default(''),
-  emotion_start: z.enum(emotions).nullish(),
-  emotion_end: z.enum(emotions).nullish(),
+  emotion_start: emotionIntensitySchema.nullish(),
+  emotion_end: emotionIntensitySchema.nullish(),
 })
 export const sceneUpdateSchema = sceneInputSchema.partial().omit({ project_id: true })
 
@@ -77,8 +81,8 @@ export const sceneEditSchema = z.object({
   content: z.string().max(20000),
   part: z.enum(sceneParts),
   anchor: z.enum(sceneAnchors).nullable(),
-  emotion_start: z.enum(emotions).nullable(),
-  emotion_end: z.enum(emotions).nullable(),
+  emotion_start: emotionIntensitySchema.nullable(),
+  emotion_end: emotionIntensitySchema.nullable(),
   // 紐づく原稿ファイル（Issue #56）。形式検証のみ（開く際のbase_path検証はエディタ側が行う）
   manuscript_path: manuscriptFilePathSchema.nullable(),
 })

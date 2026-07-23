@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, MessageSquareText, Trash2 } from "lucide-react";
+import { ExternalLink, MessageSquareText, Minus, Plus, Trash2 } from "lucide-react";
 
 import { getManuscriptTree, type ManuscriptTreeData } from "@/lib/actions/manuscripts";
 import type { LinkedNote } from "@/lib/actions/projects";
@@ -10,11 +10,12 @@ import {
   ANCHOR_LABEL,
   ANCHOR_TO_PART,
   PART_LABEL,
+  formatEmotion,
   isBoundaryAnchor,
   type SceneRecord,
 } from "@/lib/board";
 import { LinkedNoteChips } from "@/components/notes/linked-note-chips";
-import { sceneAnchors, sceneParts } from "@/lib/schemas/enums";
+import { EMOTION_MAX, EMOTION_MIN, sceneAnchors, sceneParts } from "@/lib/schemas/enums";
 import type { Emotion, SceneAnchor, ScenePart } from "@/lib/schemas/enums";
 import type { SceneEdit } from "@/lib/schemas/projects";
 import {
@@ -52,7 +53,7 @@ const CONTENT_PLACEHOLDER = [
 const selectClass =
   "h-8 w-full rounded-md border border-input bg-transparent px-2.5 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
-function EmotionToggle({
+function EmotionStepper({
   label,
   value,
   onChange,
@@ -61,27 +62,46 @@ function EmotionToggle({
   value: Emotion | null;
   onChange: (next: Emotion | null) => void;
 }) {
-  const options: { value: Emotion | null; label: string }[] = [
-    { value: null, label: "未設定" },
-    { value: "plus", label: "＋ プラス" },
-    { value: "minus", label: "− マイナス" },
-  ];
+  function step(delta: number) {
+    const base = value ?? 0;
+    onChange(Math.min(EMOTION_MAX, Math.max(EMOTION_MIN, base + delta)));
+  }
   return (
     <fieldset className="flex flex-col gap-1">
       <legend className="text-xs text-muted-foreground">{label}</legend>
-      <div className="flex gap-1" role="group" aria-label={label}>
-        {options.map((option) => (
-          <Button
-            key={option.label}
-            type="button"
-            size="xs"
-            variant={value === option.value ? "secondary" : "outline"}
-            aria-pressed={value === option.value}
-            onClick={() => onChange(option.value)}
-          >
-            {option.label}
-          </Button>
-        ))}
+      <div className="flex items-center gap-1.5" role="group" aria-label={label}>
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          onClick={() => step(-1)}
+          disabled={value === EMOTION_MIN}
+          aria-label="1段階マイナス"
+        >
+          <Minus />
+        </Button>
+        <span className="w-9 text-center text-sm text-foreground tabular-nums">
+          {formatEmotion(value)}
+        </span>
+        <Button
+          type="button"
+          size="xs"
+          variant="outline"
+          onClick={() => step(1)}
+          disabled={value === EMOTION_MAX}
+          aria-label="1段階プラス"
+        >
+          <Plus />
+        </Button>
+        <Button
+          type="button"
+          size="xs"
+          variant="ghost"
+          onClick={() => onChange(null)}
+          disabled={value === null}
+        >
+          未設定に戻す
+        </Button>
       </div>
     </fieldset>
   );
@@ -221,8 +241,8 @@ export function SceneDialog({
           </label>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <EmotionToggle label="感情の起点" value={emotionStart} onChange={setEmotionStart} />
-            <EmotionToggle label="感情の終点" value={emotionEnd} onChange={setEmotionEnd} />
+            <EmotionStepper label="感情の起点" value={emotionStart} onChange={setEmotionStart} />
+            <EmotionStepper label="感情の終点" value={emotionEnd} onChange={setEmotionEnd} />
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

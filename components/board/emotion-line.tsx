@@ -1,29 +1,36 @@
 "use client";
 
 import type { SceneRecord } from "@/lib/board";
+import { EMOTION_MAX, EMOTION_MIN } from "@/lib/schemas/enums";
 
 const SLOT_WIDTH = 24; // 1シーン = 起点・終点の2スロット
-const PLUS_Y = 20;
-const MINUS_Y = 56;
+const TOP = 8;
+const BOTTOM = 64;
 const HEIGHT = 76;
-const LEFT_PAD = 28; // ＋/− の軸ラベル分
+const LEFT_PAD = 28; // 軸ラベル分
+
+// 固定ドメイン(-5〜+5)の線形スケール。実データのmin/maxは使わない
+// （感情強度は絶対値として比較できることが重要なため、シーン構成ごとに縮尺が変わるのを避ける）
+function yFor(value: number): number {
+  return BOTTOM - ((value - EMOTION_MIN) / (EMOTION_MAX - EMOTION_MIN)) * (BOTTOM - TOP);
+}
 
 /**
  * 感情の起伏の折れ線（SPEC-beat-board §3.2）。
  * 構成順序（order_index）に沿って emotion_start → emotion_end の遷移を
- * plus=上・minus=下の2値で描画する。未設定はスキップして線をつなぐ。
+ * -5〜+5の固定スケールで描画する。未設定はスキップして線をつなぐ。
  * 色はテーマ用CSS変数（currentColor / Tailwind のテーマクラス）のみ
  */
 export function EmotionLine({ scenes }: { scenes: SceneRecord[] }) {
   const points: { x: number; y: number }[] = [];
   scenes.forEach((scene, index) => {
     if (scene.emotion_start !== null) {
-      points.push({ x: LEFT_PAD + index * 2 * SLOT_WIDTH, y: scene.emotion_start === "plus" ? PLUS_Y : MINUS_Y });
+      points.push({ x: LEFT_PAD + index * 2 * SLOT_WIDTH, y: yFor(scene.emotion_start) });
     }
     if (scene.emotion_end !== null) {
       points.push({
         x: LEFT_PAD + (index * 2 + 1) * SLOT_WIDTH,
-        y: scene.emotion_end === "plus" ? PLUS_Y : MINUS_Y,
+        y: yFor(scene.emotion_end),
       });
     }
   });
@@ -47,18 +54,21 @@ export function EmotionLine({ scenes }: { scenes: SceneRecord[] }) {
             aria-label="感情の起伏の折れ線グラフ"
             className="text-primary"
           >
-            {/* ＋/− の基準線と軸ラベル */}
-            <text x={4} y={PLUS_Y + 4} className="fill-muted-foreground text-[11px]">
-              ＋
+            {/* 感情強度の基準線と軸ラベル */}
+            <text x={4} y={yFor(EMOTION_MAX) + 4} className="fill-muted-foreground text-[11px]">
+              +5
             </text>
-            <text x={4} y={MINUS_Y + 4} className="fill-muted-foreground text-[11px]">
-              −
+            <text x={4} y={yFor(0) + 4} className="fill-muted-foreground text-[11px]">
+              0
+            </text>
+            <text x={4} y={yFor(EMOTION_MIN) + 4} className="fill-muted-foreground text-[11px]">
+              -5
             </text>
             <line
               x1={LEFT_PAD}
-              y1={(PLUS_Y + MINUS_Y) / 2}
+              y1={yFor(0)}
               x2={width - 4}
-              y2={(PLUS_Y + MINUS_Y) / 2}
+              y2={yFor(0)}
               className="stroke-border"
               strokeDasharray="4 4"
             />
