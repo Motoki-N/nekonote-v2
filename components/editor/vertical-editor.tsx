@@ -24,6 +24,7 @@ import { toast } from 'sonner'
 
 import {
   createChapter,
+  createEditorBranch,
   getAllChapterContents,
   getEditorWorkspace,
   openChapter,
@@ -60,8 +61,11 @@ import { Button } from '@/components/ui/button'
 import { useChrome } from '@/components/layout/app-chrome'
 import { CritiquePanel } from '@/components/manuscript/critique-panel'
 import { ProofreadPanel } from '@/components/manuscript/proofread-panel'
+import { BranchCreateDialog } from '@/components/editor/branch-create-dialog'
+import { BranchMenu } from '@/components/editor/branch-menu'
 import { BuildDialog } from '@/components/editor/build-dialog'
 import { EditorPane } from '@/components/editor/editor-pane'
+import { PrCreateDialog } from '@/components/editor/pr-create-dialog'
 import { EditorToolbar } from '@/components/editor/editor-toolbar'
 import { ImageUploadDialog } from '@/components/editor/image-upload-dialog'
 import type { IllustKind } from '@/components/editor/image-upload-dialog'
@@ -130,6 +134,11 @@ export function VerticalEditor({
   const [creating, setCreating] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [buildOpen, setBuildOpen] = useState(false)
+  /** ブランチ切替・作成・PR（SPEC-vertical-editor-phase5） */
+  const [branchSwitching, setBranchSwitching] = useState(false)
+  const [branchCreateOpen, setBranchCreateOpen] = useState(false)
+  const [branchCreating, setBranchCreating] = useState(false)
+  const [prOpen, setPrOpen] = useState(false)
   const [previewHtml, setPreviewHtml] = useState<string | null>(null)
   const [typesetting, setTypesetting] = useState(false)
   const [fullPreview, setFullPreview] = useState(false)
@@ -262,7 +271,10 @@ export function VerticalEditor({
         basePath !== '' && repoPath.startsWith(`${basePath}/`)
           ? repoPath.slice(basePath.length + 1)
           : repoPath
-      return `${window.location.origin}/api/editor/asset?projectId=${projectId}&path=${encodeURIComponent(relative)}`
+      // 非デフォルトブランチでは対象ブランチの画像を引く（SPEC-phase5 §3.4）
+      const branchQuery =
+        ok && ok.branch !== ok.defaultBranch ? `&branch=${encodeURIComponent(ok.branch)}` : ''
+      return `${window.location.origin}/api/editor/asset?projectId=${projectId}&path=${encodeURIComponent(relative)}${branchQuery}`
     },
     [ok, projectId],
   )
@@ -334,8 +346,12 @@ export function VerticalEditor({
       setRestorePrompt(null)
       setMerge(null)
       setDirty(false)
+      // 取得待ちの間にブランチが切り替わったら、旧ブランチの内容で状態を上書きしない
+      // （SPEC-phase5。自己レビュー指摘: 切替後の待避を誤削除しうるレースの防止）
+      const branchAtStart = ok.branch
       try {
-        const result = await openChapter(projectId, path)
+        const result = await openChapter(projectId, path, ok.branch)
+        if (okRef.current?.branch !== branchAtStart) return
         if (!result.ok || !result.data) {
           setChapterError(result.ok ? '章の読み込みに失敗しました' : result.error.message)
           currentRef.current = null
@@ -449,6 +465,11 @@ export function VerticalEditor({
       requestSave()
       return
     }
+    // 校正はデフォルトブランチのコミット内容が対象のまま（SPEC-phase5 §3.4・論点G。注記のみ）
+    const okNow = okRef.current
+    if (okNow && okNow.branch !== okNow.defaultBranch) {
+      toast.info(`校正はデフォルトブランチ（${okNow.defaultBranch}）のコミット内容が対象です`)
+    }
     openReviewPanel('proofread')
     // 前回開いた章の原稿情報が残っていると、フェッチ完了まで別の章の提案を誤操作できてしまう
     setReviewFile(null)
@@ -539,13 +560,14 @@ export function VerticalEditor({
           content: contentRef.current,
           baseSha: current.baseSha,
           message,
+          branch: okRef.current?.branch,
         })
         if (!result.ok || !result.data) {
           if (!result.ok && result.error.code === 'conflict') {
             // 競合時は「保存後に校正パネルを開く」予約も落とす（後日の無関係な保存で開かないように）
             pendingProofreadRef.current = false
             setSaveDialogOpen(false)
-            const remote = await openChapter(projectId, current.path)
+            const remote = await openChapter(projectId, current.path, okRef.current?.branch)
             if (remote.ok && remote.data) {
               setMerge({
                 remoteContent: remote.data.content,
@@ -633,7 +655,7 @@ export function VerticalEditor({
     flushDraft()
     setFullPreviewLoading(true)
     try {
-      const result = await getAllChapterContents(projectId)
+      const result = await getAllChapterContents(projectId, ok.branch)
       if (!result.ok || !result.data) {
         toast.error(result.ok ? '全章の取得に失敗しました' : result.error.message)
         return
@@ -667,7 +689,7 @@ export function VerticalEditor({
     async (name: string) => {
       setCreating(true)
       try {
-        const result = await createChapter(projectId, name)
+        const result = await createChapter(projectId, name, okRef.current?.branch)
         if (!result.ok || !result.data) {
           toast.error(result.ok ? '章の作成に失敗しました' : result.error.message)
           return
@@ -690,9 +712,9 @@ export function VerticalEditor({
     [projectId, openChapterFlow],
   )
 
-  /** 設定コミット後の再取得（章一覧の順序・テーマCSSに反映。SPEC-phase3 §7） */
+  /** 設定コミット後の再取得（章一覧の順序・テーマCSSに反映。SPEC-phase3 §7。現在ブランチを維持） */
   const refreshWorkspace = useCallback(async () => {
-    const result = await getEditorWorkspace(projectId)
+    const result = await getEditorWorkspace(projectId, okRef.current?.branch)
     if (result.ok && result.data) {
       setWs(result.data)
       if (result.data.gate === 'ok') {
@@ -709,6 +731,127 @@ export function VerticalEditor({
     })
   }, [refreshWorkspace, compilePreview])
 
+  // ---- ブランチ切替・作成・PR（SPEC-vertical-editor-phase5） ----
+
+  /** 選択中ブランチの保持（URLクエリ＋localStorage。デフォルトなら消す。SPEC-phase5 §3.1） */
+  const rememberBranch = useCallback(
+    (branchName: string, defaultBranchName: string) => {
+      const isDefault = branchName === defaultBranchName
+      try {
+        const key = `nekonote-editor-branch:${projectId}`
+        if (isDefault) localStorage.removeItem(key)
+        else localStorage.setItem(key, branchName)
+      } catch {
+        // localStorage が使えない環境では URL のみで保持する
+      }
+      const url = new URL(window.location.href)
+      if (isDefault) url.searchParams.delete('branch')
+      else url.searchParams.set('branch', branchName)
+      window.history.replaceState(null, '', url)
+    },
+    [projectId],
+  )
+
+  /**
+   * ブランチ切替（SPEC-phase5 §3.1）。未保存の編集は待避してそのまま切り替える（論点F。
+   * 下書きキーはブランチ別のため、元ブランチへ戻れば復元バナーで拾える）。
+   * 章の選択状態・プレビューはリセットし、新ブランチの章一覧を取得し直す
+   */
+  const switchBranch = useCallback(
+    async (nextBranch: string) => {
+      const okNow = okRef.current
+      if (!okNow || nextBranch === okNow.branch) return
+      flushDraft()
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current)
+      // 校正パネルは開いていた章に紐づくため切替で閉じる（章切替・モバイル戻ると同じ作法）
+      closeReviewPanel()
+      setBranchSwitching(true)
+      try {
+        const result = await getEditorWorkspace(projectId, nextBranch)
+        if (!result.ok || !result.data || result.data.gate !== 'ok') {
+          toast.error(result.ok ? 'ブランチの切替に失敗しました' : result.error.message)
+          return
+        }
+        const data = result.data
+        // 章の状態をリセット（モバイルの「章一覧へ戻る」と同じ後片付け＋全体プレビュー解除）
+        setSelectedPath(null)
+        currentRef.current = null
+        contentRef.current = ''
+        setPreviewHtml(null)
+        setFullPreview(false)
+        setMerge(null)
+        setRestorePrompt(null)
+        setDirty(false)
+        setCharCount(null)
+        setActualPages(null)
+        setComments([])
+        setSidebarTab('chapters')
+        setWs(data)
+        setChapters(data.chapters)
+        okRef.current = data
+        rememberBranch(data.branch, data.defaultBranch)
+        if (data.branchFallback) {
+          toast.warning(
+            `ブランチ ${nextBranch} が見つかりません。デフォルトブランチを開きました`,
+          )
+        } else {
+          toast.success(`ブランチ ${data.branch} に切り替えました`)
+        }
+      } finally {
+        setBranchSwitching(false)
+      }
+    },
+    [projectId, flushDraft, rememberBranch, closeReviewPanel],
+  )
+
+  /** ブランチ作成→即切替（SPEC-phase5 §3.2。起点は常にデフォルトブランチのHEAD） */
+  const handleCreateBranch = useCallback(
+    async (name: string) => {
+      setBranchCreating(true)
+      try {
+        const result = await createEditorBranch(projectId, name)
+        if (!result.ok || !result.data) {
+          toast.error(result.ok ? 'ブランチの作成に失敗しました' : result.error.message)
+          return
+        }
+        setBranchCreateOpen(false)
+        toast.success(`ブランチ ${result.data.branch} を作成しました`)
+        await switchBranch(result.data.branch)
+      } finally {
+        setBranchCreating(false)
+      }
+    },
+    [projectId, switchBranch],
+  )
+
+  // 初回のブランチ同期（SPEC-phase5 §3.1）: サーバーがフォールバックしたら通知して保存値を
+  // クリア。?branch= がなければ localStorage から復元する（?file= リンク経由の場合は
+  // リンクの意図を優先して復元しない）
+  const branchSyncedRef = useRef(false)
+  useEffect(() => {
+    if (branchSyncedRef.current || !ok) return
+    branchSyncedRef.current = true
+    if (ok.branchFallback) {
+      toast.warning('指定のブランチが見つからないため、デフォルトブランチを開きました')
+      rememberBranch(ok.branch, ok.defaultBranch)
+      return
+    }
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('branch')) {
+      // URL指定で開いた場合は localStorage をURLに合わせる
+      rememberBranch(ok.branch, ok.defaultBranch)
+      return
+    }
+    if (params.get('file')) return
+    let stored: string | null = null
+    try {
+      stored = localStorage.getItem(`nekonote-editor-branch:${projectId}`)
+    } catch {
+      stored = null
+    }
+    if (stored && stored !== ok.branch) void switchBranch(stored)
+  }, [ok, projectId, rememberBranch, switchBranch])
+
   /**
    * 画像アップロードの実行（SPEC-phase3 §6・論点C）。
    * images/ へ即コミット → カーソル位置に挿入記法を追記（本文は通常の保存フロー）
@@ -720,7 +863,12 @@ export function VerticalEditor({
       setUploadingImage(true)
       try {
         const base64 = await fileToBase64(file)
-        const result = await uploadImage(projectId, sanitizeImageFileName(file.name), base64)
+        const result = await uploadImage(
+          projectId,
+          sanitizeImageFileName(file.name),
+          base64,
+          okRef.current?.branch,
+        )
         if (!result.ok || !result.data) {
           toast.error(result.ok ? '画像のアップロードに失敗しました' : result.error.message)
           return
@@ -905,6 +1053,8 @@ export function VerticalEditor({
     )
   }
 
+  // ここまでのガードで gate は 'ok' に絞り込まれている（JSX用の非null別名）
+  const okWs = ws
   const selectedName = selectedPath ? fileName(selectedPath) : null
 
   return (
@@ -996,7 +1146,13 @@ export function VerticalEditor({
             size="sm"
             variant="outline"
             disabled={chapters.length === 0}
-            onClick={() => openReviewPanel('critique')}
+            onClick={() => {
+              // 講評もデフォルトブランチが対象のまま（SPEC-phase5 §3.4・論点G。注記のみ）
+              if (okWs.branch !== okWs.defaultBranch) {
+                toast.info(`講評はデフォルトブランチ（${okWs.defaultBranch}）のコミット内容が対象です`)
+              }
+              openReviewPanel('critique')
+            }}
           >
             <BookOpenText data-icon="inline-start" />
             講評
@@ -1105,6 +1261,18 @@ export function VerticalEditor({
               selectedPath !== null && 'hidden',
             )}
           >
+            {/* ブランチセレクタ（SPEC-phase5 §3.1。切替・作成・PRの入口） */}
+            <div className="mb-1.5">
+              <BranchMenu
+                projectId={projectId}
+                branch={okWs.branch}
+                defaultBranch={okWs.defaultBranch}
+                switching={branchSwitching}
+                onSwitch={(name) => void switchBranch(name)}
+                onCreateRequest={() => setBranchCreateOpen(true)}
+                onPrRequest={() => setPrOpen(true)}
+              />
+            </div>
             {/* 章一覧／コメント一覧の切替タブ（SPEC-phase3 §3。コメントは章を開いているときのみ） */}
             {selectedPath !== null && (
               <div className="mb-1.5 grid grid-cols-2 gap-1 rounded-md bg-muted p-0.5">
@@ -1178,6 +1346,8 @@ export function VerticalEditor({
                       <li key={chapter.path}>
                         <button
                           type="button"
+                          // ブランチ切替中は無効化（切替前後の内容取り違え防止。SPEC-phase5 §3.1）
+                          disabled={branchSwitching}
                           onClick={() => {
                             // 校正パネルは開いていた章に紐づくため、章の切替で閉じる（講評は作品全体なので維持）
                             if (chapter.path !== selectedPath && reviewOpen === 'proofread') {
@@ -1421,6 +1591,7 @@ export function VerticalEditor({
 
       <SaveDialog
         open={saveDialogOpen}
+        branch={okWs.branch}
         defaultMessage={
           selectedName ? `執筆: ${selectedName} を更新（ネコノテAI 縦書きエディタ）` : ''
         }
@@ -1440,6 +1611,7 @@ export function VerticalEditor({
       />
       <SettingsDialog
         projectId={projectId}
+        branch={okWs.branch}
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         onSaved={handleSettingsSaved}
@@ -1449,7 +1621,22 @@ export function VerticalEditor({
         projectId={projectId}
         open={buildOpen}
         dirty={dirty || draftPaths.size > 0}
+        nonDefaultBranch={okWs.branch !== okWs.defaultBranch}
         onOpenChange={setBuildOpen}
+      />
+      <BranchCreateDialog
+        open={branchCreateOpen}
+        defaultBranch={okWs.defaultBranch}
+        creating={branchCreating}
+        onCreate={(name) => void handleCreateBranch(name)}
+        onOpenChange={setBranchCreateOpen}
+      />
+      <PrCreateDialog
+        projectId={projectId}
+        branch={okWs.branch}
+        defaultBranch={okWs.defaultBranch}
+        open={prOpen}
+        onOpenChange={setPrOpen}
       />
       {/* 種別・キャプションはファイルごとに初期化する（key） */}
       <ImageUploadDialog

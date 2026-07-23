@@ -21,12 +21,15 @@ import { Input } from '@/components/ui/input'
  */
 export function SaveDialog({
   open,
+  branch,
   defaultMessage,
   saving,
   onConfirm,
   onOpenChange,
 }: {
   open: boolean
+  /** コミット先ブランチ（SPEC-vertical-editor-phase5 §3.1で明示するようにした） */
+  branch: string
   defaultMessage: string
   saving: boolean
   onConfirm: (message: string) => void
@@ -36,6 +39,7 @@ export function SaveDialog({
     <Dialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
       <DialogContent>
         <SaveForm
+          branch={branch}
           defaultMessage={defaultMessage}
           saving={saving}
           onConfirm={onConfirm}
@@ -47,11 +51,13 @@ export function SaveDialog({
 }
 
 function SaveForm({
+  branch,
   defaultMessage,
   saving,
   onConfirm,
   onCancel,
 }: {
+  branch: string
   defaultMessage: string
   saving: boolean
   onConfirm: (message: string) => void
@@ -64,7 +70,7 @@ function SaveForm({
       <DialogHeader>
         <DialogTitle>保存（コミット）</DialogTitle>
         <DialogDescription>
-          この内容でリポジトリのデフォルトブランチにコミットします
+          この内容でブランチ「{branch}」にコミットします
         </DialogDescription>
       </DialogHeader>
       <form

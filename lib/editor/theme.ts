@@ -66,6 +66,7 @@ export async function resolveThemeAssets(
   repo: string,
   basePath: string,
   themePath: string | null,
+  ref?: string,
 ): Promise<ThemeAssets> {
   if (!themePath) return DEFAULT_THEME
 
@@ -79,7 +80,7 @@ export async function resolveThemeAssets(
 
   let source: string
   try {
-    source = (await getFileContent(token, repo, themeFilePath)).content
+    source = (await getFileContent(token, repo, themeFilePath, ref)).content
   } catch (error) {
     console.error(`テーマCSS ${themeFilePath} の取得に失敗:`, error)
     return DEFAULT_THEME
@@ -107,7 +108,7 @@ export async function resolveThemeAssets(
       const childPath = joinRepoPath(themeDir, url)
       if (!childPath) return
       try {
-        inlineChildren.set(url, (await getFileContent(token, repo, childPath)).content)
+        inlineChildren.set(url, (await getFileContent(token, repo, childPath, ref)).content)
       } catch (error) {
         console.error(`テーマCSS ${childPath} の取得に失敗:`, error)
       }

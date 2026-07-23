@@ -29,12 +29,15 @@ import { Input } from '@/components/ui/input'
  */
 export function SettingsDialog({
   projectId,
+  branch,
   open,
   onOpenChange,
   onSaved,
   onOpenChapter,
 }: {
   projectId: string
+  /** 読み書き対象のブランチ（SPEC-vertical-editor-phase5 §3.4。設定フォームも現在ブランチへ） */
+  branch: string
   open: boolean
   onOpenChange: (open: boolean) => void
   /** いずれかのセクションのコミット成功後（章一覧・テーマの再取得は親の責務） */
@@ -63,19 +66,19 @@ export function SettingsDialog({
   useEffect(() => {
     if (!open) return
     let cancelled = false
-    void getBookSettings(projectId).then((result) => {
+    void getBookSettings(projectId, branch).then((result) => {
       if (!cancelled) applyResult(result)
     })
     return () => {
       cancelled = true
     }
-  }, [open, projectId, applyResult])
+  }, [open, projectId, branch, applyResult])
 
   /** 保存成功の共通後処理: 設定を取り直し（新SHA）、親へ通知（章一覧・プレビュー更新） */
   const handleSaved = useCallback(() => {
-    void getBookSettings(projectId).then(applyResult)
+    void getBookSettings(projectId, branch).then(applyResult)
     onSaved()
-  }, [projectId, applyResult, onSaved])
+  }, [projectId, branch, applyResult, onSaved])
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -97,9 +100,15 @@ export function SettingsDialog({
             <div className="flex flex-col gap-6 pb-2">
               {data.config ? (
                 <>
-                  <BiblioSection projectId={projectId} config={data.config} onSaved={handleSaved} />
+                  <BiblioSection
+                    projectId={projectId}
+                    branch={branch}
+                    config={data.config}
+                    onSaved={handleSaved}
+                  />
                   <EntrySection
                     projectId={projectId}
+                    branch={branch}
                     config={data.config}
                     candidates={data.entryCandidates}
                     onSaved={handleSaved}
@@ -115,12 +124,14 @@ export function SettingsDialog({
                 <KumiSection
                   key={theme.cssPath}
                   projectId={projectId}
+                  branch={branch}
                   theme={theme}
                   onSaved={handleSaved}
                 />
               ))}
               <OkuzukeSection
                 projectId={projectId}
+                branch={branch}
                 okuzuke={data.okuzuke}
                 onSaved={handleSaved}
                 onOpenChapter={(path) => {
@@ -197,10 +208,12 @@ type SectionConfig = NonNullable<BookSettingsData['config']>
 
 function BiblioSection({
   projectId,
+  branch,
   config,
   onSaved,
 }: {
   projectId: string
+  branch: string
   config: SectionConfig
   onSaved: () => void
 }) {
@@ -221,6 +234,7 @@ function BiblioSection({
         title: titleChanged ? title.trim() : null,
         author: authorChanged ? author.trim() : null,
         entryRawItems: null,
+        branch,
       })
       if (!result.ok) {
         toast.error(result.error.message)
@@ -289,11 +303,13 @@ function BiblioSection({
 
 function EntrySection({
   projectId,
+  branch,
   config,
   candidates,
   onSaved,
 }: {
   projectId: string
+  branch: string
   config: SectionConfig
   candidates: string[]
   onSaved: () => void
@@ -338,6 +354,7 @@ function EntrySection({
         title: null,
         author: null,
         entryRawItems: items.map((item) => item.raw),
+        branch,
       })
       if (!result.ok) {
         toast.error(result.error.message)
@@ -463,10 +480,12 @@ const KUMI_FIELDS = [
 
 function KumiSection({
   projectId,
+  branch,
   theme,
   onSaved,
 }: {
   projectId: string
+  branch: string
   theme: ThemeSettings
   onSaved: () => void
 }) {
@@ -517,6 +536,7 @@ function KumiSection({
           lineHeight: num('lineHeight'),
           fontSizePercent: num('fontSizePercent'),
         },
+        branch,
       })
       if (!result.ok) {
         toast.error(result.error.message)
@@ -578,11 +598,13 @@ function KumiSection({
 
 function OkuzukeSection({
   projectId,
+  branch,
   okuzuke,
   onSaved,
   onOpenChapter,
 }: {
   projectId: string
+  branch: string
   okuzuke: BookSettingsData['okuzuke']
   onSaved: () => void
   onOpenChapter: (path: string) => void
@@ -617,6 +639,7 @@ function OkuzukeSection({
       const result = await saveOkuzuke(projectId, {
         path: okuzuke.path,
         baseSha: okuzuke.sha,
+        branch,
         dateText: dateChanged ? dateText.trim() : null,
         fields: changedFields.map((field) => ({ label: field.label, value: field.value.trim() })),
       })

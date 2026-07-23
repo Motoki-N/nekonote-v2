@@ -35,12 +35,15 @@ export function BuildDialog({
   projectId,
   open,
   dirty,
+  nonDefaultBranch,
   onOpenChange,
 }: {
   projectId: string
   open: boolean
   /** 未保存の編集があるか（タグはコミット済みのHEADに付くため警告を出す） */
   dirty: boolean
+  /** 非デフォルトブランチを開いているか（入稿対象はデフォルトHEADのみ。SPEC-phase5 §3.4） */
+  nonDefaultBranch: boolean
   onOpenChange: (open: boolean) => void
 }) {
   const [info, setInfo] = useState<BuildTagInfo | null>(null)
@@ -135,6 +138,12 @@ export function BuildDialog({
         {phase === 'form' && (
           <div className="flex flex-col gap-3">
             {infoError && <p className="text-sm text-destructive">{infoError}</p>}
+            {nonDefaultBranch && (
+              <p className="rounded-md bg-secondary px-3 py-2 text-sm text-secondary-foreground">
+                入稿ビルドの対象はデフォルトブランチの最新コミットです。
+                いま開いているブランチの内容は含まれません（PRをマージしてからビルドしてください）。
+              </p>
+            )}
             {dirty && (
               <p className="rounded-md bg-secondary px-3 py-2 text-sm text-secondary-foreground">
                 未保存の編集があります。タグはコミット済みの最新状態に付くため、
