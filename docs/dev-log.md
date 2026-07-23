@@ -743,3 +743,14 @@
 - **security-reviewer 通過（Critical/High/Medium なし・Low 2件は実害なし記録のみ）**: 新RLSは作成と同時に有効化・FOR ALL の using/with check 完全対称で行の付け替えも遮断・anon は default privileges revoke と to authenticated の二重遮断。manuscript_path は保存時形式検証（`manuscriptFilePathSchema`）のみだが、エディタ側が章一覧完全一致＋base_path 再検証で開くため越権参照に至らない（多層防御の整理をレビュー報告に記録）
 - 検証: typecheck / lint 通過。`db push` 適用（migration list 一致・`db:types` 再生成が手動先行パッチと一致）。ペイン実機でノート検索→紐づけ→チップ→リロード復元→解除、カードの「紐づけノート 1件」バッジ、企画書ページの回帰（チップ・ポップオーバー）を確認（検証シーンは削除済み）。原稿 select は対象リポジトリの `manuscripts/` にまだ章ファイルがなく描画（gate=ok・選択肢なし）までの確認——初章作成後に実導線が通る。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
 - ペイン検証メモ: 同一フォルダの別セッション dev サーバーは Next 16 の二重起動ロックで自前起動不可→既存サーバー（同じ作業ツリー配信）を `preview_start {url}` で流用する定石（セッション㊵）を追認
+
+### セッション54: /fix-issue #104 アトリエの参照画像アップロード——PR #105 マージ・本番反映（7/23）
+
+- **Issue #104 を `/fix-issue` フローで処理**（影響範囲分析→設計確認1問→マイグレーション適用→実装→ペイン実機検証→security-reviewer＋subagent自己レビュー並行→PR #105→マージまで1セッション）: 生成イラストの雰囲気・キャラ統一のリファレンスとして外部画像をアップロードして参照画像に使いたい（P2・enhancement・**SPEC-illustrator §7 スコープ外項目の昇格**。SPEC は §9 追補として改訂）
+- **設計確認（AskUserQuestion 1問・DBスキーマ変更＋セキュリティ関連のため着手前に実施）**: 保存方式→**アップロード画像を `illustrations` の1行（kind 新値 'reference'・ラベル「参照用」）として保存**（専用テーブル分離案・保存せず都度添付案は不採用）。既存の参照選択（`reference_illustration_id`）・署名URL・ギャラリー・削除（被参照警告）・生成APIの参照ダウンロードを**無変更で流用**できる最小構成
+- **実装は9ファイル（+264/-31）**: マイグレーション `20260723000001`（kind CHECK に 'reference' 追加のみ・後方互換・RLS/Storageポリシー変更なし）→ Server Action `uploadReferenceImage`（png/jpeg/webp・10MB・レートリミット分10/日100・projects RLS越し所有確認→Storage保存→行insert・失敗時オブジェクト掃除・パスはサーバー採番 `{user_id}/{uuid}.{ext}` で file.name 非使用）→ ギャラリーヘッダーに「参照画像をアップロード」ボタン（hidden input・クライアント側サイズ事前検査＋catch）→ 拡大表示は prompt 空で説明文非表示・依頼フォームのプロンプト引き継ぎも空ならスキップ（入力中の内容を消さない）
+- **型の分離が要**: 'reference' は生成の依頼種別ではない——zod の `illustrationKinds` には追加せず propose/generate の入力から遮断し、DB保存されうる全体は `storedIllustrationKinds` として別定義（依頼フォームの種別セレクタは illustrationKinds 列挙のため UI にも出ない）。生成ルートの拡張子マップは `ILLUSTRATION_EXTENSION_BY_MIME` としてスキーマへ移してアップロードと共用
+- **security-reviewer: Critical〜Medium ゼロ（Low 3件）**——L-2 クライアント catch なし・L-3 fileName 長さ上限なしは対応済み。L-1「MIME はクライアント申告値のみ（Storage 側検証も同じ申告値）」は非公開バケット＋署名URL配信の Content-Type が保存時値に固定でスクリプト実行に至らず許容と判断（コードコメントに実態を明記）
+- **subagent 自己レビュー指摘1件（中）を対応**: Server Action の `bodySizeLimit`（15mb）超過はアクション到達前に reject されサーバー側の検証文言が出せない＝15MB超のファイルで無反応になる→クライアント側で `REFERENCE_UPLOAD_MAX_BYTES` を事前検査してトースト表示。rate-limit の日次超過文言が「AI利用回数」固定な点は既存共通関数の制約として未対応（実害なし）
+- 検証: typecheck / lint 通過。`db push` 適用（CHECK 張り替えのみ・旧コード非影響のためデプロイ前適用で安全と判断・ユーザー承認済み）。ペイン実機（ユーザーにペインの再ログインを依頼）で合成PNG注入→アップロード→「参照用」バッジ＋ファイル名タイトルでギャラリー先頭表示→拡大表示で説明文非表示→生成画像参照からアップロード参照への切替でプロンプト266字保持→text/plain 偽装のサーバー側拒否トースト→11MB のクライアント側事前拒否→削除（参照チップ自動解除）まで一巡・コンソールエラーなし（検証画像は削除済み）。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
+- ペイン検証メモ: ネイティブのファイル選択ダイアログは操作不可→`DataTransfer` で合成 File を `input.files` に注入して change をディスパッチする方式が有効（canvas でPNG実体も合成できる）。accept 属性はプログラム注入を素通しするため、この方式はサーバー側検証の実証にもなる
