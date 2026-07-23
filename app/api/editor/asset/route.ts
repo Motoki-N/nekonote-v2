@@ -6,6 +6,7 @@ import { AppError, errorResponse } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
 import { getRawFileBytes } from '@/lib/git/github'
 import { enforceRateLimit } from '@/lib/rate-limit'
+import { gitBranchNameSchema } from '@/lib/schemas/manuscript'
 import { createClient } from '@/lib/supabase/server'
 
 // プレビュー用の画像認証プロキシ（SPEC-vertical-editor-phase2 §5.3）。
@@ -37,6 +38,11 @@ export async function GET(request: NextRequest) {
   try {
     const projectId = uuidSchema.parse(request.nextUrl.searchParams.get('projectId'))
     const assetPath = assetPathSchema.parse(request.nextUrl.searchParams.get('path'))
+    // 対象ブランチ（省略時はデフォルトブランチ。SPEC-vertical-editor-phase5 §3.4）
+    const branchParam = request.nextUrl.searchParams.get('branch')
+    const branch = branchParam === null || branchParam === ''
+      ? undefined
+      : gitBranchNameSchema.parse(branchParam)
     const extension = assetPath.split('.').pop()?.toLowerCase() ?? ''
     const contentType = CONTENT_TYPE_BY_EXTENSION[extension]
     if (!contentType) {
@@ -68,7 +74,7 @@ export async function GET(request: NextRequest) {
     const fullPath = joinRepoPath(basePath, assetPath)
     if (!fullPath) throw new AppError('validation', 'パスが不正です')
 
-    const bytes = await getRawFileBytes(credential.token, project.repo, fullPath)
+    const bytes = await getRawFileBytes(credential.token, project.repo, fullPath, branch)
     return new Response(bytes, {
       headers: {
         'Content-Type': contentType,

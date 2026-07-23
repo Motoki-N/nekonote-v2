@@ -40,6 +40,27 @@ export const manuscriptFilePathSchema = z
     'ファイルパスが不正です',
   )
 
+// ブランチ名（切替用のゆるい検証。GitHub側で作られた既存ブランチ名も受け入れる。
+// git の禁止文字・トラバーサル的な形だけを拒否する。SPEC-vertical-editor-phase5 §4。
+// エディタの Server Actions と /api/editor/asset の `?branch=` で共用する
+export const gitBranchNameSchema = z
+  .string()
+  .min(1, 'ブランチ名を入力してください')
+  .max(200, 'ブランチ名が長すぎます')
+  .refine(
+    (name) =>
+      !/[\s~^:?*[\]\\]/.test(name) &&
+      !name.includes('..') &&
+      !name.includes('@{') &&
+      !name.includes('//') &&
+      !name.startsWith('/') &&
+      !name.endsWith('/') &&
+      !name.startsWith('-') &&
+      !name.endsWith('.') &&
+      !name.endsWith('.lock'),
+    'ブランチ名が不正です',
+  )
+
 // AI校正の構造化提案（SPEC-proofreading §3.5。streamObject の要素スキーマ＝クライアントと共用）
 export const proofreadSuggestionSchema = z.object({
   original_text: z

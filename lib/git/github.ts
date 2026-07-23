@@ -68,6 +68,11 @@ export async function verifyToken(token: string): Promise<{ login: string }> {
   return { login: data.login }
 }
 
+/** 読み取り系APIの `?ref=` クエリ（省略時はデフォルトブランチ。SPEC-vertical-editor-phase5） */
+function refQuery(ref?: string): string {
+  return ref ? `?ref=${encodeURIComponent(ref)}` : ''
+}
+
 /** リポジトリのデフォルトブランチを取得する */
 export async function getDefaultBranch(token: string, repo: string): Promise<string> {
   const res = await githubFetch(token, `/repos/${validRepo(repo)}`)
@@ -83,15 +88,16 @@ export async function getDefaultBranch(token: string, repo: string): Promise<str
 }
 
 /**
- * デフォルトブランチのツリーから base_path 配下の原稿ファイル（.md / .txt）をパス昇順で返す。
- * base_path が空ならリポジトリ全体
+ * 対象ブランチ（省略時はデフォルトブランチ）のツリーから base_path 配下の
+ * 原稿ファイル（.md / .txt）をパス昇順で返す。base_path が空ならリポジトリ全体
  */
 export async function getManuscriptTree(
   token: string,
   repo: string,
   basePath: string,
+  ref?: string,
 ): Promise<ManuscriptTreeEntry[]> {
-  const branch = await getDefaultBranch(token, repo)
+  const branch = ref ?? (await getDefaultBranch(token, repo))
   const res = await githubFetch(
     token,
     `/repos/${validRepo(repo)}/git/trees/${encodeURIComponent(branch)}?recursive=1`,
@@ -128,8 +134,9 @@ export async function getFileContent(
   token: string,
   repo: string,
   filePath: string,
+  ref?: string,
 ): Promise<ManuscriptFile> {
-  const res = await githubFetch(token, contentsApiPath(repo, filePath))
+  const res = await githubFetch(token, `${contentsApiPath(repo, filePath)}${refQuery(ref)}`)
   if (!res.ok) throw toGithubError(res, `ファイル ${filePath} が見つかりません`)
   const data = (await res.json()) as { content?: string; encoding?: string; sha?: string }
   if (data.encoding !== 'base64' || data.content === undefined || !data.sha) {
@@ -143,13 +150,13 @@ export async function getFileContent(
  * ファイルを書き戻して1コミットを作る（Contents API PUT）。
  * sha は取得時の blob SHA。リモートが先に更新されていると 409 になる（上書き事故の防止）。
  * blobSha（新しい blob SHA）を返すので、呼び出し側は再取得なしで楽観ロックの基準を進められる
- * （SPEC-vertical-editor-phase2 §6）
+ * （SPEC-vertical-editor-phase2 §6）。branch 省略時はデフォルトブランチへコミットする
  */
 export async function putFileContent(
   token: string,
   repo: string,
   filePath: string,
-  params: { content: string; sha: string; message: string },
+  params: { content: string; sha: string; message: string; branch?: string },
 ): Promise<{ commitSha: string; blobSha: string }> {
   const res = await fetch(`${API_BASE}${contentsApiPath(repo, filePath)}`, {
     method: 'PUT',
@@ -163,6 +170,7 @@ export async function putFileContent(
       message: params.message,
       content: Buffer.from(params.content, 'utf8').toString('base64'),
       sha: params.sha,
+      ...(params.branch ? { branch: params.branch } : {}),
     }),
   })
   // 409 = blob SHA 不一致（取得後にリモートが更新された）。422 は他のバリデーション失敗でも
@@ -193,7 +201,7 @@ export async function createFileContent(
   token: string,
   repo: string,
   filePath: string,
-  params: { content: string; message: string },
+  params: { content: string; message: string; branch?: string },
 ): Promise<{ commitSha: string; blobSha: string }> {
   const res = await fetch(`${API_BASE}${contentsApiPath(repo, filePath)}`, {
     method: 'PUT',
@@ -206,6 +214,7 @@ export async function createFileContent(
     body: JSON.stringify({
       message: params.message,
       content: Buffer.from(params.content, 'utf8').toString('base64'),
+      ...(params.branch ? { branch: params.branch } : {}),
     }),
   })
   // sha なしのPUTで既存ファイルに当たると 422（"sha" wasn't supplied）になる
@@ -232,7 +241,7 @@ export async function createBinaryFileContent(
   token: string,
   repo: string,
   filePath: string,
-  params: { base64Content: string; message: string },
+  params: { base64Content: string; message: string; branch?: string },
 ): Promise<{ commitSha: string; blobSha: string }> {
   const res = await fetch(`${API_BASE}${contentsApiPath(repo, filePath)}`, {
     method: 'PUT',
@@ -242,7 +251,11 @@ export async function createBinaryFileContent(
       'X-GitHub-Api-Version': '2022-11-28',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ message: params.message, content: params.base64Content }),
+    body: JSON.stringify({
+      message: params.message,
+      content: params.base64Content,
+      ...(params.branch ? { branch: params.branch } : {}),
+    }),
   })
   if (res.status === 409 || res.status === 422) {
     throw new AppError('conflict', '同名のファイルが既に存在します')
@@ -263,8 +276,13 @@ export async function getRawFileBytes(
   token: string,
   repo: string,
   filePath: string,
+  ref?: string,
 ): Promise<ArrayBuffer> {
-  const res = await githubFetch(token, contentsApiPath(repo, filePath), 'application/vnd.github.raw')
+  const res = await githubFetch(
+    token,
+    `${contentsApiPath(repo, filePath)}${refQuery(ref)}`,
+    'application/vnd.github.raw',
+  )
   if (!res.ok) throw toGithubError(res, `ファイル ${filePath} が見つかりません`)
   return res.arrayBuffer()
 }
@@ -370,6 +388,95 @@ export async function getReleaseAssetLocation(
   const location = res.headers.get('location')
   if ((res.status === 302 || res.status === 307) && location) return location
   throw toGithubError(res, 'Release アセットが見つかりません')
+}
+
+// ---- ブランチ・PR連携（SPEC-vertical-editor-phase5） ----
+
+/** ブランチ一覧（名前のみ・最大100件）。エディタのブランチセレクタに使う */
+export async function listBranches(token: string, repo: string): Promise<string[]> {
+  const res = await githubFetch(token, `/repos/${validRepo(repo)}/branches?per_page=100`)
+  if (!res.ok) throw toGithubError(res, `リポジトリ ${repo} のブランチ一覧を取得できません`)
+  const data = (await res.json()) as { name?: string }[]
+  return data.flatMap((branch) => (branch.name ? [branch.name] : []))
+}
+
+/** ブランチを作成する（Git Refs API。sha は起点コミット）。同名ブランチが既にあると conflict */
+export async function createBranchRef(
+  token: string,
+  repo: string,
+  branch: string,
+  sha: string,
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/repos/${validRepo(repo)}/git/refs`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ref: `refs/heads/${branch}`, sha }),
+  })
+  // 422 は「既存」以外にも git の ref 規則違反（"Reference name is not well formed"）で返る。
+  // ボディの message で区別する（自己レビュー指摘の反映）
+  if (res.status === 422) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string }
+    if (/already exists/i.test(body.message ?? '')) {
+      throw new AppError(
+        'conflict',
+        `ブランチ ${branch} は既に存在します。別の名前を指定してください`,
+      )
+    }
+    throw new AppError(
+      'validation',
+      `ブランチ名 ${branch} はGitHubに受け付けられませんでした。別の名前を指定してください`,
+    )
+  }
+  if (!res.ok) throw toGithubError(res, `リポジトリ ${repo} にブランチを作成できません`)
+}
+
+/**
+ * Pull Request を作成する（head→base）。差分ゼロ・既存PRありは 422 で返るため
+ * 日本語メッセージに正規化する（SPEC-phase5 §3.3）
+ */
+export async function createPullRequest(
+  token: string,
+  repo: string,
+  params: { title: string; body: string; head: string; base: string },
+): Promise<{ number: number; htmlUrl: string }> {
+  const res = await fetch(`${API_BASE}/repos/${validRepo(repo)}/pulls`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  })
+  if (res.status === 422) {
+    const body = (await res.json().catch(() => ({}))) as {
+      errors?: { message?: string }[]
+      message?: string
+    }
+    const detail = [body.message ?? '', ...(body.errors ?? []).map((e) => e.message ?? '')].join(' ')
+    if (/no commits between/i.test(detail)) {
+      throw new AppError(
+        'validation',
+        'デフォルトブランチとの差分がありません。先に変更を保存（コミット）してください',
+      )
+    }
+    if (/pull request already exists/i.test(detail)) {
+      throw new AppError('conflict', 'このブランチのPull Requestは既に作成されています')
+    }
+    throw new AppError('internal', `GitHub APIエラー（status: ${res.status}）`)
+  }
+  if (!res.ok) throw toGithubError(res, `リポジトリ ${repo} にPull Requestを作成できません`)
+  const data = (await res.json()) as { number?: number; html_url?: string }
+  if (!data.number || !data.html_url) {
+    throw new AppError('internal', 'Pull Request 結果の取得に失敗しました')
+  }
+  return { number: data.number, htmlUrl: data.html_url }
 }
 
 /**

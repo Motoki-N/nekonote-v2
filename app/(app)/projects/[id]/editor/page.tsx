@@ -11,11 +11,16 @@ export default async function EditorPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ file?: string }>;
+  searchParams: Promise<{ file?: string; branch?: string }>;
 }) {
   const { id } = await params;
-  const { file } = await searchParams;
-  const result = await getEditorWorkspace(id);
+  const { file, branch } = await searchParams;
+  // ?branch= 指定時はそのブランチを開く（存在しなければサーバー側でデフォルトへ
+  // フォールバックし、branchFallback で通知される。SPEC-vertical-editor-phase5 §3.1）
+  const result = await getEditorWorkspace(
+    id,
+    typeof branch === "string" ? branch : undefined,
+  );
 
   return (
     <VerticalEditor

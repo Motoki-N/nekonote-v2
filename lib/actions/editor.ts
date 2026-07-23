@@ -25,19 +25,22 @@ import { resolveThemeAssets } from '@/lib/editor/theme'
 import { patCredentialProvider } from '@/lib/git/credentials'
 import {
   createBinaryFileContent,
+  createBranchRef,
   createFileContent,
+  createPullRequest,
   createTagRef,
   getBranchHeadSha,
   getDefaultBranch,
   getFileContent,
   getManuscriptTree,
   getReleaseByTag,
+  listBranches,
   listTags,
   putFileContent,
 } from '@/lib/git/github'
 import type { ReleaseAsset } from '@/lib/git/github'
 import { enforceRateLimit } from '@/lib/rate-limit'
-import { manuscriptFilePathSchema } from '@/lib/schemas/manuscript'
+import { gitBranchNameSchema, manuscriptFilePathSchema } from '@/lib/schemas/manuscript'
 import { createClient } from '@/lib/supabase/server'
 
 // 縦書きエディタの Server Actions（SPEC-vertical-editor-phase2）。
@@ -54,6 +57,33 @@ const chapterFileNameSchema = z
   .regex(/^(?!.*\.\.)[0-9A-Za-z][0-9A-Za-z._-]{0,80}\.md$/, {
     error: 'ファイル名は英数字で始まる「NN-slug.md」形式で入力してください',
   })
+// ブランチ名の切替用検証は gitBranchNameSchema（lib/schemas/manuscript.ts）を共用する
+const branchNameSchema = gitBranchNameSchema
+// 新規ブランチ名（作成はASCII限定・英数字始まり。SPEC-phase5 §3.2）。
+// git の ref 規則はパス要素ごとに課されるため、`/` 区切りの各要素を検証する
+// （security-reviewer 指摘 M-1: 全体末尾だけの検査では foo.lock/bar 等が GitHub 側の
+// 422 まで素通りし「既に存在します」と誤案内される）
+const newBranchNameSchema = z
+  .string()
+  .regex(/^(?!.*\.\.)(?!.*\/\/)[0-9A-Za-z][0-9A-Za-z._/-]{0,99}$/, {
+    error: 'ブランチ名は英数字で始まる100字以内（英数字・._/-）で入力してください',
+  })
+  .refine(
+    (name) =>
+      name
+        .split('/')
+        .every(
+          (seg) =>
+            seg.length > 0 && !seg.startsWith('.') && !seg.endsWith('.') && !seg.endsWith('.lock'),
+        ),
+    { error: 'ブランチ名が不正です（各階層は . で始まらず、. / .lock で終わらないこと）' },
+  )
+
+/** アクション引数のブランチ検証（省略時は undefined＝デフォルトブランチの現行動作） */
+function parseBranch(branch: string | undefined): string | undefined {
+  if (branch === undefined || branch === '') return undefined
+  return branchNameSchema.parse(branch)
+}
 
 type EditorContext = {
   userId: string
@@ -110,13 +140,16 @@ export type EditorChapter = {
 }
 
 /** 章一覧を entry 順（正）＋entry未登録（ファイル名昇順・末尾）で返す */
-async function listChapters(ctx: EditorContext): Promise<{
+async function listChapters(
+  ctx: EditorContext,
+  ref?: string,
+): Promise<{
   chapters: EditorChapter[]
   themePath: string | null
   /** book.config.js の size（CSS値）。プレビューの @page size に注入する */
   pageSizeCss: string | null
 }> {
-  const tree = await getManuscriptTree(ctx.token, ctx.repo, ctx.basePath)
+  const tree = await getManuscriptTree(ctx.token, ctx.repo, ctx.basePath, ref)
   const prefix = ctx.basePath === '' ? '' : `${ctx.basePath}/`
   const files = tree
     .map((entry) => entry.path)
@@ -129,7 +162,7 @@ async function listChapters(ctx: EditorContext): Promise<{
   const configPath = joinRepoPath(ctx.basePath, 'book.config.js')
   if (configPath) {
     try {
-      const config = await getFileContent(ctx.token, ctx.repo, configPath)
+      const config = await getFileContent(ctx.token, ctx.repo, configPath, ref)
       entryPaths = extractEntryPaths(config.content)
       themePath = extractThemePath(config.content)
       pageSizeCss = extractPageSizeCss(config.content)
@@ -160,16 +193,24 @@ export type EditorWorkspaceData =
   | {
       gate: 'ok'
       repo: string
-      /** デフォルトブランチ（Phase 2 はこのブランチのみ対象。IndexedDB待避キーにも使う） */
+      /** 開いているブランチ（IndexedDB待避キーにも使う。SPEC-phase5でデフォルト以外も可） */
       branch: string
+      /** デフォルトブランチ（PRのbase・入稿ビルド対象。SPEC-phase5 §3） */
+      defaultBranch: string
+      /** 要求されたブランチが存在せずデフォルトへフォールバックしたか（SPEC-phase5 §3.1） */
+      branchFallback: boolean
       basePath: string
       chapters: EditorChapter[]
       theme: ThemeAssets
     }
 
-/** エディタの初期データ（章一覧・テーマCSS）。前提未達（repo/PAT）は gate で返す */
+/**
+ * エディタの初期データ（章一覧・テーマCSS）。前提未達（repo/PAT）は gate で返す。
+ * branch 指定時はそのブランチの内容を返す（存在しなければデフォルトへフォールバック）
+ */
 export async function getEditorWorkspace(
   projectId: string,
+  branch?: string,
 ): Promise<ActionResult<EditorWorkspaceData>> {
   try {
     const pid = uuidSchema.parse(projectId)
@@ -198,11 +239,29 @@ export async function getEditorWorkspace(
       basePath: (project.base_path ?? '').replace(/\/$/, ''),
       token: credential.token,
     }
-    const [branch, { chapters, themePath, pageSizeCss }] = await Promise.all([
-      getDefaultBranch(ctx.token, ctx.repo),
-      listChapters(ctx),
-    ])
-    const resolved = await resolveThemeAssets(ctx.token, ctx.repo, ctx.basePath, themePath)
+    // ブランチ解決（SPEC-phase5 §3.1）。存在しない・不正なブランチはデフォルトへ
+    // フォールバックする（URL直打ちでエディタ全体をエラーにしない）
+    let requested: string | undefined
+    let branchFallback = false
+    try {
+      requested = parseBranch(branch)
+    } catch {
+      requested = undefined
+      branchFallback = true
+    }
+    const defaultBranch = await getDefaultBranch(ctx.token, ctx.repo)
+    let currentBranch = defaultBranch
+    if (requested !== undefined && requested !== defaultBranch) {
+      try {
+        await getBranchHeadSha(ctx.token, ctx.repo, requested)
+        currentBranch = requested
+      } catch {
+        branchFallback = true
+      }
+    }
+    const ref = currentBranch === defaultBranch ? undefined : currentBranch
+    const { chapters, themePath, pageSizeCss } = await listChapters(ctx, ref)
+    const resolved = await resolveThemeAssets(ctx.token, ctx.repo, ctx.basePath, themePath, ref)
     // 判型の注入: CLIビルドでは book.config.js の size が @page size を与えるが、
     // ブラウザプレビューには渡らない。--vs-page--size（theme-base の @page が参照）を
     // 注入しないと size: auto のままページ分割されない（2026-07-16 に発見したバグの修正）。
@@ -215,7 +274,16 @@ export async function getEditorWorkspace(
       : resolved
     return {
       ok: true,
-      data: { gate: 'ok', repo: ctx.repo, branch, basePath: ctx.basePath, chapters, theme },
+      data: {
+        gate: 'ok',
+        repo: ctx.repo,
+        branch: currentBranch,
+        defaultBranch,
+        branchFallback,
+        basePath: ctx.basePath,
+        chapters,
+        theme,
+      },
     }
   } catch (error) {
     return toActionError(error)
@@ -233,11 +301,13 @@ export type ChapterData = {
 export async function openChapter(
   projectId: string,
   filePath: string,
+  branch?: string,
 ): Promise<ActionResult<ChapterData>> {
   try {
     const ctx = await loadEditorContext(projectId)
+    const ref = parseBranch(branch)
     const path = validateChapterPath(ctx.basePath, filePath)
-    const { content, sha } = await getFileContent(ctx.token, ctx.repo, path)
+    const { content, sha } = await getFileContent(ctx.token, ctx.repo, path, ref)
     return { ok: true, data: { path, content, sha } }
   } catch (error) {
     return toActionError(error)
@@ -251,12 +321,13 @@ export async function openChapter(
 export async function saveChapter(
   projectId: string,
   filePath: string,
-  params: { content: string; baseSha: string; message: string },
+  params: { content: string; baseSha: string; message: string; branch?: string },
 ): Promise<ActionResult<{ commitSha: string; blobSha: string }>> {
   try {
     const ctx = await loadEditorContext(projectId)
     // コスト暴走・暴発の抑止（security-audit の作法に合わせ書き込み系に適用）
     enforceRateLimit(ctx.userId, 'editor-save', { perMinute: 12, perDay: 600 })
+    const branch = parseBranch(params.branch)
     const path = validateChapterPath(ctx.basePath, filePath)
     const content = contentSchema.parse(params.content)
     const baseSha = blobShaSchema.parse(params.baseSha)
@@ -265,6 +336,7 @@ export async function saveChapter(
       content,
       sha: baseSha,
       message,
+      branch,
     })
     return { ok: true, data: result }
   } catch (error) {
@@ -291,10 +363,12 @@ title: 新しい章
 export async function createChapter(
   projectId: string,
   fileName: string,
+  targetBranch?: string,
 ): Promise<ActionResult<ChapterData & { inEntry: boolean }>> {
   try {
     const ctx = await loadEditorContext(projectId)
     enforceRateLimit(ctx.userId, 'editor-save', { perMinute: 12, perDay: 600 })
+    const branch = parseBranch(targetBranch)
     const name = chapterFileNameSchema.parse(fileName)
     const path = joinRepoPath(ctx.basePath, 'manuscripts', name)
     if (!path) throw new AppError('validation', 'ファイル名が不正です')
@@ -304,8 +378,9 @@ export async function createChapter(
     const { blobSha } = await createFileContent(ctx.token, ctx.repo, path, {
       content,
       message: `執筆: ${name} を新規作成（ネコノテAI 縦書きエディタ）`,
+      branch,
     })
-    const inEntry = await appendChapterToEntry(ctx, name)
+    const inEntry = await appendChapterToEntry(ctx, name, branch)
     return { ok: true, data: { path, content, sha: blobSha, inEntry } }
   } catch (error) {
     return toActionError(error)
@@ -313,11 +388,15 @@ export async function createChapter(
 }
 
 /** entry への自動追記（ベストエフォート。失敗しても呼び出し側は「entry未登録」扱いで続行） */
-async function appendChapterToEntry(ctx: EditorContext, fileName: string): Promise<boolean> {
+async function appendChapterToEntry(
+  ctx: EditorContext,
+  fileName: string,
+  branch?: string,
+): Promise<boolean> {
   try {
     const configPath = joinRepoPath(ctx.basePath, 'book.config.js')
     if (!configPath) return false
-    const config = await getFileContent(ctx.token, ctx.repo, configPath)
+    const config = await getFileContent(ctx.token, ctx.repo, configPath, branch)
     const items = parseEntryItems(config.content)
     if (!items) return false
     const relPath = `manuscripts/${fileName}`
@@ -332,6 +411,7 @@ async function appendChapterToEntry(ctx: EditorContext, fileName: string): Promi
       content: updated,
       sha: config.sha,
       message: `設定: ${fileName} を entry に追加（ネコノテAI 縦書きエディタ）`,
+      branch,
     })
     return true
   } catch {
@@ -372,9 +452,13 @@ export type BookSettingsData = {
 const ENTRY_LITERAL = /^(['"])(?!.*\.\.)[^'"`\\\n]+\.md\1$/
 
 /** 設定フォームの初期データ（config・テーマCSS・奥付をまとめて取得） */
-export async function getBookSettings(projectId: string): Promise<ActionResult<BookSettingsData>> {
+export async function getBookSettings(
+  projectId: string,
+  branch?: string,
+): Promise<ActionResult<BookSettingsData>> {
   try {
     const ctx = await loadEditorContext(projectId)
+    const ref = parseBranch(branch)
 
     // book.config.js（なければフォームは案内表示のみ）
     const configPath = joinRepoPath(ctx.basePath, 'book.config.js')
@@ -382,7 +466,7 @@ export async function getBookSettings(projectId: string): Promise<ActionResult<B
     let configContent: string | null = null
     if (configPath) {
       try {
-        const file = await getFileContent(ctx.token, ctx.repo, configPath)
+        const file = await getFileContent(ctx.token, ctx.repo, configPath, ref)
         configContent = file.content
         config = {
           path: configPath,
@@ -404,7 +488,7 @@ export async function getBookSettings(projectId: string): Promise<ActionResult<B
     const b6Path = joinRepoPath(ctx.basePath, 'book.config.b6.js')
     if (b6Path) {
       try {
-        const b6 = await getFileContent(ctx.token, ctx.repo, b6Path)
+        const b6 = await getFileContent(ctx.token, ctx.repo, b6Path, ref)
         themeSources.push({ label: 'B6', content: b6.content })
       } catch {
         // B6設定はオプション
@@ -418,7 +502,7 @@ export async function getBookSettings(projectId: string): Promise<ActionResult<B
       if (!cssPath) continue
       if (themes.some((theme) => theme.cssPath === cssPath)) continue
       try {
-        const css = await getFileContent(ctx.token, ctx.repo, cssPath)
+        const css = await getFileContent(ctx.token, ctx.repo, cssPath, ref)
         const vars = Object.fromEntries(
           KUMI_VAR_NAMES.map((name) => [name, extractCssVar(css.content, name)]),
         ) as Record<KumiVarName, string | null>
@@ -430,13 +514,13 @@ export async function getBookSettings(projectId: string): Promise<ActionResult<B
 
     // 奥付（ファイル名の慣習 *okuzuke*.md で検出。SPEC-phase3 §7-4 のフェイルソフト）
     let okuzuke: BookSettingsData['okuzuke'] = null
-    const { chapters } = await listChapters(ctx)
+    const { chapters } = await listChapters(ctx, ref)
     const okuzukePath = chapters.find((chapter) =>
       /okuzuke[^/]*\.md$/i.test(chapter.path),
     )?.path
     if (okuzukePath) {
       try {
-        const file = await getFileContent(ctx.token, ctx.repo, okuzukePath)
+        const file = await getFileContent(ctx.token, ctx.repo, okuzukePath, ref)
         const data = parseOkuzuke(file.content)
         if (data) okuzuke = { path: okuzukePath, sha: file.sha, data }
       } catch {
@@ -472,6 +556,8 @@ const saveBookConfigSchema = z.object({
   author: biblioValueSchema.nullable(),
   /** null = entry は変更しない */
   entryRawItems: z.array(z.string().max(200)).max(200).nullable(),
+  /** コミット先ブランチ（省略時はデフォルト。SPEC-phase5 §3.4） */
+  branch: branchNameSchema.optional(),
 })
 
 /**
@@ -486,11 +572,11 @@ export async function saveBookConfig(
   try {
     const ctx = await loadEditorContext(projectId)
     enforceRateLimit(ctx.userId, 'editor-save', { perMinute: 12, perDay: 600 })
-    const { baseSha, title, author, entryRawItems } = saveBookConfigSchema.parse(params)
+    const { baseSha, title, author, entryRawItems, branch } = saveBookConfigSchema.parse(params)
 
     const configPath = joinRepoPath(ctx.basePath, 'book.config.js')
     if (!configPath) throw new AppError('validation', '設定ファイルのパスが不正です')
-    const current = await getFileContent(ctx.token, ctx.repo, configPath)
+    const current = await getFileContent(ctx.token, ctx.repo, configPath, branch)
     if (current.sha !== baseSha) {
       throw new AppError('conflict', '設定がリモートで更新されています。開き直してください')
     }
@@ -555,6 +641,7 @@ export async function saveBookConfig(
       content: updated,
       sha: baseSha,
       message: '設定: 書誌情報・章構成を更新（ネコノテAI 縦書きエディタ）',
+      branch,
     })
     return { ok: true, data: { blobSha: result.blobSha } }
   } catch (error) {
@@ -573,6 +660,8 @@ const saveThemeVarsSchema = z.object({
   cssPath: z.string().max(300),
   baseSha: blobShaSchema,
   vars: kumiVarsSchema,
+  /** コミット先ブランチ（省略時はデフォルト。SPEC-phase5 §3.4） */
+  branch: branchNameSchema.optional(),
 })
 
 /** 組み設定（テーマCSSの :root 変数）を書き換えてコミットする（SPEC-phase3 §7-3） */
@@ -583,7 +672,7 @@ export async function saveThemeVars(
   try {
     const ctx = await loadEditorContext(projectId)
     enforceRateLimit(ctx.userId, 'editor-save', { perMinute: 12, perDay: 600 })
-    const { cssPath, baseSha, vars } = saveThemeVarsSchema.parse(params)
+    const { cssPath, baseSha, vars, branch } = saveThemeVarsSchema.parse(params)
 
     // 対象CSSは config の theme が指すものに限定（任意パス書き換えの防止）
     const allowed = new Set<string>()
@@ -591,7 +680,7 @@ export async function saveThemeVars(
       const path = joinRepoPath(ctx.basePath, configName)
       if (!path) continue
       try {
-        const config = await getFileContent(ctx.token, ctx.repo, path)
+        const config = await getFileContent(ctx.token, ctx.repo, path, branch)
         const themePath = extractThemePath(config.content)
         if (themePath) {
           const resolved = joinRepoPath(ctx.basePath, themePath)
@@ -605,7 +694,7 @@ export async function saveThemeVars(
       throw new AppError('validation', '対象のテーマCSSが設定ファイルから参照されていません')
     }
 
-    const current = await getFileContent(ctx.token, ctx.repo, cssPath)
+    const current = await getFileContent(ctx.token, ctx.repo, cssPath, branch)
     if (current.sha !== baseSha) {
       throw new AppError('conflict', 'テーマがリモートで更新されています。開き直してください')
     }
@@ -639,6 +728,7 @@ export async function saveThemeVars(
       content: updated,
       sha: baseSha,
       message: '設定: 組み設定（版面）を更新（ネコノテAI 縦書きエディタ）',
+      branch,
     })
     return { ok: true, data: { blobSha: result.blobSha } }
   } catch (error) {
@@ -658,6 +748,8 @@ const okuzukeFieldSchema = z.object({
 const saveOkuzukeSchema = z.object({
   path: z.string().max(300),
   baseSha: blobShaSchema,
+  /** コミット先ブランチ（省略時はデフォルト。SPEC-phase5 §3.4） */
+  branch: branchNameSchema.optional(),
   dateText: z
     .string()
     .trim()
@@ -676,10 +768,10 @@ export async function saveOkuzuke(
   try {
     const ctx = await loadEditorContext(projectId)
     enforceRateLimit(ctx.userId, 'editor-save', { perMinute: 12, perDay: 600 })
-    const { path: rawPath, baseSha, dateText, fields } = saveOkuzukeSchema.parse(params)
+    const { path: rawPath, baseSha, branch, dateText, fields } = saveOkuzukeSchema.parse(params)
     const path = validateChapterPath(ctx.basePath, rawPath)
 
-    const current = await getFileContent(ctx.token, ctx.repo, path)
+    const current = await getFileContent(ctx.token, ctx.repo, path, branch)
     if (current.sha !== baseSha) {
       throw new AppError('conflict', '奥付がリモートで更新されています。開き直してください')
     }
@@ -702,6 +794,7 @@ export async function saveOkuzuke(
       content: updated,
       sha: baseSha,
       message: '設定: 奥付を更新（ネコノテAI 縦書きエディタ）',
+      branch,
     })
     return { ok: true, data: { blobSha: result.blobSha } }
   } catch (error) {
@@ -733,10 +826,12 @@ export async function uploadImage(
   projectId: string,
   fileName: string,
   base64Content: string,
+  targetBranch?: string,
 ): Promise<ActionResult<{ repoPath: string; fileName: string }>> {
   try {
     const ctx = await loadEditorContext(projectId)
     enforceRateLimit(ctx.userId, 'editor-upload', { perMinute: 6, perDay: 100 })
+    const branch = parseBranch(targetBranch)
     const name = imageFileNameSchema.parse(fileName)
     const content = imageBase64Schema.parse(base64Content)
     if (Buffer.from(content, 'base64').length > MAX_IMAGE_BYTES) {
@@ -755,6 +850,7 @@ export async function uploadImage(
         await createBinaryFileContent(ctx.token, ctx.repo, path, {
           base64Content: content,
           message: `執筆: 挿絵 ${candidate} を追加（ネコノテAI 縦書きエディタ）`,
+          branch,
         })
         return { ok: true, data: { repoPath: path, fileName: candidate } }
       } catch (error) {
@@ -864,22 +960,108 @@ export async function getBuildStatus(
  */
 export async function getAllChapterContents(
   projectId: string,
+  branch?: string,
 ): Promise<ActionResult<{ chapters: { path: string; content: string }[] }>> {
   try {
     const ctx = await loadEditorContext(projectId)
-    const { chapters } = await listChapters(ctx)
+    const ref = parseBranch(branch)
+    const { chapters } = await listChapters(ctx, ref)
     // 章数は高々数十の想定。5並列で順序を保って取得する
     const results: { path: string; content: string }[] = new Array(chapters.length)
     let index = 0
     async function worker() {
       while (index < chapters.length) {
         const i = index++
-        const { content } = await getFileContent(ctx.token, ctx.repo, chapters[i].path)
+        const { content } = await getFileContent(ctx.token, ctx.repo, chapters[i].path, ref)
         results[i] = { path: chapters[i].path, content }
       }
     }
     await Promise.all(Array.from({ length: Math.min(5, chapters.length) }, worker))
     return { ok: true, data: { chapters: results } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+// ---- ブランチ・PR連携（SPEC-vertical-editor-phase5） ----
+
+export type EditorBranches = {
+  /** デフォルトブランチを先頭に、残りは名前昇順 */
+  branches: string[]
+  defaultBranch: string
+}
+
+/** ブランチ一覧（セレクタ用）。デフォルトブランチを先頭に返す */
+export async function listEditorBranches(
+  projectId: string,
+): Promise<ActionResult<EditorBranches>> {
+  try {
+    const ctx = await loadEditorContext(projectId)
+    const [names, defaultBranch] = await Promise.all([
+      listBranches(ctx.token, ctx.repo),
+      getDefaultBranch(ctx.token, ctx.repo),
+    ])
+    const rest = names
+      .filter((name) => name !== defaultBranch)
+      .sort((a, b) => a.localeCompare(b, 'en'))
+    return { ok: true, data: { branches: [defaultBranch, ...rest], defaultBranch } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * ブランチ作成（SPEC-phase5 §3.2）。起点は常にデフォルトブランチのHEAD。
+ * Git Refs API（Contents権限で可能——PATスコープ変更なし）
+ */
+export async function createEditorBranch(
+  projectId: string,
+  branchName: string,
+): Promise<ActionResult<{ branch: string }>> {
+  try {
+    const ctx = await loadEditorContext(projectId)
+    enforceRateLimit(ctx.userId, 'editor-branch', { perMinute: 6, perDay: 100 })
+    const branch = newBranchNameSchema.parse(branchName)
+    const defaultBranch = await getDefaultBranch(ctx.token, ctx.repo)
+    if (branch === defaultBranch) {
+      throw new AppError('conflict', `ブランチ ${branch} は既に存在します。別の名前を指定してください`)
+    }
+    const headSha = await getBranchHeadSha(ctx.token, ctx.repo, defaultBranch)
+    await createBranchRef(ctx.token, ctx.repo, branch, headSha)
+    return { ok: true, data: { branch } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+const prTitleSchema = z.string().trim().min(1, 'タイトルを入力してください').max(200)
+const prBodySchema = z.string().max(5000, '本文が長すぎます（上限5000字）')
+
+/**
+ * Pull Request 作成（SPEC-phase5 §3.3）。head=指定ブランチ・base=デフォルトブランチ固定。
+ * マージ・レビューはGitHub側で行う（アプリは作成の入口まで）
+ */
+export async function createEditorPullRequest(
+  projectId: string,
+  params: { branch: string; title: string; body: string },
+): Promise<ActionResult<{ number: number; url: string }>> {
+  try {
+    const ctx = await loadEditorContext(projectId)
+    enforceRateLimit(ctx.userId, 'editor-pr', { perMinute: 3, perDay: 30 })
+    const branch = branchNameSchema.parse(params.branch)
+    const title = prTitleSchema.parse(params.title)
+    const body = prBodySchema.parse(params.body)
+    const defaultBranch = await getDefaultBranch(ctx.token, ctx.repo)
+    if (branch === defaultBranch) {
+      throw new AppError('validation', 'デフォルトブランチからはPull Requestを作成できません')
+    }
+    const pr = await createPullRequest(ctx.token, ctx.repo, {
+      title,
+      body,
+      head: branch,
+      base: defaultBranch,
+    })
+    return { ok: true, data: { number: pr.number, url: pr.htmlUrl } }
   } catch (error) {
     return toActionError(error)
   }
