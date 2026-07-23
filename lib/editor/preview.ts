@@ -1,7 +1,8 @@
 import { stringify } from '@vivliostyle/vfm'
 
-// 縦書きプレビューのHTML生成（SPEC-vertical-editor-phase2 §5）。
+// 組版プレビューのHTML生成（SPEC-vertical-editor-phase2 §5）。
 // 編集中テキストの組版はブラウザ内で完結させる（VFM変換→テーマCSS注入→Blob URL→Viewer）。
+// 書字方向（縦書き/横書き）はテーマCSS由来であり、プレビューはテーマに追従する（Issue #97）。
 // このモジュールはクライアントで実行される純関数のみを置く
 
 export type PreviewChapter = {
@@ -10,12 +11,17 @@ export type PreviewChapter = {
   content: string
 }
 
+/** テーマの書字方向。縦書き専用UI（傍点・縦中横）の出し分けに使う（Issue #97） */
+export type WritingDirection = 'vertical' | 'horizontal'
+
 /** テーマCSSの取得結果（サーバー側で @import 解決済み。lib/actions/editor.ts が組み立てる） */
 export type ThemeAssets = {
   /** アプリがホストする組版CSSのパス（/vivliostyle/themes/...）。<link> として注入する */
   stylesheetPaths: string[]
   /** リポジトリ由来のCSS（判型・パーツ定義）。<style> として注入する */
   inlineCss: string
+  /** テーマの書字方向（対応表メタ情報またはCSS検出による判定） */
+  direction: WritingDirection
 }
 
 /** 先頭のYAMLフロントマターから `class:` を取り出す（扉・奥付の body クラス。VFM仕様準拠の簡易版） */

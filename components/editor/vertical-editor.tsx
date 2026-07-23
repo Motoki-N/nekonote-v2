@@ -94,7 +94,7 @@ type MergeState = {
 
 /**
  * 縦書きエディタの本体（SPEC-vertical-editor-phase2 §3）。
- * 左=章一覧・中=入力ペイン（CodeMirror）・右=縦書きプレビュー（Vivliostyle）
+ * 左=章一覧・中=入力ペイン（CodeMirror）・右=組版プレビュー（Vivliostyle。書字方向はテーマ追従）
  */
 export function VerticalEditor({
   projectId,
@@ -1310,6 +1310,7 @@ export function VerticalEditor({
                   <>
                     <EditorToolbar
                       viewRef={editorViewRef}
+                      direction={ok?.theme.direction ?? 'vertical'}
                       onImageRequest={() => imageInputRef.current?.click()}
                     />
                     <div className="min-h-0 flex-1">
