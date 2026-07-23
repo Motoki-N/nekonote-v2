@@ -12,7 +12,7 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 ├─ themes/
 │   ├─ theme-bunko-a6.css … 文庫判テーマ（theme-bunko派生・16行×40字）
 │   ├─ theme-b6.css       … B6判テーマ（theme-bunko派生・17行×44字）
-│   └─ nekonote-parts.css … 共通パーツ（扉・奥付・挿絵・傍点・縦中横・塗り足し）
+│   └─ nekonote-parts.css … 共通パーツ（扉・奥付・挿絵・傍点・縦中横・割注・改ページ・塗り足し）
 ├─ images/               … 挿絵（Git管理。太ったらLFS移行）
 ├─ scripts/
 │   ├─ check-images.mjs  … 画像検査（実効解像度・カラー検出）
@@ -28,6 +28,8 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 | コメント（出力に出ない） | `<!-- メモ -->` |
 | 縦中横 | `<span class="tcy">10</span>年` |
 | 傍点 | `<span class="tenten">ここぞ</span>` |
+| 割注（2行組みの注記） | `<span class="warichu"><span>前半</span><span>後半</span></span>` |
+| 改ページ | `<div class="page-break"></div>`（独立行に置く） |
 | 全面挿絵（裁ち落とし） | `![キャプションは刷られない](../images/x.png){.illust-full}` |
 | 本文中カット | `![キャプション](../images/x.png){.illust-inline}` |
 | 扉・奥付 | フロントマターで `class: titlepage` / `class: colophon` |

@@ -1,5 +1,5 @@
 /*
- * ネコノテ共通パーツ: 扉・奥付・挿絵テンプレート・傍点・縦中横
+ * ネコノテ共通パーツ: 扉・奥付・挿絵テンプレート・傍点・縦中横・割注・改ページ
  * 判型テーマ（theme-bunko-a6.css / theme-b6.css）から @import される
  */
 
@@ -112,4 +112,26 @@ img.illust-inline {
 .tcy {
   text-combine-upright: all;
   -webkit-text-combine: horizontal;
+}
+
+/* ---- 割注 ---- */
+/* 純CSSでは任意テキストの2行自動分割ができないため、
+ * <span class="warichu"><span>前半</span><span>後半</span></span> と行を明示する。
+ * 内側の span をブロック化すると、行内 inline-block の中で
+ * 縦書きなら2列・横書きなら2段の小書きとして組まれる */
+.warichu {
+  display: inline-block;
+  font-size: 0.6em;
+  line-height: 1.3;
+  vertical-align: middle; /* 縦書きでは行の左右中央に揃う */
+  text-indent: 0;
+}
+.warichu > span {
+  display: block;
+}
+
+/* ---- 改ページ ---- */
+/* <div class="page-break"></div> を独立ブロックとして置いた位置で改ページする */
+.page-break {
+  break-after: page;
 }
