@@ -3,20 +3,30 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, FileText, Minus, MoveRight, Plus, StickyNote } from "lucide-react";
+import { BadgeCheck, FileText, MoveRight, StickyNote } from "lucide-react";
 
-import { ANCHOR_BADGE, EMOTION_LABEL, type SceneRecord } from "@/lib/board";
+import { ANCHOR_BADGE, formatEmotion, type SceneRecord } from "@/lib/board";
 import type { Emotion } from "@/lib/schemas/enums";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 function EmotionIcon({ emotion }: { emotion: Emotion | null }) {
-  if (emotion === "plus") return <Plus className="size-3 text-primary" aria-label={EMOTION_LABEL.plus} />;
-  if (emotion === "minus")
-    return <Minus className="size-3 text-muted-foreground" aria-label={EMOTION_LABEL.minus} />;
+  if (emotion === null) {
+    return (
+      <span className="text-[10px] leading-none text-muted-foreground" aria-label="未設定">
+        ・
+      </span>
+    );
+  }
   return (
-    <span className="text-[10px] leading-none text-muted-foreground" aria-label="未設定">
-      ・
+    <span
+      className={cn(
+        "text-[11px] leading-none font-medium tabular-nums",
+        emotion > 0 ? "text-primary" : "text-muted-foreground",
+      )}
+      aria-label={`感情 ${formatEmotion(emotion)}`}
+    >
+      {formatEmotion(emotion)}
     </span>
   );
 }

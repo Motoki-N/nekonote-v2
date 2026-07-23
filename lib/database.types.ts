@@ -717,8 +717,8 @@ export type Database = {
           anchor: string | null
           content: string
           created_at: string
-          emotion_end: string | null
-          emotion_start: string | null
+          emotion_end: number | null
+          emotion_start: number | null
           id: string
           manuscript_path: string | null
           order_index: number
@@ -732,8 +732,8 @@ export type Database = {
           anchor?: string | null
           content?: string
           created_at?: string
-          emotion_end?: string | null
-          emotion_start?: string | null
+          emotion_end?: number | null
+          emotion_start?: number | null
           id?: string
           manuscript_path?: string | null
           order_index?: number
@@ -747,8 +747,8 @@ export type Database = {
           anchor?: string | null
           content?: string
           created_at?: string
-          emotion_end?: string | null
-          emotion_start?: string | null
+          emotion_end?: number | null
+          emotion_start?: number | null
           id?: string
           manuscript_path?: string | null
           order_index?: number

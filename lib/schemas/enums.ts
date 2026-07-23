@@ -24,8 +24,11 @@ export type ScenePart = (typeof sceneParts)[number]
 export const sceneAnchors = ['pp1', 'pinch1', 'midpoint', 'pinch2', 'pp2'] as const
 export type SceneAnchor = (typeof sceneAnchors)[number]
 
-export const emotions = ['plus', 'minus'] as const
-export type Emotion = (typeof emotions)[number]
+// 感情の強度: -5〜+5の11段階整数（0=中立)。null=未設定（emotion_start/emotion_end列）。
+// 20260723000002 の CHECK 制約（between -5 and 5）と対応
+export const EMOTION_MIN = -5
+export const EMOTION_MAX = 5
+export type Emotion = number
 
 export const aiCapabilities = ['high', 'medium', 'low'] as const
 export type AiCapability = (typeof aiCapabilities)[number]

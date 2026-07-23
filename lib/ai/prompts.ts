@@ -1,4 +1,4 @@
-import { ANCHOR_LABEL, EMOTION_LABEL, PART_LABEL, type SceneRecord } from '@/lib/board'
+import { ANCHOR_LABEL, PART_LABEL, formatEmotion, type SceneRecord } from '@/lib/board'
 import type { Emotion, ProjectStatus, SceneAnchor } from '@/lib/schemas/enums'
 import { isMilestoneAchieved, type Schedule } from '@/lib/schemas/schedule'
 
@@ -66,8 +66,7 @@ function historySection(history: FeedbackHistoryItem[]): string[] {
 
 function emotionArc(start: Emotion | null, end: Emotion | null): string {
   if (start === null && end === null) return '（未設定）'
-  const label = (e: Emotion | null) => (e === null ? '未設定' : EMOTION_LABEL[e])
-  return `${label(start)} → ${label(end)}`
+  return `${formatEmotion(start)} → ${formatEmotion(end)}`
 }
 
 function anchorLabel(anchor: SceneAnchor | null): string {

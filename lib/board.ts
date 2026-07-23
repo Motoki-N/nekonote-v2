@@ -52,9 +52,10 @@ export const ANCHOR_BADGE: Record<SceneAnchor, string> = {
   pp2: 'PP2',
 }
 
-export const EMOTION_LABEL: Record<Emotion, string> = {
-  plus: 'プラス',
-  minus: 'マイナス',
+/** 感情の強度の表示用テキスト（null=未設定、0=0、それ以外は符号付き数値） */
+export function formatEmotion(value: Emotion | null): string {
+  if (value === null) return '未設定'
+  return value > 0 ? `+${value}` : `${value}`
 }
 
 /** アンカーが属するパート（pp1⇔setup 等の整合はこの対応表が正） */
