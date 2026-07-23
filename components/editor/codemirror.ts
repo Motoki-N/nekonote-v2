@@ -133,6 +133,47 @@ export function wrapSelectionWithSpan(view: EditorView, className: 'tenten' | 't
   return true
 }
 
+/**
+ * 主選択範囲（未選択ならカーソル位置）を割注記法で置き換える（Issue #23）。
+ * 純CSSでは任意テキストを2行に自動分割できないため、前半・後半を
+ * `<span class="warichu"><span>前半</span><span>後半</span></span>` と明示する。
+ * 後半が空なら1行の小書きとして挿入する
+ */
+export function insertWarichuText(view: EditorView, first: string, second: string): void {
+  const range = view.state.selection.main
+  const inner = second === '' ? `<span>${first}</span>` : `<span>${first}</span><span>${second}</span>`
+  const insert = `<span class="warichu">${inner}</span>`
+  view.dispatch({
+    changes: { from: range.from, to: range.to, insert },
+    selection: EditorSelection.cursor(range.from + insert.length),
+    scrollIntoView: true,
+    userEvent: 'input',
+  })
+  view.focus()
+}
+
+/**
+ * カーソル位置に改ページ指定 `<div class="page-break"></div>` を独立行として挿入する（Issue #23）。
+ * VFMのHTMLブロックとして扱わせるため前後を空行で区切る（既にある空行は増やさない）。
+ * 選択範囲があっても本文は削除せず、カーソル側の端（head）へ挿入する
+ */
+export function insertPageBreak(view: EditorView): void {
+  const pos = view.state.selection.main.head
+  const doc = view.state.doc
+  const before = doc.sliceString(Math.max(0, pos - 2), pos)
+  const after = doc.sliceString(pos, Math.min(doc.length, pos + 2))
+  const prefix = pos === 0 || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n'
+  const suffix = pos === doc.length || after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n'
+  const insert = `${prefix}<div class="page-break"></div>${suffix}`
+  view.dispatch({
+    changes: { from: pos, insert },
+    selection: EditorSelection.cursor(pos + insert.length),
+    scrollIntoView: true,
+    userEvent: 'input',
+  })
+  view.focus()
+}
+
 /** 主選択範囲（未選択ならカーソル位置）をルビ記法 `{親文字|よみ}` で置き換える */
 export function insertRubyText(view: EditorView, base: string, reading: string): void {
   const range = view.state.selection.main
