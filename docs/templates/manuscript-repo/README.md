@@ -9,15 +9,19 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 ├─ manuscripts/          … 本文（VFM形式・章ごとに1ファイル。数字プレフィックスで章順）
 ├─ book.config.js        … 書誌情報＋ビルド設定（文庫判A6）
 ├─ book.config.b6.js     … B6判ビルド設定
+├─ book.config.epub.js   … EPUB（電子書籍）ビルド設定
 ├─ themes/
 │   ├─ theme-bunko-a6.css … 文庫判テーマ（theme-bunko派生・16行×40字）
 │   ├─ theme-b6.css       … B6判テーマ（theme-bunko派生・17行×44字）
+│   ├─ theme-epub.css     … EPUB用テーマ（リフロー型縦書き・自己完結。印刷用と独立）
 │   └─ nekonote-parts.css … 共通パーツ（扉・奥付・挿絵・傍点・縦中横・割注・改ページ・塗り足し）
 ├─ images/               … 挿絵（Git管理。太ったらLFS移行）
 ├─ scripts/
 │   ├─ check-images.mjs  … 画像検査（実効解像度・カラー検出）
 │   └─ check-pages.mjs   … ページ数検査（4の倍数）
-└─ .github/workflows/build-pdf.yml … タグpush → 入稿PDF自動生成
+└─ .github/workflows/
+    ├─ build-pdf.yml     … 入稿タグpush → 入稿PDF自動生成
+    └─ build-epub.yml    … EPUBタグpush → EPUB自動生成
 ```
 
 ## 記法
@@ -40,6 +44,7 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 npm install
 npx vivliostyle build -c book.config.js       # 文庫判A6 → output/*.pdf
 npx vivliostyle build -c book.config.b6.js    # B6判
+npx vivliostyle build -c book.config.epub.js  # EPUB → output/*.epub
 node scripts/check-images.mjs                 # 画像検査
 node scripts/check-pages.mjs output/ryu-no-su-a6.pdf  # ページ数検査
 GS_OPTIONS=-dNOSAFER npx press-ready build --input output/ryu-no-su-a6.pdf --output output/ryu-no-su-a6-press.pdf
@@ -55,3 +60,14 @@ git tag v1.0-nyuko && git push origin v1.0-nyuko
 ```
 
 → Actions が PDF/X-1a 変換済みPDFを Releases に添付する。
+
+## 電子版（EPUB）
+
+```bash
+git tag v1.0-epub && git push origin v1.0-epub
+```
+
+→ Actions が EPUB（リフロー型縦書き）を Releases に添付する。入稿とは独立のタグ・
+ワークフローで、任意のタイミングでビルドできる。書誌・章構成を変えたときは
+`book.config.js` と `book.config.epub.js` の両方を更新すること。
+リーダーごとの表示互換は初回頒布前に実機（Kindle・楽天Kobo・Apple Books 等）で確認する。

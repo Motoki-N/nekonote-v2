@@ -1,0 +1,51 @@
+# EPUBビルドパイプライン（Issue #119）
+# EPUBタグ（例: v1.0-epub）の push をトリガーに、EPUB（電子書籍）を生成して
+# GitHub Releases に添付する。どのコミットから生成したかがGitで完全に追跡できる。
+#
+# 入稿PDF（build-pdf.yml・v*-nyuko）とはタグ・ワークフローを分離している——
+# 電子版の頒布は入稿（印刷）と別タイミングのイベントであり、既存の入稿
+# パイプラインには一切手を入れない。
+#
+# セキュリティ（SPEC-vertical-editor §9）:
+# - build-pdf.yml と同じく、トリガーはタグ push のみ。pull_request では一切実行しない
+name: build-epub
+
+on:
+  push:
+    tags:
+      - 'v*-epub'
+
+permissions:
+  contents: write # Releases への添付に必要
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 依存インストール
+        run: npm ci
+
+      # press-ready（PDF/X-1a変換）・ページ数検査（4の倍数）・印刷向け画像検査は
+      # いずれも入稿PDF専用のため、EPUBビルドでは実行しない
+
+      - name: EPUB生成
+        run: npx vivliostyle build -c book.config.epub.js --timeout 600
+
+      - name: 成果物の存在検査
+        run: test -f output/ryu-no-su.epub || { echo "::error::EPUBの生成に失敗しました"; exit 1; }
+
+      - name: Releases に添付
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "EPUB ${{ github.ref_name }}" \
+            --notes "コミット ${{ github.sha }} から自動生成した EPUB（電子書籍・リフロー型縦書き）" \
+            output/ryu-no-su.epub
