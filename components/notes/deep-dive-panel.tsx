@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import type { UIMessage } from "ai";
+import { isStaticToolUIPart, type UIMessage } from "ai";
 import { Check, CircleStop, FilePlus2, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
 
 import {
@@ -11,6 +11,7 @@ import {
   type ChatMessageRecord,
 } from "@/lib/actions/chat";
 import type { NoteContext } from "@/lib/ai/prompts";
+import { ToolCard } from "@/components/chats/tool-card";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -235,15 +236,22 @@ function DeepDiveChat({
         <ul className="flex flex-col gap-3">
           {messages.map((message) => (
             <li key={message.id} className="flex flex-col gap-1">
-              <div
-                className={
-                  message.role === "user"
-                    ? "ml-8 self-end rounded-lg bg-primary px-3 py-2 text-sm whitespace-pre-wrap text-primary-foreground"
-                    : "mr-4 self-start rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap text-foreground"
-                }
-              >
-                {textOf(message)}
-              </div>
+              {/* ツール結果カードは本文（締めのテキスト）より前＝実行順に表示する */}
+              {message.role === "assistant" &&
+                message.parts
+                  .filter(isStaticToolUIPart)
+                  .map((part) => <ToolCard key={part.toolCallId} part={part} />)}
+              {(message.role === "user" || textOf(message) !== "") && (
+                <div
+                  className={
+                    message.role === "user"
+                      ? "ml-8 self-end rounded-lg bg-primary px-3 py-2 text-sm whitespace-pre-wrap text-primary-foreground"
+                      : "mr-4 self-start rounded-lg bg-muted px-3 py-2 text-sm whitespace-pre-wrap text-foreground"
+                  }
+                >
+                  {textOf(message)}
+                </div>
+              )}
               {message.role === "assistant" && textOf(message) && (
                 <div className="self-start">
                   {insertedIds.has(message.id) ? (

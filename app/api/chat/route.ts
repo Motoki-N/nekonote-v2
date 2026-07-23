@@ -105,11 +105,12 @@ async function buildScheduleContext(
 }
 
 /**
- * ダッシュボード相談のAIツール（SPEC-schedule-and-memo-tools §5.1）。
+ * チャットのAIツール（SPEC-schedule-and-memo-tools §5.1・§10）。
+ * dashboard 分岐と掘り下げ（note）分岐で共用する。
  * execute は RLS 越しの supabase クライアントをクロージャで掴む＝所有確認は RLS が担う。
  * 失敗は throw せず ok: false で返し、モデルに締めの文で正直に伝えさせる
  */
-function buildDashboardTools(
+function buildChatTools(
   supabase: SupabaseServerClient,
   options: { canSaveSchedule: boolean; projectId?: string },
 ): ToolSet {
@@ -224,6 +225,9 @@ export async function POST(req: Request) {
         personaDescription: thread.personas.description,
         note: context.note,
       })
+      // 掘り下げでもメモ化ツールを使えるようにする（Issue #50・SPEC §10）。
+      // saveSchedule はプロジェクト文脈がないため未登録＝モデルから見えない
+      tools = buildChatTools(supabase, { canSaveSchedule: false })
     } else {
       // 多層防御: PostgREST 直叩き等で作られた reviewer 型スレッドでの会話を遮断する
       // （正規経路では getOrCreateDashboardThread が同じ検証を済ませている）
@@ -239,8 +243,7 @@ export async function POST(req: Request) {
         personaDescription: thread.personas.description,
         schedule,
       })
-      // ツールは dashboard 分岐のみ（note スレッドは従来どおりツールなし＝回帰ゼロ）
-      tools = buildDashboardTools(supabase, {
+      tools = buildChatTools(supabase, {
         canSaveSchedule:
           thread.persona_id === ASSISTANT_PERSONA_ID && Boolean(context.projectId),
         projectId: context.projectId,
