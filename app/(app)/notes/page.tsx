@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Trash2 } from "lucide-react";
+import { Download, Trash2 } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
 import { createNote } from "@/lib/actions/notes";
@@ -123,6 +123,20 @@ export default async function NotesPage({
             />
           ) : (
             <>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Markdownエクスポート"
+                title="Markdownエクスポート"
+                nativeButton={false}
+                render={
+                  // download 属性は付けない: エラー時（429等）にJSONがファイル保存されるのを避け、
+                  // 成功時は Content-Disposition: attachment でダウンロードになる
+                  <a href="/api/notes/export">
+                    <Download />
+                  </a>
+                }
+              />
               <Button
                 variant="ghost"
                 size="icon-sm"
