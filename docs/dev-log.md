@@ -820,3 +820,14 @@
 - **#23（高度な組版指定のUI化）への影響**: ツールバーに direction による出し分け機構が入ったため、今後の組版UI追加時は「縦書き専用か汎用か」の分類が必要（PR本文にも明記）
 - **残タスク**: Issue完了条件のうち実技術書リポジトリでのE2E一巡（book.config.js + 横書きテーマ + コードブロック入り原稿で編集→保存→プレビュー→入稿ビルド）は実リポジトリが必要なためユーザー検証待ち
 - **ペイン検証メモ**: 別セッションの dev サーバーが稼働中で Next 16 の二重起動ロックにより自前サーバーを立てられないケースでも、静的ファイル（public/ 配下の Viewer・テーマ・テストHTML）だけの検証なら `python3 -m http.server` で public/ を配信すれば足りる（新定石。認証もアプリコードも不要な検証はこれが最軽量）
+
+### セッション62: /fix-issue #21 縦書きエディタのブランチ切替・作成・PR連携——SPEC-phase5 策定＋PR #117 マージ・本番反映（7/23）
+
+- **Issue #21 を `/fix-issue` フローで処理（PR #117）**: エディタをデフォルトブランチ固定から解除し、ブランチ切替・作成・PR作成をエディタ内で完結できるようにした（P2・enhancement・phase2 論点Eの積み残し解除）。SPEC未策定の大型機能のため、進め方の確認→**仕様策定インタビュー（論点A〜H・2巡）→ SPEC-vertical-editor-phase5 新規作成（確定）**→実装の順で1セッション縦通し
+- **主要な決定**: ①対応範囲は**エディタのみ**（校正・講評・進捗・書き戻し・入稿ビルドはデフォルト固定のまま注記だけ。`last_reviewed_commit`/`committed_sha` がデフォルト前提のため「執筆はブランチで・レビューはデフォルトで」と割り切り、背景を SPEC §9 に記録）②PR連携は**作成まで**（head=現在・base=デフォルト固定。マージはGitHub側）③作成は常にデフォルトHEAD起点・ASCII命名 ④UIは章一覧サイドバー上部のセレクタ ⑤切替は確認なし即実行（待避キーが `{repo}:{branch}:{path}` でブランチ分離済みの既存設計が効いた）⑥保持は `?branch=`＋localStorage（**DBスキーマ変更なし**・消えたブランチはサーバーでフォールバック→トースト＋保存値クリア）
+- **実装は14ファイル（+1,158/-63）**: github.ts の読み取りに `ref`・書き込みに `branch`（省略時は従来動作＝校正・進捗への影響なし）＋ `listBranches`/`createBranchRef`/`createPullRequest`（422はボディの message で「既存」と「ref規則違反」を区別して日本語化）→ 執筆系全アクションにブランチ貫通＋新アクション3種（レート制限 branch 6/分100/日・PR 3/分30/日）→ ブランチ名検証は切替用 `gitBranchNameSchema`（ゆるい・画像プロキシと共用）と作成用（ASCII・**パス要素ごとに** `.`/`.lock` 検査）の2段 → 画像プロキシ `?branch=` → UI3コンポーネント新設＋切替フロー（状態全リセット・URL/localStorage同期）
+- **security-reviewer 通過（Critical/High ゼロ・M-1 対応済み）**: インジェクション（全経路 encodeURIComponent/JSON.stringify・`:` 禁止でフォーク横断head注入も不可）・認可（全アクション loadEditorContext 経由・起点SHAとPR baseはサーバー側解決でクライアント注入不可）・PAT露出面の増加なしを確認。M-1=ブランチ名のパス要素ごとの `.lock`/`.` 検証漏れ（誤エラーメッセージになるだけ）を修正
+- **subagent 自己レビュー指摘4件を全反映**: ①切替中に旧ブランチの in-flight `openChapter` が解決して新ブランチの待避を誤削除しうるレース→openChapterFlow にブランチ世代ガード＋切替中は章クリック無効化 ②切替時に校正パネルが残留→closeReviewPanel を切替フローに追加 ③`?file=` リンク経由時は localStorage 復元をスキップする実装判断を SPEC §3.1 に追記 ④createBranchRef の 422 一律「既に存在します」を message 判別に変更
+- **実装バグ1件をペイン検証で発見・修正**: この UI キットの `DropdownMenuLabel` は Base UI の `Menu.GroupLabel` で **`DropdownMenuGroup` の外に置くとメニューを開いた瞬間にクラッシュ**する（"MenuGroupContext is missing"）。既存メニューにラベル使用例がなく初踏み。ラベルを使うときは必ず Group で包む
+- 検証: typecheck / lint 通過。ペイン実機（稼働中 dev サーバーを `preview_start {url}` で流用）でセレクタ表示・ブランチ一覧の実取得・現在チェック＋デフォルトバッジ・PR項目のデフォルト時無効化・作成ダイアログの命名バリデーション・`?branch=不存在` のフォールバック＋URLクリーンアップ・repo未設定ゲートの回帰なしを確認。**ブランチ作成・PR作成の実行系E2Eは実リポジトリへの書き込みを避けて未実施**——SPEC §7 の手順を manuscript-poc でのマージ後検証としてPRに明記（ユーザー検証待ち）。マージ後: main 取り込み・ローカルブランチ削除・Issue #21 自動クローズ・Vercel 自動デプロイ
+- **ペイン検証メモ**: Base UI のメニューはペインの合成クリック（座標・ref とも）では開かないことがある→ PointerEvent/MouseEvent を dispatchEvent で直接発火すれば開く（既存定石「特定→検証→クリック」の亜種。メニュー内アイテムも同様）
