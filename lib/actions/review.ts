@@ -58,12 +58,20 @@ type Supabase = Awaited<ReturnType<typeof createClient>>
  * 対象の RLS 越し所有確認と、セッション作成に使う project_id の解決。
  * target_ref: proposal / character = 企画書id / structure = プロジェクトid / scene = シーンid
  * （キャラクターレビューの資料は企画書一式なので proposal と同じ解決。SPEC-character-review §5.1）
+ * noteId: character フェーズをノート1枚に絞り込む場合のみ非null（Issue #47）。
+ * ノート単体では project_id が導出できない（notes は project_id を持たない）ため、
+ * 必ず「対象企画書との組」で紐づき（proposal_notes）を検証する
  */
 async function resolveTarget(
   supabase: Supabase,
   kind: ReviewTargetKind,
   targetId: string,
+  noteId: string | null,
 ): Promise<{ projectId: string }> {
+  // structure/scene 等に note_id 付きセッションを作らせない（running 一意性スコープの分裂防止）
+  if (noteId !== null && kind !== 'character') {
+    throw new AppError('validation', 'ノート単位のレビューはキャラクターレビューのみ対応しています')
+  }
   if (kind === 'proposal' || kind === 'character') {
     const { data, error } = await supabase
       .from('proposals')
@@ -72,6 +80,19 @@ async function resolveTarget(
       .maybeSingle()
     if (error) throw new AppError('internal', error.message)
     if (!data) throw new AppError('not_found', '企画書が見つかりません')
+
+    if (noteId !== null) {
+      const { data: link, error: linkError } = await supabase
+        .from('proposal_notes')
+        .select('note_id, notes (deleted_at)')
+        .eq('proposal_id', targetId)
+        .eq('note_id', noteId)
+        .maybeSingle()
+      if (linkError) throw new AppError('internal', linkError.message)
+      if (!link || !link.notes || link.notes.deleted_at !== null) {
+        throw new AppError('not_found', 'ノートがこの企画書に紐づいていません')
+      }
+    }
     return { projectId: data.project_id }
   }
   if (kind === 'structure') {
@@ -111,11 +132,21 @@ async function fetchFeedbacks(supabase: Supabase, sessionId: string): Promise<Fe
 export async function getReviewPanelBootstrap(
   kind: ReviewTargetKind,
   targetId: string,
+  noteId?: string,
 ): Promise<ActionResult<ReviewPanelBootstrap>> {
   try {
     const parsedKind = reviewTargetKindSchema.parse(kind)
     const tid = uuidSchema.parse(targetId)
+    const nid = noteId === undefined ? null : uuidSchema.parse(noteId)
     const supabase = await createClient()
+
+    // running セッションはノート絞り込み（note_id）まで含めた同一スコープのみ拾う（Issue #47）
+    let runningQuery = supabase
+      .from('review_sessions')
+      .select('review_profile_id, created_at, personas (name)')
+      .eq('target_ref', tid)
+      .eq('status', 'running')
+    runningQuery = nid === null ? runningQuery.is('note_id', null) : runningQuery.eq('note_id', nid)
 
     const [profilesResult, personasResult, runningResult] = await Promise.all([
       supabase
@@ -130,12 +161,7 @@ export async function getReviewPanelBootstrap(
         .eq('persona_type', 'reviewer')
         .order('is_default', { ascending: false })
         .order('created_at'),
-      supabase
-        .from('review_sessions')
-        .select('review_profile_id, created_at, personas (name)')
-        .eq('target_ref', tid)
-        .eq('status', 'running')
-        .order('created_at', { ascending: false }),
+      runningQuery.order('created_at', { ascending: false }),
     ])
     if (profilesResult.error) throw new AppError('internal', profilesResult.error.message)
     if (personasResult.error) throw new AppError('internal', personasResult.error.message)
@@ -183,20 +209,25 @@ export async function getReviewSessionState(
   kind: ReviewTargetKind,
   targetId: string,
   profileId: string,
+  noteId?: string,
 ): Promise<ActionResult<ReviewSessionState | null>> {
   try {
     reviewTargetKindSchema.parse(kind)
     const tid = uuidSchema.parse(targetId)
     const pid = uuidSchema.parse(profileId)
+    const nid = noteId === undefined ? null : uuidSchema.parse(noteId)
     const supabase = await createClient()
 
-    const { data: session, error: selectError } = await supabase
+    // 対象×プロファイル×ノート絞り込みごとにセッションが並存する
+    // （SPEC-dashboard-critique-settings §3.2、note_id は Issue #47）
+    let query = supabase
       .from('review_sessions')
       .select('id')
       .eq('target_ref', tid)
-      // 対象×プロファイルごとにセッションが並存する（SPEC-dashboard-critique-settings §3.2）
       .eq('review_profile_id', pid)
       .eq('status', 'running')
+    query = nid === null ? query.is('note_id', null) : query.eq('note_id', nid)
+    const { data: session, error: selectError } = await query
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -214,32 +245,37 @@ export async function getReviewSessionState(
 
 /**
  * running レビューセッション（反復スレッド）を get-or-create し、フィードバック履歴を返す。
- * running セッションは対象×プロファイルごとに高々1本（アプリロジックで担保）。
+ * running セッションは対象×プロファイル×ノート絞り込みごとに高々1本（アプリロジックで担保）。
  * profileId / personaId はクライアント指定値なのでサーバー側で再検証する（フェーズ一致・reviewer 型）。
- * personaId は新規セッション作成時のみ効く（既存 running のペルソナは変更しない=会話の一貫性）
+ * personaId は新規セッション作成時のみ効く（既存 running のペルソナは変更しない=会話の一貫性）。
+ * noteId は character フェーズ専用（resolveTarget で企画書との紐づきを検証。Issue #47）
  */
 export async function getOrCreateReviewSession(
   kind: ReviewTargetKind,
   targetId: string,
   profileId: string,
   personaId?: string,
+  noteId?: string,
 ): Promise<ActionResult<ReviewSessionState>> {
   try {
     const parsedKind = reviewTargetKindSchema.parse(kind)
     const tid = uuidSchema.parse(targetId)
     const pid = uuidSchema.parse(profileId)
     const requestedPersonaId = personaId === undefined ? undefined : uuidSchema.parse(personaId)
+    const nid = noteId === undefined ? null : uuidSchema.parse(noteId)
     const supabase = await createClient()
 
-    const { projectId } = await resolveTarget(supabase, parsedKind, tid)
+    const { projectId } = await resolveTarget(supabase, parsedKind, tid, nid)
     const profile = await resolveProfileForPhase(supabase, pid, parsedKind)
 
-    const { data: existing, error: selectError } = await supabase
+    let query = supabase
       .from('review_sessions')
       .select('id')
       .eq('target_ref', tid)
       .eq('review_profile_id', pid)
       .eq('status', 'running')
+    query = nid === null ? query.is('note_id', null) : query.eq('note_id', nid)
+    const { data: existing, error: selectError } = await query
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
@@ -260,6 +296,7 @@ export async function getOrCreateReviewSession(
           review_profile_id: profile.id,
           persona_id: persona.id,
           target_ref: tid,
+          note_id: nid,
           status: 'running',
         })
         .select('id')
@@ -274,6 +311,34 @@ export async function getOrCreateReviewSession(
       ok: true,
       data: { sessionId, feedbacks: await fetchFeedbacks(supabase, sessionId) },
     }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/** ノート編集画面からのキャラクターレビュー起動用: ノートが紐づく企画書の選択肢（Issue #47） */
+export type LinkedProposalOption = {
+  proposalId: string
+  projectTitle: string
+}
+
+/** ノートが紐づく企画書一覧を返す（RLS越し＝自分のノート・企画書のみ。ごみ箱ノートでも一覧自体は引ける） */
+export async function getLinkedProposalsForNote(
+  noteId: string,
+): Promise<ActionResult<LinkedProposalOption[]>> {
+  try {
+    const nid = uuidSchema.parse(noteId)
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('proposal_notes')
+      .select('proposals (id, created_at, projects (title))')
+      .eq('note_id', nid)
+    if (error) throw new AppError('internal', error.message)
+    const options = (data ?? [])
+      .flatMap((row) => (row.proposals ? [row.proposals] : []))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((p) => ({ proposalId: p.id, projectTitle: p.projects?.title ?? '（無題の企画）' }))
+    return { ok: true, data: options }
   } catch (error) {
     return toActionError(error)
   }

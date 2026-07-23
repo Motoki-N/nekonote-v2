@@ -581,6 +581,7 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          note_id: string | null
           persona_id: string | null
           project_id: string
           review_profile_id: string | null
@@ -591,6 +592,7 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          note_id?: string | null
           persona_id?: string | null
           project_id: string
           review_profile_id?: string | null
@@ -601,6 +603,7 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          note_id?: string | null
           persona_id?: string | null
           project_id?: string
           review_profile_id?: string | null
@@ -609,6 +612,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "review_sessions_note_id_fkey"
+            columns: ["note_id"]
+            isOneToOne: false
+            referencedRelation: "notes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "review_sessions_persona_id_fkey"
             columns: ["persona_id"]

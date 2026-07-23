@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { resolveModel } from '@/lib/ai/models'
 import { recordAiUsage } from '@/lib/ai/usage'
 import {
+  buildCharacterNoteReviewInput,
   buildManuscriptCritiqueInput,
   buildProposalReviewInput,
   buildReviewSystemPrompt,
@@ -64,7 +65,8 @@ async function fetchProposalContext(
 
 /**
  * 企画書（RLS越し取得＋セッションのプロジェクト一致検証）と紐づけノート全文（ごみ箱中は除外）。
- * 企画書レビューとキャラクターレビューは資料一式が同一なので共用する（SPEC-character-review §5.2）
+ * 企画書レビューとキャラクターレビューは資料一式が同一なので共用する（SPEC-character-review §5.2）。
+ * ノートの id はノート単位キャラクターレビューの対象特定に使う（Issue #47）
  */
 async function fetchProposalWithNotes(supabase: Supabase, proposalId: string, projectId: string) {
   const { data: proposal, error: proposalError } = await supabase
@@ -79,13 +81,14 @@ async function fetchProposalWithNotes(supabase: Supabase, proposalId: string, pr
 
   const { data: links, error: linksError } = await supabase
     .from('proposal_notes')
-    .select('notes (title, content, deleted_at, note_tags (tags (name)))')
+    .select('notes (id, title, content, deleted_at, note_tags (tags (name)))')
     .eq('proposal_id', proposal.id)
   if (linksError) throw new AppError('internal', linksError.message)
-  const notes: NoteContext[] = (links ?? [])
+  const notes: (NoteContext & { id: string })[] = (links ?? [])
     .flatMap((row) => (row.notes ? [row.notes] : []))
     .filter((note) => note.deleted_at === null)
     .map((note) => ({
+      id: note.id,
       title: note.title,
       content: note.content,
       tags: note.note_tags.flatMap((nt) => (nt.tags ? [nt.tags.name] : [])),
@@ -168,7 +171,7 @@ export async function POST(req: Request) {
     const { data: session, error: sessionError } = await supabase
       .from('review_sessions')
       .select(
-        'id, status, target_ref, project_id, personas (description, ai_capability, reference_scope), review_profiles (prompt_template, target_phase)',
+        'id, status, target_ref, note_id, project_id, personas (description, ai_capability, reference_scope), review_profiles (prompt_template, target_phase)',
       )
       .eq('id', sessionId)
       .maybeSingle()
@@ -209,27 +212,60 @@ export async function POST(req: Request) {
         targetRef.data,
         session.project_id,
       )
-      // 紐づけノート経由のLLM入力肥大化ガード（監査L-3。上限は講評の実行不可ラインを流用）
-      const inputChars =
-        countChars(proposal.content) +
-        notes.reduce((sum, note) => sum + countChars(note.content), 0)
-      if (inputChars > CRITIQUE_MAX_CHARS) {
-        throw new AppError(
-          'validation',
-          `企画書と紐づけノートの合計が約${inputChars.toLocaleString('ja-JP')}字あり、レビューの上限（${CRITIQUE_MAX_CHARS.toLocaleString('ja-JP')}字）を超えています。紐づけノートを減らしてください`,
-        )
+
+      if (session.note_id !== null) {
+        // ノート1枚に絞ったキャラクターレビュー（Issue #47）。note_id は character フェーズ専用
+        if (phase !== 'character') throw new AppError('internal', 'レビュー対象が不正です')
+        const target = notes.find((note) => note.id === session.note_id)
+        // セッション作成後に紐づけ解除・ごみ箱入りされた場合はフェイルクローズ
+        if (!target) {
+          throw new AppError(
+            'not_found',
+            '対象ノートが見つかりません（企画書との紐づけが解除されたか、ごみ箱に入っている可能性があります）',
+          )
+        }
+        const otherNotes = notes.filter((note) => note.id !== session.note_id)
+        // LLM入力肥大化ガード（監査L-3。対象は企画書＋対象ノート1枚のみで計算）
+        const noteInputChars = countChars(proposal.content) + countChars(target.content)
+        if (noteInputChars > CRITIQUE_MAX_CHARS) {
+          throw new AppError(
+            'validation',
+            `企画書と対象ノートの合計が約${noteInputChars.toLocaleString('ja-JP')}字あり、レビューの上限（${CRITIQUE_MAX_CHARS.toLocaleString('ja-JP')}字）を超えています`,
+          )
+        }
+        prompt = buildCharacterNoteReviewInput({
+          proposal: {
+            genre: proposal.genre,
+            targetAudience: proposal.target_audience,
+            content: proposal.content,
+          },
+          note: target,
+          otherNotes,
+          history,
+        })
+      } else {
+        // 紐づけノート経由のLLM入力肥大化ガード（監査L-3。上限は講評の実行不可ラインを流用）
+        const inputChars =
+          countChars(proposal.content) +
+          notes.reduce((sum, note) => sum + countChars(note.content), 0)
+        if (inputChars > CRITIQUE_MAX_CHARS) {
+          throw new AppError(
+            'validation',
+            `企画書と紐づけノートの合計が約${inputChars.toLocaleString('ja-JP')}字あり、レビューの上限（${CRITIQUE_MAX_CHARS.toLocaleString('ja-JP')}字）を超えています。紐づけノートを減らしてください`,
+          )
+        }
+        prompt = buildProposalReviewInput({
+          proposal: {
+            genre: proposal.genre,
+            targetAudience: proposal.target_audience,
+            content: proposal.content,
+          },
+          notes,
+          history,
+        })
+        // draft→in_review 遷移は企画書レビュー専用（キャラクターレビューはステータスに触れない）
+        if (phase === 'proposal' && proposal.status === 'draft') proposalIdForStatus = proposal.id
       }
-      prompt = buildProposalReviewInput({
-        proposal: {
-          genre: proposal.genre,
-          targetAudience: proposal.target_audience,
-          content: proposal.content,
-        },
-        notes,
-        history,
-      })
-      // draft→in_review 遷移は企画書レビュー専用（キャラクターレビューはステータスに触れない）
-      if (phase === 'proposal' && proposal.status === 'draft') proposalIdForStatus = proposal.id
     } else if (phase === 'structure') {
       // 構成レビュー: target_ref = project id（セッションのプロジェクトと一致していること）
       if (targetRef.data !== session.project_id) {

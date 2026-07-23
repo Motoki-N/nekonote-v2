@@ -204,6 +204,47 @@ export function buildSceneReviewInput({
 }
 
 /**
+ * キャラクターレビュー（ノート1枚に絞る版）の user 入力（Issue #47）。
+ * 企画書＋対象ノート全文＋同じ企画書に紐づく他のノートの一覧（タイトル・タグのみ。
+ * 設定の重複・矛盾確認用の周辺文脈）＋同一セッションの過去フィードバック
+ */
+export function buildCharacterNoteReviewInput({
+  proposal,
+  note,
+  otherNotes,
+  history,
+}: {
+  proposal: ProposalContext
+  note: NoteContext
+  otherNotes: NoteContext[]
+  history: FeedbackHistoryItem[]
+}): string {
+  const lines: string[] = [
+    ...proposalSection(proposal),
+    '',
+    '# 対象ノート（このノート1枚を主対象にレビューする）',
+    `## ${note.title || '（無題）'}`,
+    `タグ: ${note.tags.length > 0 ? note.tags.join('、') : '（なし）'}`,
+    '"""',
+    note.content || '（本文なし）',
+    '"""',
+    '',
+    '# 企画書に紐づく他のノート一覧（参考。設定の重複・矛盾の確認に使う）',
+  ]
+
+  if (otherNotes.length === 0) {
+    lines.push('（他に紐づけノートなし）')
+  } else {
+    otherNotes.forEach((n) => {
+      lines.push(`- ${n.title || '（無題）'}（タグ: ${n.tags.join('、') || 'なし'}）`)
+    })
+  }
+
+  lines.push(...historySection(history))
+  return lines.join('\n')
+}
+
+/**
  * 原稿中のHTMLコメント（`<!-- -->`）の説明（Issue #17）。
  * コメントは本・PDFに一切出力されない作者のメモで（SPEC-vertical-editor §4.5）、
  * 構成メモのほか、保留した校正提案・講評の書き戻し（SPEC-vertical-editor-phase4）も含まれる。
