@@ -197,6 +197,8 @@ export function buildEditorExtensions(handlers: {
   onSaveRequest: () => void
   /** 画像ファイルのドロップ（SPEC-phase3 §6。カーソルはドロップ位置へ移動済みで呼ばれる） */
   onImageDrop?: (file: File) => void
+  /** 主選択範囲のテキスト変更通知（選択範囲の校正。SPEC-proofread-selection §3） */
+  onSelectionChange?: (selectedText: string) => void
 }): Extension[] {
   const imageDropHandlers = EditorView.domEventHandlers({
     dragover: (event) => {
@@ -241,6 +243,10 @@ export function buildEditorExtensions(handlers: {
     placeholder('本文をVFM（Markdown）で入力…'),
     EditorView.updateListener.of((update) => {
       if (update.docChanged) handlers.onDocChange(update.state.doc.toString())
+      if (handlers.onSelectionChange && (update.selectionSet || update.docChanged)) {
+        const range = update.state.selection.main
+        handlers.onSelectionChange(update.state.sliceDoc(range.from, range.to))
+      }
     }),
   ]
 }

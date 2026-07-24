@@ -19,10 +19,17 @@ import { createClient } from '@/lib/supabase/server'
 // 原稿全文の校正はレビュー文書より提案数が多くなりうるため実行上限を延長
 export const maxDuration = 120
 
+// 選択範囲校正の追加指針（SPEC-proofread-selection §4。選択部分だけが入力になる旨を明示し、
+// 断片の冒頭・末尾を「文が途中」と誤指摘させない）
+const PROOFREAD_SELECTION_GUIDANCE =
+  '今回の入力は原稿ファイルの一部（作者が選択した範囲）である。文章が途中から始まり途中で終わることがあるが、それ自体は問題にせず、渡された範囲内の本文だけを校正すること。'
+
 /**
  * AI校正（SPEC-proofreading §3.3・§3.5）。
  * 実行時点の最新原稿を取得して streamObject（配列）で構造化提案を逐次返し、
  * 完了時に pending を置き換え保存＋ last_reviewed_commit を更新する。
+ * selection 指定時は選択範囲だけを校正し、範囲内の pending のみ置き換え・SHAは進めない
+ * （SPEC-proofread-selection）。
  * review_sessions は使わない（提案のライフサイクルは revision_suggestions.status が担う）
  */
 export async function POST(req: Request) {
@@ -38,7 +45,7 @@ export async function POST(req: Request) {
 
     const parsed = proofreadRequestSchema.safeParse(await req.json())
     if (!parsed.success) throw new AppError('validation', 'リクエストの形式が不正です')
-    const { manuscriptLinkId } = parsed.data
+    const { manuscriptLinkId, selection } = parsed.data
 
     // RLS越しの取得＝所有確認を兼ねる（リンク→プロジェクトの repo/base_path も同時に引く）
     const { data: link, error: linkError } = await supabase
@@ -62,6 +69,15 @@ export async function POST(req: Request) {
       getFileContent(credential.token, link.projects.repo, filePath),
       getLatestCommitSha(credential.token, link.projects.repo, filePath),
     ])
+
+    // 選択範囲の校正（SPEC-proofread-selection §4）: 選択テキストが最新原稿に
+    // 実在することを確認してから、その範囲だけをAIに渡す（画面表示と実体のズレへの安全弁）
+    if (selection !== undefined && !content.includes(selection)) {
+      throw new AppError(
+        'validation',
+        '選択範囲が最新の原稿に見つかりません。原稿を開き直して選択し直してください',
+      )
+    }
 
     // 校正・校閲プロファイル＋担当の校正さん（default_persona_id 経由）
     const { data: profile, error: profileError } = await supabase
@@ -91,9 +107,11 @@ export async function POST(req: Request) {
         }),
         '',
         PROOFREAD_COMMENT_GUIDANCE,
+        ...(selection !== undefined ? ['', PROOFREAD_SELECTION_GUIDANCE] : []),
       ].join('\n'),
-      // 校正さんの reference_scope は「原稿テキストのみ」（企画書・ノート・シーンは渡さない）
-      prompt: content,
+      // 校正さんの reference_scope は「原稿テキストのみ」（企画書・ノート・シーンは渡さない）。
+      // 選択範囲校正では選択部分だけを渡す（SPEC-proofread-selection §2）
+      prompt: selection ?? content,
       // ストリーム開始後のプロバイダエラーはHTTPステータスに出ないため、サーバーログに残す
       onError: ({ error }) => {
         console.error('校正ストリームでエラー:', error)
@@ -111,15 +129,42 @@ export async function POST(req: Request) {
         // スキーマ検証に失敗した場合は object が undefined（既存 pending は温存する）
         if (!object) return
         try {
-          // 再校正は pending のみ置き換え（on_hold / accepted / rejected は残す。SPEC §2）
-          const { error: deleteError } = await supabase
-            .from('revision_suggestions')
-            .delete()
-            .eq('manuscript_link_id', link.id)
-            .eq('status', 'pending')
-          if (deleteError) {
-            console.error('既存提案の削除に失敗:', deleteError.message)
-            return
+          // 再校正は pending のみ置き換え（on_hold / accepted / rejected は残す。SPEC §2）。
+          // 選択範囲校正は原文抜粋が選択範囲内に見つかる pending だけ置き換え、
+          // 範囲外の pending は残す（SPEC-proofread-selection §4）
+          if (selection !== undefined) {
+            const { data: pendings, error: pendingError } = await supabase
+              .from('revision_suggestions')
+              .select('id, original_text')
+              .eq('manuscript_link_id', link.id)
+              .eq('status', 'pending')
+            if (pendingError) {
+              console.error('既存提案の取得に失敗:', pendingError.message)
+              return
+            }
+            const inRangeIds = (pendings ?? [])
+              .filter((s) => s.original_text !== '' && selection.includes(s.original_text))
+              .map((s) => s.id)
+            if (inRangeIds.length > 0) {
+              const { error: deleteError } = await supabase
+                .from('revision_suggestions')
+                .delete()
+                .in('id', inRangeIds)
+              if (deleteError) {
+                console.error('既存提案の削除に失敗:', deleteError.message)
+                return
+              }
+            }
+          } else {
+            const { error: deleteError } = await supabase
+              .from('revision_suggestions')
+              .delete()
+              .eq('manuscript_link_id', link.id)
+              .eq('status', 'pending')
+            if (deleteError) {
+              console.error('既存提案の削除に失敗:', deleteError.message)
+              return
+            }
           }
           if (object.length > 0) {
             const { error: insertError } = await supabase.from('revision_suggestions').insert(
@@ -137,11 +182,15 @@ export async function POST(req: Request) {
               return
             }
           }
-          const { error: shaError } = await supabase
-            .from('manuscript_links')
-            .update({ last_reviewed_commit: latestSha })
-            .eq('id', link.id)
-          if (shaError) console.error('last_reviewed_commit の更新に失敗:', shaError.message)
+          // 部分校正は「ファイル全体を校正した」ことにならないため SHA を進めない
+          // （更新バナー＝前回の全文校正以降の変更検知の意味を保つ。SPEC-proofread-selection §2）
+          if (selection === undefined) {
+            const { error: shaError } = await supabase
+              .from('manuscript_links')
+              .update({ last_reviewed_commit: latestSha })
+              .eq('id', link.id)
+            if (shaError) console.error('last_reviewed_commit の更新に失敗:', shaError.message)
+          }
         } catch (error) {
           // 保存の失敗でストリーム自体は壊さない（クライアントは取り直しで気づける）
           console.error('校正結果の保存に失敗:', error)

@@ -17,6 +17,7 @@ export function EditorPane({
   onDocChange,
   onSaveRequest,
   onImageDrop,
+  onSelectionChange,
   viewRef,
 }: {
   initialContent: string
@@ -24,15 +25,17 @@ export function EditorPane({
   onSaveRequest: () => void
   /** 画像ファイルのドロップ（SPEC-phase3 §6） */
   onImageDrop?: (file: File) => void
+  /** 主選択範囲のテキスト変更通知（選択範囲の校正。SPEC-proofread-selection §3） */
+  onSelectionChange?: (selectedText: string) => void
   /** 親がコメントジャンプ・入力補助で EditorView を操作するための参照（SPEC-phase3 §3・§4） */
   viewRef?: React.RefObject<EditorView | null>
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
   // ハンドラは ref 経由で参照し、親の再レンダーでエディタを作り直さない
-  const handlersRef = useRef({ onDocChange, onSaveRequest, onImageDrop })
+  const handlersRef = useRef({ onDocChange, onSaveRequest, onImageDrop, onSelectionChange })
   useEffect(() => {
-    handlersRef.current = { onDocChange, onSaveRequest, onImageDrop }
-  }, [onDocChange, onSaveRequest, onImageDrop])
+    handlersRef.current = { onDocChange, onSaveRequest, onImageDrop, onSelectionChange }
+  }, [onDocChange, onSaveRequest, onImageDrop, onSelectionChange])
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -43,6 +46,7 @@ export function EditorPane({
           onDocChange: (content) => handlersRef.current.onDocChange(content),
           onSaveRequest: () => handlersRef.current.onSaveRequest(),
           onImageDrop: (file) => handlersRef.current.onImageDrop?.(file),
+          onSelectionChange: (text) => handlersRef.current.onSelectionChange?.(text),
         }),
       }),
       parent: containerRef.current,

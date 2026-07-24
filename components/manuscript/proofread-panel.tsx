@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useObject } from "@ai-sdk/react";
-import { CircleStop, GitCommitHorizontal, Loader2, MessageSquareText, SpellCheck, X } from "lucide-react";
+import { CircleStop, GitCommitHorizontal, Loader2, MessageSquareText, SpellCheck, TextSelect, X } from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -13,7 +13,10 @@ import {
 } from "@/lib/actions/manuscripts";
 import { isApplicable } from "@/lib/proofread-apply";
 import type { SuggestionStatus } from "@/lib/schemas/enums";
-import { proofreadSuggestionSchema } from "@/lib/schemas/manuscript";
+import {
+  PROOFREAD_SELECTION_MIN_CHARS,
+  proofreadSuggestionSchema,
+} from "@/lib/schemas/manuscript";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,6 +67,7 @@ export function ProofreadPanel({
   linkId,
   content,
   suggestions,
+  selection,
   onUpdateStatus,
   onLocate,
   onCompleted,
@@ -72,6 +76,11 @@ export function ProofreadPanel({
   linkId: string;
   /** 表示中の原稿本文（受入可否＝原文抜粋の一意一致の判定に使う） */
   content: string;
+  /**
+   * エディタで選択中のテキスト（SPEC-proofread-selection §3）。
+   * undefined = 選択範囲校正を提供しない画面（原稿タブ）。最小長未満はボタンを出さない
+   */
+  selection?: string;
   /** 保存済み提案（親が openManuscriptFile / 再読込で取得したもの） */
   suggestions: SuggestionRecord[];
   /** 受入/拒否/保留の状態変更（親が提案一覧を更新する） */
@@ -337,6 +346,20 @@ export function ProofreadPanel({
                   </AlertDialogContent>
                 </AlertDialog>
               </>
+            )}
+            {selection !== undefined && selection.length >= PROOFREAD_SELECTION_MIN_CHARS && (
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() => {
+                  setHasRun(true);
+                  setStreamError(null);
+                  submit({ manuscriptLinkId: linkId, selection });
+                }}
+              >
+                <TextSelect data-icon="inline-start" />
+                選択範囲を校正（{selection.length}字）
+              </Button>
             )}
             <Button
               disabled={busy}
