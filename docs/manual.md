@@ -219,6 +219,27 @@
 - 原稿リポジトリがテンプレート構成（`manuscripts/` 配下の章ファイル・`book.config.js`・`themes/`・入稿ビルド用 GitHub Actions。雛形は本リポジトリの `docs/templates/manuscript-repo/`）に従っていること
 - 原稿フォーマットは **VFM**（Vivliostyle Flavored Markdown）。ルビは `{漢字|かんじ}`、メモはHTMLコメント `<!-- -->`
 
+### 新しい原稿リポジトリを作る（作品の新規開始時）
+
+作品ごとに1リポジトリ。テンプレート（本リポジトリの `docs/templates/manuscript-repo/`）をコピーして作る。
+
+1. **テンプレートをコピー**: `docs/templates/manuscript-repo/` を作業フォルダへコピーする。フォルダ名＝リポジトリ名（ローマ字ケバブケース。例: `ningyo-no-uta`）
+2. **作品情報を書き換え**: 次のファイルに残っているサンプルのタイトル（`竜の巣`）・出力ファイル名（`ryu-no-su`）・著者名を作品用に置換する
+   - `book.config.js` / `book.config.b6.js` / `book.config.epub.js` … 書誌情報と出力ファイル名
+   - `package.json` … name と `check:pages` の出力パス
+   - `.github/workflows/build-pdf.yml` / `build-epub.yml` … 出力ファイル名
+   - `manuscripts/00-tobira.md`（扉）・`99-okuzuke.md`（奥付）
+3. **挿絵の管理設定**: テンプレートの `images/.gitignore` は検証用に画像を除外しているので削除する（実作品では挿絵をGit管理する。リポジトリが太ってきたら Git LFS へ移行）
+4. **GitHubへ**: プライベートリポジトリを作成して push する
+
+   ```bash
+   git init -b main && git add -A && git commit -m "原稿リポジトリを初期作成"
+   gh repo create <リポジトリ名> --private --source=. --push
+   ```
+
+5. **ネコノテと接続**: `/settings` の Fine-grained PAT の対象リポジトリに新リポジトリを追加し（→ §11）、プロジェクト編集で **repo / base_path** を設定する（テンプレート構成なら base_path は `manuscripts`）
+6. **動作確認**: エディタタブで章一覧が entry 順に表示され、保存するとコミットが作られればOK。入稿ビルド（→ 入稿ビルドの節）は push 済みの Actions がそのまま動く
+
 ### 画面構成
 
 - **章一覧サイドバー**: `book.config.js` の entry 順に章ファイルを表示（折りたたみ可）。entry未登録のファイルは末尾に印つきで表示。未保存の待避がある章にはインジケータが付く。「新規章ファイルの作成」もここから（雛形入りで作成＝コミット。entryへも自動追記される）
