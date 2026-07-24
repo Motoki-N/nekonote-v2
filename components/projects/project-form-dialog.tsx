@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { PROJECT_STATUS_LABEL } from "@/components/projects/status-badges";
+import { RepoSetupDialog } from "@/components/projects/repo-setup-dialog";
 
 export type WorkingTitleTag = { id: string; name: string };
 
@@ -223,19 +224,23 @@ export function EditProjectDialog({
   const [repo, setRepo] = useState(project.repo ?? "");
   const [basePath, setBasePath] = useState(project.base_path ?? "");
   const [submitting, setSubmitting] = useState(false);
+  // repo の初回設定（未設定→設定）を保存成功後に検出して初期セットアップを提案する（SPEC-repo-setup §3.1）
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [setupRepo, setSetupRepo] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (submitting) return;
     setSubmitting(true);
     try {
+      const nextRepo = toNullable(repo);
       const result = await updateProject(project.id, {
         title: title.trim(),
         status,
         event_name: toNullable(eventName),
         deadline: toNullable(deadline),
         target_pages: targetPages.trim() === "" ? null : Number(targetPages),
-        repo: toNullable(repo),
+        repo: nextRepo,
         base_path: toNullable(basePath),
       });
       if (!result.ok) {
@@ -244,12 +249,17 @@ export function EditProjectDialog({
       }
       setOpen(false);
       router.refresh();
+      if (!project.repo && nextRepo) {
+        setSetupRepo(nextRepo);
+        setSetupOpen(true);
+      }
     } finally {
       setSubmitting(false);
     }
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={trigger} />
       <DialogContent className="sm:max-w-md">
@@ -318,5 +328,16 @@ export function EditProjectDialog({
         </form>
       </DialogContent>
     </Dialog>
+    {/* 開くたびに再マウントして初期値（タイトル・slug）を確定させる */}
+    {setupOpen && (
+      <RepoSetupDialog
+        open
+        onOpenChange={setSetupOpen}
+        projectId={project.id}
+        defaultTitle={title.trim() || project.title}
+        repoName={setupRepo.split("/")[1] ?? ""}
+      />
+    )}
+    </>
   );
 }
