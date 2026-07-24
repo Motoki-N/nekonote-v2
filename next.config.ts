@@ -6,6 +6,14 @@ const nextConfig: NextConfig = {
     // ターミナルログに漏れる）ため無効化する（2026-07-13 のE2Eで実害を確認）
     serverFunctions: false,
   },
+  // 原稿リポジトリの初期セットアップ（lib/git/template.ts）が fs で読むテンプレートを
+  // Vercel のサーバーレスバンドルに含める（SPEC-repo-setup §4.2）
+  // 編集ダイアログは /projects 一覧と /projects/[id] レイアウト配下の全ページにあるため、
+  // Server Action の POST 先になり得るルートすべてを対象にする
+  outputFileTracingIncludes: {
+    '/projects': ['./docs/templates/manuscript-repo/**'],
+    '/projects/**': ['./docs/templates/manuscript-repo/**'],
+  },
   experimental: {
     serverActions: {
       // 画像アップロード（uploadImage）は base64 で約4/3倍になるため、

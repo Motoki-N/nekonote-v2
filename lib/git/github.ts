@@ -479,6 +479,194 @@ export async function createPullRequest(
   return { number: data.number, htmlUrl: data.html_url }
 }
 
+// ---- 原稿リポジトリの初期セットアップ（SPEC-repo-setup §4.3）。
+// 退避＋テンプレート展開を Git Data API の1コミットで行う（blob→tree→commit→ref）。
+// Contents API と違い、既存 blob の SHA 張り直しで内容の再アップロードなしにファイルを移動できる
+
+/**
+ * ブランチHEADのコミットSHA。ブランチ（ref）が無い＝空リポジトリなら null を返す
+ * （getBranchHeadSha は 404 を throw するため、空リポジトリ判定用に別関数）
+ */
+export async function getBranchHeadShaOrNull(
+  token: string,
+  repo: string,
+  branch: string,
+): Promise<string | null> {
+  const res = await githubFetch(
+    token,
+    `/repos/${validRepo(repo)}/git/ref/${encodeURIComponent(`heads/${branch}`)}`,
+  )
+  // 404 = ref なし。409 = "Git Repository is empty"（初期化直後のリポジトリで返る）
+  if (res.status === 404 || res.status === 409) return null
+  if (!res.ok) throw toGithubError(res, `ブランチ ${branch} が見つかりません`)
+  const data = (await res.json()) as { object?: { sha?: string } }
+  if (!data.object?.sha) throw new AppError('internal', 'ブランチHEADの取得に失敗しました')
+  return data.object.sha
+}
+
+export type RepoTreeFile = {
+  path: string
+  /** blob SHA（退避時に新パスへ張り直す） */
+  sha: string
+  /** ファイルモード（100644/100755/120000）。退避時に元のモードを保つ */
+  mode: string
+}
+
+/**
+ * コミット配下の全ファイル（blob）の path・SHA・mode と、ツリー自体のSHAを返す。
+ * getManuscriptTree は .md/.txt に絞るため、全ファイル退避用に別関数
+ */
+export async function getFullTree(
+  token: string,
+  repo: string,
+  commitSha: string,
+): Promise<{ treeSha: string; files: RepoTreeFile[] }> {
+  const res = await githubFetch(
+    token,
+    `/repos/${validRepo(repo)}/git/trees/${encodeURIComponent(commitSha)}?recursive=1`,
+  )
+  if (!res.ok) throw toGithubError(res, `リポジトリ ${repo} のファイル一覧を取得できません`)
+  const data = (await res.json()) as {
+    sha?: string
+    tree?: { path?: string; type?: string; sha?: string; mode?: string }[]
+    truncated?: boolean
+  }
+  if (!data.sha) throw new AppError('internal', 'ツリーの取得に失敗しました')
+  if (data.truncated) {
+    throw new AppError(
+      'validation',
+      'リポジトリのファイル数が多すぎて退避できません。空のリポジトリでやり直してください',
+    )
+  }
+  return {
+    treeSha: data.sha,
+    files: (data.tree ?? []).flatMap((entry) =>
+      entry.type === 'blob' && entry.path && entry.sha && entry.mode
+        ? [{ path: entry.path, sha: entry.sha, mode: entry.mode }]
+        : [],
+    ),
+  }
+}
+
+export type SetupTreeEntry = {
+  path: string
+  mode: string
+  type: 'blob'
+} & (
+  | {
+      /** UTF-8テキスト。API側で blob 化される */
+      content: string
+    }
+  | {
+      /** 既存 blob の張り直し。null は削除 */
+      sha: string | null
+    }
+)
+
+// Workflows 権限のない Fine-grained PAT で .github/workflows/ を書くと
+// "refusing to allow a Personal Access Token to create or update workflow" が返る（403/422）
+async function throwSetupError(res: Response, fallbackMessage: string): Promise<never> {
+  const body = (await res.json().catch(() => ({}))) as { message?: string }
+  if (/refusing to allow.*workflow/i.test(body.message ?? '')) {
+    throw new AppError(
+      'validation',
+      'PATに Workflows: Read and write 権限がないため、ビルド用ワークフローを書き込めませんでした。設定を確認してください',
+    )
+  }
+  throw toGithubError(res, fallbackMessage)
+}
+
+/** ツリーを作成してSHAを返す。baseTreeSha 省略時はゼロから（空リポジトリ用） */
+export async function createTree(
+  token: string,
+  repo: string,
+  entries: SetupTreeEntry[],
+  baseTreeSha?: string,
+): Promise<string> {
+  const res = await fetch(`${API_BASE}/repos/${validRepo(repo)}/git/trees`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      tree: entries,
+      ...(baseTreeSha ? { base_tree: baseTreeSha } : {}),
+    }),
+  })
+  if (!res.ok) await throwSetupError(res, `リポジトリ ${repo} にツリーを作成できません`)
+  const data = (await res.json()) as { sha?: string }
+  if (!data.sha) throw new AppError('internal', 'ツリー作成結果の取得に失敗しました')
+  return data.sha
+}
+
+/** コミットを作成してSHAを返す。parentSha 省略時は親なし（空リポジトリの初回コミット） */
+export async function createCommit(
+  token: string,
+  repo: string,
+  params: { message: string; treeSha: string; parentSha?: string },
+): Promise<string> {
+  const res = await fetch(`${API_BASE}/repos/${validRepo(repo)}/git/commits`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message: params.message,
+      tree: params.treeSha,
+      parents: params.parentSha ? [params.parentSha] : [],
+    }),
+  })
+  if (!res.ok) await throwSetupError(res, `リポジトリ ${repo} にコミットを作成できません`)
+  const data = (await res.json()) as { sha?: string }
+  if (!data.sha) throw new AppError('internal', 'コミット作成結果の取得に失敗しました')
+  return data.sha
+}
+
+/**
+ * ブランチrefを新しいコミットへ進める（fast-forward。force はしない）。
+ * HEAD取得後に他所からpushがあった場合は 422 になり conflict へ正規化する
+ */
+export async function updateBranchRef(
+  token: string,
+  repo: string,
+  branch: string,
+  commitSha: string,
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/repos/${validRepo(repo)}/git/refs/${encodeURIComponent(`heads/${branch}`)}`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ sha: commitSha }),
+    },
+  )
+  if (res.status === 422) {
+    const body = (await res.json().catch(() => ({}))) as { message?: string }
+    if (/refusing to allow.*workflow/i.test(body.message ?? '')) {
+      throw new AppError(
+        'validation',
+        'PATに Workflows: Read and write 権限がないため、ビルド用ワークフローを書き込めませんでした。設定を確認してください',
+      )
+    }
+    throw new AppError(
+      'conflict',
+      'リポジトリがセットアップ中に更新されました。もう一度実行してください',
+    )
+  }
+  if (!res.ok) await throwSetupError(res, `ブランチ ${branch} を更新できません`)
+}
+
 /**
  * そのファイルに触れた最新コミットのSHAを返す（ファイル単位。リポジトリHEADではない）。
  * モノレポで他作品へのコミットに更新バナーを反応させないための要（SPEC-proofreading §4）

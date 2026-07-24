@@ -35,6 +35,35 @@ export const projectUpdateSchema = projectInputSchema.partial()
 export type ProjectInput = z.infer<typeof projectInputSchema>
 export type ProjectUpdate = z.infer<typeof projectUpdateSchema>
 
+// 原稿リポジトリ初期セットアップの入力（SPEC-repo-setup §3.2）。
+// タイトル・著者名は book.config.js 等のシングルクォート文字列リテラルへ
+// 文字列置換で埋め込まれるため、リテラルを壊す引用符・バックスラッシュ・
+// 改行等の制御文字を拒否する（UIのInputは単一行だが、Server Action直呼びが境界）
+const templateTextSchema = (label: string) =>
+  z
+    .string()
+    .trim()
+    .min(1, `${label}を入力してください`)
+    .max(100, `${label}は100文字以内で入力してください`)
+    .regex(
+      /^[^'"`\\\u0000-\u001f\u007f]+$/,
+      `${label}に引用符（' \" \`）・バックスラッシュ・改行は使えません`,
+    )
+
+export const repoSetupInputSchema = z.object({
+  title: templateTextSchema('作品タイトル'),
+  author: templateTextSchema('著者名'),
+  slug: z
+    .string()
+    .trim()
+    .max(50, '出力ファイル名は50文字以内で入力してください')
+    .regex(
+      /^[a-z0-9][a-z0-9-]*$/,
+      '出力ファイル名は小文字英数字とハイフンで入力してください（例: ningyo-no-uta）',
+    ),
+})
+export type RepoSetupInput = z.infer<typeof repoSetupInputSchema>
+
 export const proposalInputSchema = z.object({
   project_id: z.uuid(),
   genre: z.string().nullish(),
