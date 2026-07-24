@@ -118,9 +118,13 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
       return;
     }
     if (!result.data) return;
+    if (editor.isDestroyed) return; // アップロード完了前にページ遷移したケース
     const { url, fileName } = result.data;
     if (kind === "image") {
-      editor.chain().focus().setImage({ src: url, alt: fileName }).run();
+      // alt は extension-image の renderMarkdown にエスケープなしで埋め込まれるため、
+      // Markdown 構造を壊す [ ] と改行を除去する（リンクと違いノード挿入では回避できない）
+      const safeAlt = fileName.replace(/[\[\]\n]/g, "");
+      editor.chain().focus().setImage({ src: url, alt: safeAlt }).run();
       return;
     }
     // ファイル名に [ ] ( ) が含まれても壊れないよう、Markdown文字列ではなくノードで挿入する
