@@ -41,6 +41,7 @@ import type { SuggestionStatus } from '@/lib/schemas/enums'
 import { EditorSelection } from '@codemirror/state'
 import { EditorView } from '@codemirror/view'
 
+import { getSelectedText } from '@/components/editor/codemirror'
 import { extractComments } from '@/lib/editor/comments'
 import type { ManuscriptComment } from '@/lib/editor/comments'
 import {
@@ -169,6 +170,9 @@ export function VerticalEditor({
   const [reviewFile, setReviewFile] = useState<ManuscriptFileData | null>(null)
   const [reviewLoading, setReviewLoading] = useState(false)
   const [reviewError, setReviewError] = useState<string | null>(null)
+  /** エディタの主選択テキスト（選択範囲の校正。SPEC-proofread-selection §3。
+   * 通常の打鍵・選択で再レンダーさせないため、校正パネル表示中のみ追跡する */
+  const [proofreadSelection, setProofreadSelection] = useState('')
 
   const { setHidden: setChromeHidden } = useChrome()
 
@@ -451,9 +455,19 @@ export function VerticalEditor({
     setReviewOpen(null)
     setReviewFile(null)
     setReviewError(null)
+    setProofreadSelection('')
     // パネル表示中に明示操作（全体プレビュー等）で開き直していた場合は上書きしない
     setPreviewOpen((open) => open || prevPreviewOpenRef.current)
   }, [])
+
+  /** エディタの選択変更（校正パネル表示中のみ state に反映。それ以外は無視して再レンダーを避ける） */
+  const handleSelectionChange = useCallback(
+    (text: string) => {
+      if (reviewOpen !== 'proofread') return
+      setProofreadSelection(text)
+    },
+    [reviewOpen],
+  )
 
   /** 校正パネルを開く。校正はコミット済み内容が対象のため、未保存の編集は先に保存へ誘導する */
   const openProofread = useCallback(async () => {
@@ -471,6 +485,8 @@ export function VerticalEditor({
       toast.info(`校正はデフォルトブランチ（${okNow.defaultBranch}）のコミット内容が対象です`)
     }
     openReviewPanel('proofread')
+    // パネルを開いた時点の選択を初期値にする（以後は onSelectionChange が追跡）
+    setProofreadSelection(editorViewRef.current ? getSelectedText(editorViewRef.current) : '')
     // 前回開いた章の原稿情報が残っていると、フェッチ完了まで別の章の提案を誤操作できてしまう
     setReviewFile(null)
     setReviewLoading(true)
@@ -1490,6 +1506,7 @@ export function VerticalEditor({
                         onDocChange={onDocChange}
                         onSaveRequest={requestSave}
                         onImageDrop={setPendingImage}
+                        onSelectionChange={handleSelectionChange}
                         viewRef={editorViewRef}
                       />
                     </div>
@@ -1578,6 +1595,7 @@ export function VerticalEditor({
               linkId={reviewFile.linkId}
               content={reviewFile.content}
               suggestions={reviewFile.suggestions}
+              selection={proofreadSelection}
               onUpdateStatus={handleUpdateSuggestion}
               onLocate={locateInEditor}
               onCompleted={refreshReview}

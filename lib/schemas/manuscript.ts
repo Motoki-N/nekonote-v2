@@ -71,8 +71,16 @@ export const proofreadSuggestionSchema = z.object({
 })
 export type ProofreadSuggestion = z.infer<typeof proofreadSuggestionSchema>
 
+// 選択範囲校正の最小長（SPEC-proofread-selection §2。UIのボタン表示とサーバー検証で共用）
+export const PROOFREAD_SELECTION_MIN_CHARS = 10
+
 export const proofreadRequestSchema = z.object({
   manuscriptLinkId: z.uuid(),
+  // 選択範囲の校正（SPEC-proofread-selection §4）。省略時は従来の全文校正
+  selection: z
+    .string()
+    .min(PROOFREAD_SELECTION_MIN_CHARS, '選択範囲が短すぎます')
+    .optional(),
 })
 
 // 講評の文字数ガード（SPEC-dashboard-critique-settings §3.3。二段構え）。
