@@ -168,4 +168,32 @@
   .tiptap-editor p {
     @apply min-h-[1em];
   }
+  /* Issue #35: 表・画像・コードブロック */
+  .tiptap-editor pre {
+    @apply overflow-x-auto rounded-md bg-muted p-3 font-mono text-sm;
+  }
+  .tiptap-editor .tableWrapper {
+    @apply overflow-x-auto;
+  }
+  .tiptap-editor table {
+    @apply w-full border-collapse text-sm;
+  }
+  .tiptap-editor th,
+  .tiptap-editor td {
+    @apply border border-border px-2 py-1 align-top;
+  }
+  .tiptap-editor th {
+    @apply bg-muted text-left font-semibold;
+  }
+  /* セル範囲選択のハイライト（ProseMirror が selectedCell を付与する） */
+  .tiptap-editor .selectedCell {
+    @apply bg-accent;
+  }
+  .tiptap-editor img {
+    @apply max-w-full rounded-md;
+  }
+  /* 画像ノード選択時の枠（選択状態が視認できないと削除操作に迷う） */
+  .tiptap-editor img.ProseMirror-selectednode {
+    @apply outline-2 outline-ring;
+  }
 }
