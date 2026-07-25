@@ -6,9 +6,10 @@ import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
 import { createFileContent, getFileContent, putFileContent } from '@/lib/git/github'
+import { sortByGenrePriority } from '@/lib/genre-priority'
 import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
 import { resolveProfileForPhase, resolveReviewerPersona } from '@/lib/review-validation'
-import type { ReferenceScope } from '@/lib/schemas/enums'
+import type { ReferenceScope, WritingGenre } from '@/lib/schemas/enums'
 import { manuscriptFilePathSchema } from '@/lib/schemas/manuscript'
 import { createClient } from '@/lib/supabase/server'
 
@@ -97,10 +98,14 @@ export async function getCritiqueBootstrap(
     if (!project) throw new AppError('not_found', 'プロジェクトが見つかりません')
 
     const [proposalResult, profilesResult, personasResult, critiques] = await Promise.all([
-      supabase.from('proposals').select('genre, target_audience').eq('project_id', pid).maybeSingle(),
+      supabase
+        .from('proposals')
+        .select('writing_genre, genre, target_audience')
+        .eq('project_id', pid)
+        .maybeSingle(),
       supabase
         .from('review_profiles')
-        .select('id, name, default_persona_id')
+        .select('id, name, default_persona_id, writing_genre')
         .eq('target_phase', 'manuscript')
         .order('is_default', { ascending: false })
         .order('created_at'),
@@ -134,10 +139,14 @@ export async function getCritiqueBootstrap(
       }
     }
 
+    // 既定選択の自動適用: UIは一覧先頭を既定にするため、ジャンル優先ソートが既定選択になる（SPEC-genre-profiles）
+    const writingGenre = (proposalResult.data?.writing_genre ?? 'novel') as WritingGenre
+    const sortedProfiles = sortByGenrePriority(profilesResult.data ?? [], writingGenre)
+
     return {
       ok: true,
       data: {
-        profiles: (profilesResult.data ?? []).map((p) => ({
+        profiles: sortedProfiles.map((p) => ({
           id: p.id,
           name: p.name,
           defaultPersonaId: p.default_persona_id,

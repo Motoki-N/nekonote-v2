@@ -4,7 +4,9 @@ import type {
   PersonaType,
   ReferenceScope,
   TargetPhase,
+  WritingGenre,
 } from "@/lib/schemas/enums";
+import { WRITING_GENRE_LABEL } from "@/lib/constants/proposal-template";
 
 // 設定画面の列挙値ラベル（SPEC-dashboard-critique-settings §3.4）
 
@@ -42,6 +44,11 @@ export const TARGET_PHASE_LABEL: Record<TargetPhase, string> = {
   proofreading: "校正",
   manuscript: "講評（作品全体）",
 };
+
+/** 対象ジャンルの表示ラベル（null = 全ジャンル共通。SPEC-genre-profiles） */
+export function genreScopeLabel(genre: WritingGenre | null): string {
+  return genre === null ? "共通" : WRITING_GENRE_LABEL[genre];
+}
 
 // Input と同じトーンの select（shadcn select 未導入のため。project-form-dialog と同じ流儀）
 export const selectClass =

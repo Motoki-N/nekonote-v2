@@ -20,6 +20,7 @@ import {
   type PersonaType,
   type ReferenceScope,
   type TargetPhase,
+  type WritingGenre,
 } from '@/lib/schemas/enums'
 import { personaInputSchema, reviewProfileInputSchema } from '@/lib/schemas/review'
 import type { PersonaInput, ReviewProfileInput } from '@/lib/schemas/review'
@@ -322,6 +323,7 @@ export type PersonaRecord = {
   reference_scope: ReferenceScope
   persona_type: PersonaType
   is_default: boolean
+  writing_genre: WritingGenre | null
 }
 
 export async function listPersonas(): Promise<ActionResult<PersonaRecord[]>> {
@@ -329,7 +331,9 @@ export async function listPersonas(): Promise<ActionResult<PersonaRecord[]>> {
     const supabase = await createClient()
     const { data, error } = await supabase
       .from('personas')
-      .select('id, name, description, ai_capability, reference_scope, persona_type, is_default')
+      .select(
+        'id, name, description, ai_capability, reference_scope, persona_type, is_default, writing_genre',
+      )
       .order('is_default', { ascending: false })
       .order('created_at')
     if (error) throw new AppError('internal', error.message)
@@ -367,7 +371,7 @@ export async function duplicatePersona(personaId: string): Promise<ActionResult>
     // RLS越しの取得（標準 or 自分の行のみ見える）
     const { data: source, error: sourceError } = await supabase
       .from('personas')
-      .select('name, description, ai_capability, reference_scope, persona_type')
+      .select('name, description, ai_capability, reference_scope, persona_type, writing_genre')
       .eq('id', pid)
       .maybeSingle()
     if (sourceError) throw new AppError('internal', sourceError.message)
@@ -457,6 +461,7 @@ export type ReviewProfileRecord = {
   prompt_template: string
   default_persona_id: string | null
   is_default: boolean
+  writing_genre: WritingGenre | null
 }
 
 export async function listReviewProfiles(): Promise<ActionResult<ReviewProfileRecord[]>> {
@@ -464,7 +469,7 @@ export async function listReviewProfiles(): Promise<ActionResult<ReviewProfileRe
     const supabase = await createClient()
     const { data, error } = await supabase
       .from('review_profiles')
-      .select('id, name, target_phase, prompt_template, default_persona_id, is_default')
+      .select('id, name, target_phase, prompt_template, default_persona_id, is_default, writing_genre')
       .order('is_default', { ascending: false })
       .order('created_at')
     if (error) throw new AppError('internal', error.message)
@@ -511,7 +516,7 @@ export async function duplicateReviewProfile(profileId: string): Promise<ActionR
 
     const { data: source, error: sourceError } = await supabase
       .from('review_profiles')
-      .select('name, target_phase, prompt_template, default_persona_id')
+      .select('name, target_phase, prompt_template, default_persona_id, writing_genre')
       .eq('id', pid)
       .maybeSingle()
     if (sourceError) throw new AppError('internal', sourceError.message)
