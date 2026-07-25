@@ -881,6 +881,7 @@ export type Database = {
           selected_project_id: string | null
           updated_at: string
           user_id: string
+          zenn_repo: string | null
         }
         Insert: {
           created_at?: string
@@ -889,6 +890,7 @@ export type Database = {
           selected_project_id?: string | null
           updated_at?: string
           user_id?: string
+          zenn_repo?: string | null
         }
         Update: {
           created_at?: string
@@ -897,6 +899,7 @@ export type Database = {
           selected_project_id?: string | null
           updated_at?: string
           user_id?: string
+          zenn_repo?: string | null
         }
         Relationships: [
           {
