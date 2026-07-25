@@ -1,5 +1,6 @@
 import { ANCHOR_LABEL, PART_LABEL, formatEmotion, type SceneRecord } from '@/lib/board'
-import type { Emotion, ProjectStatus, SceneAnchor } from '@/lib/schemas/enums'
+import { WRITING_GENRE_LABEL } from '@/lib/constants/proposal-template'
+import type { Emotion, ProjectStatus, SceneAnchor, WritingGenre } from '@/lib/schemas/enums'
 import { isMilestoneAchieved, type Schedule } from '@/lib/schemas/schedule'
 
 export type NoteContext = {
@@ -9,7 +10,9 @@ export type NoteContext = {
 }
 
 export type ProposalContext = {
-  genre: string | null
+  writingGenre: WritingGenre // 執筆ジャンル（小説/技術書/その他。SPEC-genre）
+  purpose: string | null // 執筆目的（自由記述）
+  genre: string | null // 内容ジャンル（自由記述）
   targetAudience: string | null
   content: string // 保存済みDB値のMarkdown
 }
@@ -37,7 +40,9 @@ export function buildReviewSystemPrompt({
 function proposalSection(proposal: ProposalContext): string[] {
   return [
     '# 企画書',
-    `ジャンル: ${proposal.genre || '（未記入）'}`,
+    `執筆ジャンル: ${WRITING_GENRE_LABEL[proposal.writingGenre]}`,
+    `執筆目的: ${proposal.purpose || '（未記入）'}`,
+    `内容ジャンル: ${proposal.genre || '（未記入）'}`,
     `ターゲット層: ${proposal.targetAudience || '（未記入）'}`,
     '本文:',
     '"""',
@@ -294,7 +299,7 @@ export function buildManuscriptCritiqueInput({
   } else if (proposalScope === 'target_only' && proposal) {
     lines.push(
       '# 企画情報',
-      `ジャンル: ${proposal.genre || '（未記入）'}`,
+      `内容ジャンル: ${proposal.genre || '（未記入）'}`,
       `ターゲット層: ${proposal.targetAudience || '（未記入）'}`,
       '',
     )

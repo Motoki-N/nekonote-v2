@@ -6,6 +6,7 @@ import {
   proposalStatuses,
   sceneAnchors,
   sceneParts,
+  writingGenres,
 } from './enums'
 import { manuscriptFilePathSchema } from './manuscript'
 
@@ -66,9 +67,11 @@ export type RepoSetupInput = z.infer<typeof repoSetupInputSchema>
 
 export const proposalInputSchema = z.object({
   project_id: z.uuid(),
-  genre: z.string().nullish(),
+  writing_genre: z.enum(writingGenres).default('novel'), // 執筆ジャンル（SPEC-genre）
+  purpose: z.string().nullish(), // 執筆目的（自由記述）
+  genre: z.string().nullish(), // 内容ジャンル（自由記述）
   target_audience: z.string().nullish(),
-  content: z.string().default(''), // Markdown（コンセプト/キャラ/テーマ）
+  content: z.string().default(''), // Markdown（初期本文は執筆ジャンル別テンプレ）
   status: z.enum(proposalStatuses).default('draft'),
 })
 // status は承認ゲートの検証を通る経路（/api/review の onFinish・approveProposal）でのみ遷移させる

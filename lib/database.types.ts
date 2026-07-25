@@ -496,9 +496,11 @@ export type Database = {
           genre: string | null
           id: string
           project_id: string
+          purpose: string | null
           status: string
           target_audience: string | null
           updated_at: string
+          writing_genre: string
         }
         Insert: {
           content?: string
@@ -506,9 +508,11 @@ export type Database = {
           genre?: string | null
           id?: string
           project_id: string
+          purpose?: string | null
           status?: string
           target_audience?: string | null
           updated_at?: string
+          writing_genre?: string
         }
         Update: {
           content?: string
@@ -516,9 +520,11 @@ export type Database = {
           genre?: string | null
           id?: string
           project_id?: string
+          purpose?: string | null
           status?: string
           target_audience?: string | null
           updated_at?: string
+          writing_genre?: string
         }
         Relationships: [
           {

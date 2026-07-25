@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import type { ProposalStatus } from "@/lib/schemas/enums";
+import type { ProposalStatus, WritingGenre } from "@/lib/schemas/enums";
 import type { LinkedNote } from "@/lib/actions/projects";
 import { ProposalEditor } from "@/components/projects/proposal-editor";
 
@@ -12,7 +12,7 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
   // プロジェクト情報ヘッダーは layout.tsx が描画する。ここでは企画書のみ引く
   const { data: proposal } = await supabase
     .from("proposals")
-    .select("id, project_id, genre, target_audience, content, status, updated_at")
+    .select("id, project_id, writing_genre, purpose, genre, target_audience, content, status, updated_at")
     .eq("project_id", id)
     .maybeSingle();
   if (!proposal) notFound();
@@ -32,6 +32,8 @@ export default async function ProjectPage({ params }: { params: Promise<{ id: st
     <ProposalEditor
       proposal={{
         id: proposal.id,
+        writing_genre: proposal.writing_genre as WritingGenre,
+        purpose: proposal.purpose,
         genre: proposal.genre,
         target_audience: proposal.target_audience,
         content: proposal.content,

@@ -6,6 +6,8 @@ import { z } from 'zod'
 import { PROPOSAL_INITIAL_CONTENT } from '@/lib/constants/proposal-template'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
+import { writingGenres } from '@/lib/schemas/enums'
+import type { WritingGenre } from '@/lib/schemas/enums'
 import { projectInputSchema, projectUpdateSchema, proposalUpdateSchema } from '@/lib/schemas/projects'
 import type { ProjectInput, ProjectUpdate, ProposalUpdate } from '@/lib/schemas/projects'
 import { createClient } from '@/lib/supabase/server'
@@ -14,16 +16,20 @@ const uuidSchema = z.uuid()
 const noteIdsSchema = z.array(z.uuid()).max(100)
 
 /**
- * プロジェクト作成。企画書（proposals 行）も同時に自動作成する（1対1・定型テンプレ入り）。
- * noteIds はプロジェクト作成ダイアログの一括紐づけ（仮タイトルタグからの候補）
+ * プロジェクト作成。企画書（proposals 行）も同時に自動作成する
+ * （1対1・執筆ジャンル別の定型テンプレ入り。SPEC-genre）。
+ * noteIds はプロジェクト作成ダイアログの一括紐づけ（仮タイトルタグからの候補）。
+ * writingGenre は proposals 側の値のため projectInputSchema には含めず引数で受ける
  */
 export async function createProject(
   input: ProjectInput,
   noteIds: string[] = [],
+  writingGenre: WritingGenre = 'novel',
 ): Promise<ActionResult<{ projectId: string }>> {
   try {
     const parsed = projectInputSchema.parse(input)
     const ids = noteIdsSchema.parse(noteIds)
+    const genre = z.enum(writingGenres).parse(writingGenre)
     const supabase = await createClient()
 
     const { data: project, error: projectError } = await supabase
@@ -37,7 +43,11 @@ export async function createProject(
 
     const { data: proposal, error: proposalError } = await supabase
       .from('proposals')
-      .insert({ project_id: project.id, content: PROPOSAL_INITIAL_CONTENT })
+      .insert({
+        project_id: project.id,
+        writing_genre: genre,
+        content: PROPOSAL_INITIAL_CONTENT[genre],
+      })
       .select('id')
       .single()
     if (proposalError || !proposal) {
@@ -92,7 +102,7 @@ export async function deleteProject(id: string): Promise<ActionResult> {
   }
 }
 
-/** 企画書の自動保存の受け口（genre / target_audience / content。status はここでは変えない） */
+/** 企画書の自動保存の受け口（writing_genre / purpose / genre / target_audience / content。status はここでは変えない） */
 export async function updateProposal(id: string, input: ProposalUpdate): Promise<ActionResult> {
   try {
     const proposalId = uuidSchema.parse(id)

@@ -15,7 +15,7 @@ import { patCredentialProvider } from '@/lib/git/credentials'
 import { getFileContent } from '@/lib/git/github'
 import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
 import { enforceRateLimit } from '@/lib/rate-limit'
-import type { AiCapability } from '@/lib/schemas/enums'
+import type { AiCapability, WritingGenre } from '@/lib/schemas/enums'
 import {
   COLOR_MODE_LABEL,
   ILLUSTRATION_KIND_LABEL,
@@ -37,7 +37,7 @@ async function fetchProposalMaterials(
 ): Promise<{ proposal: ProposalContext | null; notes: NoteContext[] }> {
   const { data: proposal, error: proposalError } = await supabase
     .from('proposals')
-    .select('id, genre, target_audience, content')
+    .select('id, writing_genre, purpose, genre, target_audience, content')
     .eq('project_id', projectId)
     .maybeSingle()
   if (proposalError) throw new AppError('internal', proposalError.message)
@@ -59,6 +59,8 @@ async function fetchProposalMaterials(
 
   return {
     proposal: {
+      writingGenre: proposal.writing_genre as WritingGenre,
+      purpose: proposal.purpose,
       genre: proposal.genre,
       targetAudience: proposal.target_audience,
       content: proposal.content,
