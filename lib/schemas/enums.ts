@@ -11,6 +11,10 @@ export type ProjectStatus = (typeof projectStatuses)[number]
 export const proposalStatuses = ['draft', 'in_review', 'approved'] as const
 export type ProposalStatus = (typeof proposalStatuses)[number]
 
+// 執筆ジャンル（proposals.writing_genre。20260725000002 の CHECK 制約と対応。SPEC-genre）
+export const writingGenres = ['novel', 'tech_book', 'other'] as const
+export type WritingGenre = (typeof writingGenres)[number]
+
 // 構成・シーンレビューのゲート状態（scenes.status / projects.structure_status。
 // 20260721000001 の CHECK 制約と対応。企画書と違い in_review は持たない2状態）
 export const approvalStatuses = ['draft', 'approved'] as const

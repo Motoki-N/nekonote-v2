@@ -5,7 +5,8 @@ import { EditorContent, type Editor } from "@tiptap/react";
 import { ClipboardCheck, UsersRound } from "lucide-react";
 
 import { updateProposal, type LinkedNote } from "@/lib/actions/projects";
-import type { ProposalStatus } from "@/lib/schemas/enums";
+import { writingGenres, type ProposalStatus, type WritingGenre } from "@/lib/schemas/enums";
+import { WRITING_GENRE_LABEL } from "@/lib/constants/proposal-template";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { EditorToolbar, useMarkdownEditor } from "@/components/editor/markdown-editor";
@@ -20,7 +21,22 @@ import { LinkedNotes } from "@/components/projects/linked-notes";
 import { ProposalReviewPanel } from "@/components/projects/review-panel";
 import { ProposalStatusBadge } from "@/components/projects/status-badges";
 
-type ProposalPayload = { genre: string | null; target_audience: string | null; content: string };
+type ProposalPayload = {
+  writing_genre: WritingGenre;
+  purpose: string | null;
+  genre: string | null;
+  target_audience: string | null;
+  content: string;
+};
+
+// Input と同じトーンの select（shadcn select 未導入のため。色はテーマ変数のみ）
+const selectClass =
+  "h-8 w-full rounded-md border border-input bg-transparent px-2.5 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+
+// localStorage 由来のドラフトは型保証がないため、不正値は 'novel' に落とす
+function toWritingGenre(value: unknown): WritingGenre {
+  return writingGenres.includes(value as WritingGenre) ? (value as WritingGenre) : "novel";
+}
 
 function draftKey(proposalId: string): string {
   return `nekonote:proposal-draft:${proposalId}`;
@@ -32,6 +48,8 @@ export function ProposalEditor({
 }: {
   proposal: {
     id: string;
+    writing_genre: WritingGenre;
+    purpose: string | null;
     genre: string | null;
     target_audience: string | null;
     content: string;
@@ -40,12 +58,16 @@ export function ProposalEditor({
   };
   linkedNotes: LinkedNote[];
 }) {
+  const [writingGenre, setWritingGenre] = useState<WritingGenre>(proposal.writing_genre);
+  const [purpose, setPurpose] = useState(proposal.purpose ?? "");
   const [genre, setGenre] = useState(proposal.genre ?? "");
   const [targetAudience, setTargetAudience] = useState(proposal.target_audience ?? "");
   const [restorableDraft, setRestorableDraft] = useState<ProposalPayload | null>(null);
   // レビューパネルは排他表示（企画書レビュー / キャラクターレビューのどちらか一方。SPEC-character-review §3.1）
   const [openPanel, setOpenPanel] = useState<"proposal" | "character" | null>(null);
 
+  const writingGenreRef = useRef<WritingGenre>(proposal.writing_genre);
+  const purposeRef = useRef(proposal.purpose ?? "");
   const genreRef = useRef(proposal.genre ?? "");
   const targetAudienceRef = useRef(proposal.target_audience ?? "");
   const editorRef = useRef<Editor | null>(null);
@@ -54,6 +76,8 @@ export function ProposalEditor({
     const currentEditor = editorRef.current;
     if (!currentEditor || currentEditor.isDestroyed) return null;
     return {
+      writing_genre: writingGenreRef.current,
+      purpose: purposeRef.current.trim() === "" ? null : purposeRef.current,
       genre: genreRef.current.trim() === "" ? null : genreRef.current,
       target_audience: targetAudienceRef.current.trim() === "" ? null : targetAudienceRef.current,
       content: currentEditor.getMarkdown(),
@@ -68,6 +92,8 @@ export function ProposalEditor({
   const { status, scheduleSave, flush } = useAutosave({
     storageKey: draftKey(proposal.id),
     initialPayload: {
+      writing_genre: proposal.writing_genre,
+      purpose: proposal.purpose,
       genre: proposal.genre,
       target_audience: proposal.target_audience,
       content: proposal.content,
@@ -98,6 +124,11 @@ export function ProposalEditor({
 
   function restoreDraft() {
     if (!restorableDraft || !editor) return;
+    const draftWritingGenre = toWritingGenre(restorableDraft.writing_genre);
+    setWritingGenre(draftWritingGenre);
+    writingGenreRef.current = draftWritingGenre;
+    setPurpose(restorableDraft.purpose ?? "");
+    purposeRef.current = restorableDraft.purpose ?? "";
     setGenre(restorableDraft.genre ?? "");
     genreRef.current = restorableDraft.genre ?? "";
     setTargetAudience(restorableDraft.target_audience ?? "");
@@ -149,7 +180,39 @@ export function ProposalEditor({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-              ジャンル
+              執筆ジャンル
+              <select
+                className={selectClass}
+                value={writingGenre}
+                onChange={(e) => {
+                  // 変更してもテンプレは再適用しない（本文には触れない。SPEC-genre）
+                  const next = e.target.value as WritingGenre;
+                  setWritingGenre(next);
+                  writingGenreRef.current = next;
+                  scheduleSave();
+                }}
+              >
+                {writingGenres.map((g) => (
+                  <option key={g} value={g}>
+                    {WRITING_GENRE_LABEL[g]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              執筆目的
+              <Input
+                value={purpose}
+                onChange={(e) => {
+                  setPurpose(e.target.value);
+                  purposeRef.current = e.target.value;
+                  scheduleSave();
+                }}
+                placeholder="例: 技術書典17で頒布する"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+              内容ジャンル
               <Input
                 value={genre}
                 onChange={(e) => {

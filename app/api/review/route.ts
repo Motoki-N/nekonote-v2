@@ -20,7 +20,7 @@ import { AppError, errorResponse } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
 import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
 import { enforceRateLimit } from '@/lib/rate-limit'
-import type { AiCapability, ReferenceScope, ReviewVerdict } from '@/lib/schemas/enums'
+import type { AiCapability, ReferenceScope, ReviewVerdict, WritingGenre } from '@/lib/schemas/enums'
 import { CRITIQUE_CONFIRM_CHARS, CRITIQUE_MAX_CHARS } from '@/lib/schemas/manuscript'
 import { reviewRequestSchema } from '@/lib/schemas/review'
 import { createClient } from '@/lib/supabase/server'
@@ -55,12 +55,18 @@ async function fetchProposalContext(
 ): Promise<ProposalContext> {
   const { data, error } = await supabase
     .from('proposals')
-    .select('genre, target_audience, content')
+    .select('writing_genre, purpose, genre, target_audience, content')
     .eq('project_id', projectId)
     .maybeSingle()
   if (error) throw new AppError('internal', error.message)
   if (!data) throw new AppError('not_found', '企画書が見つかりません')
-  return { genre: data.genre, targetAudience: data.target_audience, content: data.content }
+  return {
+    writingGenre: data.writing_genre as WritingGenre,
+    purpose: data.purpose,
+    genre: data.genre,
+    targetAudience: data.target_audience,
+    content: data.content,
+  }
 }
 
 /**
@@ -71,7 +77,7 @@ async function fetchProposalContext(
 async function fetchProposalWithNotes(supabase: Supabase, proposalId: string, projectId: string) {
   const { data: proposal, error: proposalError } = await supabase
     .from('proposals')
-    .select('id, project_id, genre, target_audience, content, status')
+    .select('id, project_id, writing_genre, purpose, genre, target_audience, content, status')
     .eq('id', proposalId)
     .maybeSingle()
   if (proposalError) throw new AppError('internal', proposalError.message)
@@ -235,6 +241,8 @@ export async function POST(req: Request) {
         }
         prompt = buildCharacterNoteReviewInput({
           proposal: {
+            writingGenre: proposal.writing_genre as WritingGenre,
+            purpose: proposal.purpose,
             genre: proposal.genre,
             targetAudience: proposal.target_audience,
             content: proposal.content,
@@ -256,6 +264,8 @@ export async function POST(req: Request) {
         }
         prompt = buildProposalReviewInput({
           proposal: {
+            writingGenre: proposal.writing_genre as WritingGenre,
+            purpose: proposal.purpose,
             genre: proposal.genre,
             targetAudience: proposal.target_audience,
             content: proposal.content,

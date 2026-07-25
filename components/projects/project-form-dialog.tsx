@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { createProject, getNotesByTag, updateProject, type LinkedNote } from "@/lib/actions/projects";
-import { projectStatuses, type ProjectStatus } from "@/lib/schemas/enums";
+import { projectStatuses, writingGenres, type ProjectStatus, type WritingGenre } from "@/lib/schemas/enums";
+import { WRITING_GENRE_LABEL } from "@/lib/constants/proposal-template";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -46,6 +47,7 @@ export function CreateProjectDialog({ workingTitleTags }: { workingTitleTags: Wo
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
+  const [writingGenre, setWritingGenre] = useState<WritingGenre>("novel");
   const [eventName, setEventName] = useState("");
   const [deadline, setDeadline] = useState("");
   const [targetPages, setTargetPages] = useState("");
@@ -56,6 +58,7 @@ export function CreateProjectDialog({ workingTitleTags }: { workingTitleTags: Wo
 
   function reset() {
     setTitle("");
+    setWritingGenre("novel");
     setEventName("");
     setDeadline("");
     setTargetPages("");
@@ -105,6 +108,7 @@ export function CreateProjectDialog({ workingTitleTags }: { workingTitleTags: Wo
           target_pages: targetPages.trim() === "" ? null : Number(targetPages),
         },
         [...checkedIds],
+        writingGenre,
       );
       if (!result.ok || !result.data) {
         toast.error(result.ok ? "プロジェクトの作成に失敗しました" : result.error.message);
@@ -138,6 +142,20 @@ export function CreateProjectDialog({ workingTitleTags }: { workingTitleTags: Wo
           <label className="flex flex-col gap-1 text-sm">
             タイトル（必須）
             <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
+          </label>
+          <label className="flex flex-col gap-1 text-sm">
+            執筆ジャンル（企画書のテンプレが変わります）
+            <select
+              className={selectClass}
+              value={writingGenre}
+              onChange={(e) => setWritingGenre(e.target.value as WritingGenre)}
+            >
+              {writingGenres.map((g) => (
+                <option key={g} value={g}>
+                  {WRITING_GENRE_LABEL[g]}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">
             イベント名
