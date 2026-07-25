@@ -893,3 +893,14 @@
 - 検証: typecheck / lint 通過。ペイン実機E2E=SPEC §10 のほぼ全項目——設定登録（不正形式・不存在repoの日本語エラー→実登録）→ゲート誘導→slug検証→下書き投稿→GitHub実ファイルのfrontmatter健全性→再コミット→**GitHub側直接編集からの競合検知**→slug重複→公開ダイアログ強調表示（実公開コミットのみ未実施＝ユーザーのZennに公開されるため）。テスト記事は検証後に削除し zenn-docs は原状復帰。**PAT の対象リポジトリに zenn-docs 追加が必要**（登録時の疎通検証で「見つかりません」になり判明→ユーザーが追加して解消。この検証が効いた）
 - 環境メモ: `.next` 破損で /settings がRSCマニフェスト SyntaxError→ `rm -rf .next` ＋再起動で解消。npm audit の既存26件（vivliostyle/valibot 系）は今回の追加パッケージと無関係
 - **残タスク（ユーザー作業）**: 本番での初回実投稿（下書き→Zennダッシュボード確認→published 切替は Zenn/GitHub 側で）。既存記事の一覧・開き直し編集・画像・books/ は SPEC §9 スコープ外（実需が出たらIssue起票）
+
+### セッション69: /fix-issue #94 執筆ジャンル・執筆目的の基盤——SPEC-genre策定＋PR #129 マージ・本番反映（7/25）
+
+- **Issue #94 を `/fix-issue` フローで処理（PR #129）**: 汎用執筆支援（親 #93・第一目標=技術書）の土台。着手前に親Issueの現状調査を再検証し、#97（横書き）完了・#35（リッチコンテンツ）・#126（Zenn）で技術書支援の材料が揃っていること、#94〜#96 の前提（2026-07-20調査）がすべて現状でも有効なことを確認してから着手。SPEC未策定のためインタビュー→ SPEC-genre 新規策定→プラン承認（スキーマ変更を含むため設計確認を兼ねる）→実装→E2E→レビューの1セッション縦通し
+- **仕様インタビューで確定した点**: ①技術書テンプレの見出しは**テーマ／参加イベント／ターゲット読者／本のゴール**（Issue原案の4項目をユーザー案で置き換え）②「その他」ジャンルは**空テンプレ**（雛形を押し付けない）③執筆目的の入力は**企画書エディタのみ**（作成ダイアログはジャンル選択だけでシンプルに保つ）
+- **設計の要点**: `proposals.writing_genre`（text not null default 'novel'＋CHECK）と `purpose`（nullable）のカラム追加のみ・RLS変更なし——draft-to-clean-model 判断基準2（AIプロンプト・テンプレ選択が構造参照するデータのみカラム化）に適合をスキル参照で確認。`PROPOSAL_INITIAL_CONTENT` を `Record<WritingGenre, string>` 化、ラベル `WRITING_GENRE_LABEL` は client UI と server プロンプトの両側から import できる**ディレクティブなし純定数ファイル**（proposal-template.ts）に同居。`createProject` は第3引数で受ける（noteIds と同じ「proposals側の関心事は引数」方式・projectInputSchema は projects への .insert(parsed) 直渡しのため汚染しない）。`ProposalContext` へは**必須フィールドで追加**し組み立て漏れを型エラーで検出——select 文字列の漏れ（型で検出不能）だけは全4経路を grep で機械確認
+- **実装は14ファイル（+285/-32）**: マイグレーション（承認後 db push 適用・型再生成）→ enums.ts（writingGenres）→ テンプレRecord＋ラベル → proposalInputSchema 2行（partial().omit() 経由で updateProposal の保存対象に自動反映）→ 作成ダイアログの select → 企画書エディタ4項目化（執筆ジャンル select／執筆目的／内容ジャンル←旧「ジャンル」／ターゲット層。ProposalPayload 拡張で自動保存・localStorageドラフトに自動で乗る。旧形式ドラフトは 'novel' フォールバック）→ proposalSection() に執筆ジャンル・執筆目的追加＋「ジャンル:」→「内容ジャンル:」改称
+- **スコープ外と明示した点**: 講評の入力充足チェック（critique.ts）とフェイルクローズ条件は無変更（writing_genre は not null で常在・purpose は任意）。ジャンル別ペルソナの既定選択は #95、ボードのモード化は #96
+- **レビュー2系統**: security-reviewer は省略（RLS変更なしのカラム追加のみ・Issue記載どおりの事前判断）。subagent 自己レビュー=ブロッキングなし。非ブロッキング留意1件——zod の `.partial()` は `.default()` 付きフィールドにキー欠落時デフォルトを注入するため、writing_genre を含めない部分更新を直接送ると 'novel' に静かにリセットされる（現行呼び出し元は常に全フィールド送信で実害なし・既存 content の default と同質。updateProposal に新しい呼び出し元を作るときは全フィールド送信を守ること）
+- 検証: typecheck / lint 通過。ペイン実機E2E=技術書でプロジェクト作成→4見出しテンプレ挿入→執筆目的入力→自動保存→リロード復元→**ジャンル変更で本文不変**→既存プロジェクト（人魚の唄）が「小説」既定・既存値無傷→テストプロジェクト削除で原状復帰。ペイン定石の再確認: 同一フォルダ別セッションの dev サーバー稼働中は Next 16 二重起動ロックで自前サーバー不可→ `preview_start {url}` で既存サーバー（同じ作業ツリー配信）に接続して検証
+- **残タスク**: #95（ジャンル別標準ペルソナ・プロファイルと既定選択の自動適用。主工数は技術書向けレビュープロンプトの設計・執筆——story-engineering に相当する技術書フレームワークの選定から）と #96（構成ボードのモード化 or カンバン置き換え。着手時に方式再選定）が着手可能に。どちらも着手時に SPECインタビューから
