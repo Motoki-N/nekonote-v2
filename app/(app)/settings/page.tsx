@@ -2,10 +2,12 @@ import {
   getAiModelSettings,
   getAiUsageSummary,
   getGithubConnection,
+  getZennRepo,
   listPersonas,
   listReviewProfiles,
 } from "@/lib/actions/settings";
 import { GithubConnection } from "@/components/settings/github-connection";
+import { ZennRepoSettings } from "@/components/settings/zenn-repo-settings";
 import { ModelSettings } from "@/components/settings/model-settings";
 import { PersonaList } from "@/components/settings/persona-list";
 import { ProfileList } from "@/components/settings/profile-list";
@@ -13,12 +15,13 @@ import { UsageSummary } from "@/components/settings/usage-summary";
 
 /** 設定画面（SPEC-dashboard-critique-settings §3.4）。AIモデル・使用量・ペルソナ・プロファイル・GitHub連携 */
 export default async function SettingsPage() {
-  const [modelSettings, personas, profiles, connection, usage] = await Promise.all([
+  const [modelSettings, personas, profiles, connection, usage, zennRepo] = await Promise.all([
     getAiModelSettings(),
     listPersonas(),
     listReviewProfiles(),
     getGithubConnection(),
     getAiUsageSummary(),
+    getZennRepo(),
   ]);
 
   return (
@@ -97,6 +100,19 @@ export default async function SettingsPage() {
             />
           ) : (
             <p className="text-sm text-destructive">{connection.error.message}</p>
+          )}
+        </section>
+
+        <section className="flex flex-col gap-3">
+          <h2 className="text-base font-semibold text-foreground">Zenn連携</h2>
+          <p className="text-sm text-muted-foreground">
+            Zenn記事の投稿先リポジトリ（ZennのGitHub連携に設定したもの）を登録します。
+            投稿にはGitHub連携のPATを使います。
+          </p>
+          {zennRepo.ok ? (
+            <ZennRepoSettings initialRepo={zennRepo.data?.repo ?? null} />
+          ) : (
+            <p className="text-sm text-destructive">{zennRepo.error.message}</p>
           )}
         </section>
       </main>

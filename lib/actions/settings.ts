@@ -7,7 +7,9 @@ import { DEFAULT_MODEL_MAP, PROVIDER_ENV_KEY } from '@/lib/ai/models'
 import { encrypt } from '@/lib/crypto'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
-import { verifyToken } from '@/lib/git/github'
+import { patCredentialProvider } from '@/lib/git/credentials'
+import { getDefaultBranch, verifyToken } from '@/lib/git/github'
+import { repoSchema } from '@/lib/schemas/projects'
 import { resolveReviewerPersona } from '@/lib/review-validation'
 import {
   aiProviders,
@@ -114,6 +116,80 @@ export async function deleteGithubPat(): Promise<ActionResult> {
     const { error } = await supabase
       .from('user_settings')
       .update({ github_pat_ciphertext: null, github_username: null })
+      .eq('user_id', user.id)
+    if (error) throw new AppError('internal', error.message)
+
+    revalidatePath('/settings')
+    return { ok: true }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+// ========================================
+// Zenn連携（SPEC-zenn-integration §3.1）
+// 記事本文はDBに持たない。ここで保存するのは連携リポジトリ名（owner/repo）のみ
+// ========================================
+
+/** Zenn連携リポジトリの取得（表示用。null = 未登録） */
+export async function getZennRepo(): Promise<ActionResult<{ repo: string | null }>> {
+  try {
+    const supabase = await createClient()
+    await requireUser(supabase) // RLSに加えた明示チェック（security-reviewer L-1）
+    const { data, error } = await supabase.from('user_settings').select('zenn_repo').maybeSingle()
+    if (error) throw new AppError('internal', error.message)
+    return { ok: true, data: { repo: data?.zenn_repo ?? null } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * Zenn連携リポジトリの登録・差し替え。保存前に getDefaultBranch で疎通検証し、
+ * タイポ・PATの対象リポジトリ漏れをここで弾く（SPEC-zenn-integration §3.1）
+ */
+export async function registerZennRepo(repo: string): Promise<ActionResult<{ repo: string }>> {
+  try {
+    // ZodError は toActionError で internal（固定文言）になるため、入力起因はここで validation に変換する。
+    // Server Action 直呼びで非文字列も届くため、trim 前に型を弾く（security-reviewer L-2）
+    const parsedResult = repoSchema.safeParse(typeof repo === 'string' ? repo.trim() : repo)
+    if (!parsedResult.success) {
+      throw new AppError('validation', 'リポジトリは owner/repo の形式で入力してください')
+    }
+    const parsed = parsedResult.data
+    const supabase = await createClient()
+    const user = await requireUser(supabase)
+
+    const credential = await patCredentialProvider.getCredential(supabase)
+    if (!credential) {
+      throw new AppError(
+        'validation',
+        'GitHub PATが未登録です。先にGitHub連携でPATを登録してください',
+      )
+    }
+    await getDefaultBranch(credential.token, parsed)
+
+    const { error } = await supabase
+      .from('user_settings')
+      .upsert({ user_id: user.id, zenn_repo: parsed })
+    if (error) throw new AppError('internal', error.message)
+
+    revalidatePath('/settings')
+    return { ok: true, data: { repo: parsed } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/** Zenn連携リポジトリの削除（列を null に戻すのみ。PATには触れない） */
+export async function deleteZennRepo(): Promise<ActionResult> {
+  try {
+    const supabase = await createClient()
+    const user = await requireUser(supabase)
+
+    const { error } = await supabase
+      .from('user_settings')
+      .update({ zenn_repo: null })
       .eq('user_id', user.id)
     if (error) throw new AppError('internal', error.message)
 

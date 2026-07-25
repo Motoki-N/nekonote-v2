@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/notes", label: "ノート" },
   { href: "/atelier", label: "アトリエ" },
   { href: "/chats", label: "相談" },
+  { href: "/zenn/new", label: "Zenn" },
 ] as const;
 
 /** 全認証ページ共通のグローバルナビゲーションバー（現在地ハイライト付き） */
