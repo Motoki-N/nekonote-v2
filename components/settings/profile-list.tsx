@@ -13,7 +13,8 @@ import {
   type PersonaRecord,
   type ReviewProfileRecord,
 } from "@/lib/actions/settings";
-import { targetPhases, type TargetPhase } from "@/lib/schemas/enums";
+import { targetPhases, writingGenres, type TargetPhase, type WritingGenre } from "@/lib/schemas/enums";
+import { WRITING_GENRE_LABEL } from "@/lib/constants/proposal-template";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -37,7 +38,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { TARGET_PHASE_LABEL, selectClass } from "@/components/settings/labels";
+import { TARGET_PHASE_LABEL, genreScopeLabel, selectClass } from "@/components/settings/labels";
 
 /**
  * レビュープロファイル管理（SPEC-dashboard-critique-settings §3.4）。
@@ -102,6 +103,7 @@ export function ProfileList({
               </span>
               <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                 <span>対象: {TARGET_PHASE_LABEL[profile.target_phase]}</span>
+                <span>ジャンル: {genreScopeLabel(profile.writing_genre)}</span>
                 <span>担当: {personaName(profile.default_persona_id) ?? "（既定なし）"}</span>
               </span>
             </div>
@@ -189,6 +191,10 @@ function ProfileDialog({
   const [targetPhase, setTargetPhase] = useState<TargetPhase>(profile?.target_phase ?? "proposal");
   const [promptTemplate, setPromptTemplate] = useState(profile?.prompt_template ?? "");
   const [defaultPersonaId, setDefaultPersonaId] = useState(profile?.default_persona_id ?? "");
+  // "" = 全ジャンル共通（writing_genre null。SPEC-genre-profiles）
+  const [writingGenre, setWritingGenre] = useState<WritingGenre | "">(
+    profile?.writing_genre ?? "",
+  );
   const [submitting, setSubmitting] = useState(false);
 
   const reviewerPersonas = personas.filter((p) => p.persona_type === "reviewer");
@@ -203,6 +209,7 @@ function ProfileDialog({
         target_phase: targetPhase,
         prompt_template: promptTemplate,
         default_persona_id: defaultPersonaId === "" ? null : defaultPersonaId,
+        writing_genre: writingGenre === "" ? null : writingGenre,
       };
       const result = profile
         ? await updateReviewProfile(profile.id, input)
@@ -257,6 +264,21 @@ function ProfileDialog({
                 {reviewerPersonas.map((persona) => (
                   <option key={persona.id} value={persona.id}>
                     {persona.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              対象ジャンル
+              <select
+                className={selectClass}
+                value={writingGenre}
+                onChange={(e) => setWritingGenre(e.target.value as WritingGenre | "")}
+              >
+                <option value="">共通（全ジャンル）</option>
+                {writingGenres.map((g) => (
+                  <option key={g} value={g}>
+                    {WRITING_GENRE_LABEL[g]}
                   </option>
                 ))}
               </select>

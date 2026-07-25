@@ -6,6 +6,7 @@ import {
   reviewSessionStatuses,
   reviewVerdicts,
   targetPhases,
+  writingGenres,
 } from './enums'
 
 // is_default（標準同梱フラグ）はユーザー入力に含めない。
@@ -21,6 +22,7 @@ export const personaInputSchema = z.object({
   ai_capability: z.enum(aiCapabilities),
   reference_scope: z.enum(referenceScopes),
   persona_type: z.enum(personaTypes),
+  writing_genre: z.enum(writingGenres).nullish(), // null = 全ジャンル共通（SPEC-genre-profiles）
 })
 export const personaUpdateSchema = personaInputSchema.partial()
 
@@ -35,6 +37,7 @@ export const reviewProfileInputSchema = z.object({
     .min(1, 'プロンプトを入力してください')
     .max(20_000, 'プロンプトが長すぎます（上限2万字）'),
   default_persona_id: z.uuid().nullish(),
+  writing_genre: z.enum(writingGenres).nullish(), // null = 全ジャンル共通（SPEC-genre-profiles）
 })
 export const reviewProfileUpdateSchema = reviewProfileInputSchema.partial()
 

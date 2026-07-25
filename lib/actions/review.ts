@@ -6,8 +6,9 @@ import { z } from 'zod'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
 import { attachTag } from '@/lib/actions/notes'
+import { sortByGenrePriority } from '@/lib/genre-priority'
 import { resolveProfileForPhase, resolveReviewerPersona } from '@/lib/review-validation'
-import type { ReviewVerdict } from '@/lib/schemas/enums'
+import type { ReviewVerdict, WritingGenre } from '@/lib/schemas/enums'
 import { createClient } from '@/lib/supabase/server'
 
 const uuidSchema = z.uuid()
@@ -140,6 +141,9 @@ export async function getReviewPanelBootstrap(
     const nid = noteId === undefined ? null : uuidSchema.parse(noteId)
     const supabase = await createClient()
 
+    // 既定選択のジャンル優先ソートに使う執筆ジャンルを解決する（SPEC-genre-profiles）
+    const { projectId } = await resolveTarget(supabase, parsedKind, tid, nid)
+
     // running セッションはノート絞り込み（note_id）まで含めた同一スコープのみ拾う（Issue #47）
     let runningQuery = supabase
       .from('review_sessions')
@@ -148,10 +152,10 @@ export async function getReviewPanelBootstrap(
       .eq('status', 'running')
     runningQuery = nid === null ? runningQuery.is('note_id', null) : runningQuery.eq('note_id', nid)
 
-    const [profilesResult, personasResult, runningResult] = await Promise.all([
+    const [profilesResult, personasResult, runningResult, proposalResult] = await Promise.all([
       supabase
         .from('review_profiles')
-        .select('id, name, is_default, default_persona_id')
+        .select('id, name, is_default, default_persona_id, writing_genre')
         .eq('target_phase', parsedKind)
         .order('is_default', { ascending: false })
         .order('created_at'),
@@ -162,10 +166,15 @@ export async function getReviewPanelBootstrap(
         .order('is_default', { ascending: false })
         .order('created_at'),
       runningQuery.order('created_at', { ascending: false }),
+      supabase.from('proposals').select('writing_genre').eq('project_id', projectId).maybeSingle(),
     ])
     if (profilesResult.error) throw new AppError('internal', profilesResult.error.message)
     if (personasResult.error) throw new AppError('internal', personasResult.error.message)
     if (runningResult.error) throw new AppError('internal', runningResult.error.message)
+    if (proposalResult.error) throw new AppError('internal', proposalResult.error.message)
+
+    const genre = (proposalResult.data?.writing_genre ?? 'novel') as WritingGenre
+    const sortedProfiles = sortByGenrePriority(profilesResult.data ?? [], genre)
 
     // プロファイルごとの running セッション（新しい順なので最初の1件が最新）
     const runningByProfile = new Map<string, { personaName: string | null }>()
@@ -177,19 +186,19 @@ export async function getReviewPanelBootstrap(
       }
     }
 
-    const profiles: ProfileOption[] = (profilesResult.data ?? []).map((p) => ({
+    const profiles: ProfileOption[] = sortedProfiles.map((p) => ({
       id: p.id,
       name: p.name,
       defaultPersonaId: p.default_persona_id,
       runningPersonaName: runningByProfile.get(p.id)?.personaName ?? null,
     }))
 
-    // 既定選択: running セッションが最新のプロファイル → 標準 → 先頭
+    // 既定選択: running セッションが最新のプロファイル → ジャンル優先ソート後の先頭
+    // （旧「is_default を探す」はソート後先頭に包含される。同順位内は is_default desc が維持されるため）
     const latestRunningProfileId = (runningResult.data ?? []).find(
       (s) => s.review_profile_id && profiles.some((p) => p.id === s.review_profile_id),
     )?.review_profile_id
-    const defaultProfile = (profilesResult.data ?? []).find((p) => p.is_default)
-    const initialProfileId = latestRunningProfileId ?? defaultProfile?.id ?? profiles[0]?.id ?? null
+    const initialProfileId = latestRunningProfileId ?? profiles[0]?.id ?? null
 
     return {
       ok: true,

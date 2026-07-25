@@ -16,10 +16,13 @@ import {
   aiCapabilities,
   personaTypes,
   referenceScopes,
+  writingGenres,
   type AiCapability,
   type PersonaType,
   type ReferenceScope,
+  type WritingGenre,
 } from "@/lib/schemas/enums";
+import { WRITING_GENRE_LABEL } from "@/lib/constants/proposal-template";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -47,6 +50,7 @@ import {
   CAPABILITY_LABEL,
   PERSONA_TYPE_LABEL,
   REFERENCE_SCOPE_LABEL,
+  genreScopeLabel,
   selectClass,
 } from "@/components/settings/labels";
 
@@ -104,6 +108,7 @@ export function PersonaList({ personas }: { personas: PersonaRecord[] }) {
                 <span>{PERSONA_TYPE_LABEL[persona.persona_type]}</span>
                 <span>能力: {CAPABILITY_LABEL[persona.ai_capability]}</span>
                 <span>参照: {REFERENCE_SCOPE_LABEL[persona.reference_scope]}</span>
+                <span>ジャンル: {genreScopeLabel(persona.writing_genre)}</span>
               </span>
             </div>
             <div className="flex items-center gap-0.5">
@@ -188,6 +193,10 @@ function PersonaDialog({
   const [capability, setCapability] = useState<AiCapability>(persona?.ai_capability ?? "medium");
   const [scope, setScope] = useState<ReferenceScope>(persona?.reference_scope ?? "all");
   const [personaType, setPersonaType] = useState<PersonaType>(persona?.persona_type ?? "reviewer");
+  // "" = 全ジャンル共通（writing_genre null。SPEC-genre-profiles）
+  const [writingGenre, setWritingGenre] = useState<WritingGenre | "">(
+    persona?.writing_genre ?? "",
+  );
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -201,6 +210,7 @@ function PersonaDialog({
         ai_capability: capability,
         reference_scope: scope,
         persona_type: personaType,
+        writing_genre: writingGenre === "" ? null : writingGenre,
       };
       const result = persona ? await updatePersona(persona.id, input) : await createPersona(input);
       if (!result.ok) {
@@ -266,20 +276,37 @@ function PersonaDialog({
               </select>
             </label>
           </div>
-          <label className="flex flex-col gap-1 text-sm">
-            参照範囲
-            <select
-              className={selectClass}
-              value={scope}
-              onChange={(e) => setScope(e.target.value as ReferenceScope)}
-            >
-              {referenceScopes.map((s) => (
-                <option key={s} value={s}>
-                  {REFERENCE_SCOPE_LABEL[s]}
-                </option>
-              ))}
-            </select>
-          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="flex flex-col gap-1 text-sm">
+              参照範囲
+              <select
+                className={selectClass}
+                value={scope}
+                onChange={(e) => setScope(e.target.value as ReferenceScope)}
+              >
+                {referenceScopes.map((s) => (
+                  <option key={s} value={s}>
+                    {REFERENCE_SCOPE_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              対象ジャンル
+              <select
+                className={selectClass}
+                value={writingGenre}
+                onChange={(e) => setWritingGenre(e.target.value as WritingGenre | "")}
+              >
+                <option value="">共通（全ジャンル）</option>
+                {writingGenres.map((g) => (
+                  <option key={g} value={g}>
+                    {WRITING_GENRE_LABEL[g]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           <DialogFooter>
             <Button
               type="submit"

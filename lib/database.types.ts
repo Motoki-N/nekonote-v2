@@ -381,6 +381,7 @@ export type Database = {
           reference_scope: string
           updated_at: string
           user_id: string | null
+          writing_genre: string | null
         }
         Insert: {
           ai_capability: string
@@ -393,6 +394,7 @@ export type Database = {
           reference_scope: string
           updated_at?: string
           user_id?: string | null
+          writing_genre?: string | null
         }
         Update: {
           ai_capability?: string
@@ -405,6 +407,7 @@ export type Database = {
           reference_scope?: string
           updated_at?: string
           user_id?: string | null
+          writing_genre?: string | null
         }
         Relationships: []
       }
@@ -585,6 +588,7 @@ export type Database = {
           target_phase: string
           updated_at: string
           user_id: string | null
+          writing_genre: string | null
         }
         Insert: {
           created_at?: string
@@ -596,6 +600,7 @@ export type Database = {
           target_phase: string
           updated_at?: string
           user_id?: string | null
+          writing_genre?: string | null
         }
         Update: {
           created_at?: string
@@ -607,6 +612,7 @@ export type Database = {
           target_phase?: string
           updated_at?: string
           user_id?: string | null
+          writing_genre?: string | null
         }
         Relationships: [
           {

@@ -1,14 +1,14 @@
 import { streamObject } from 'ai'
 
 import { resolveModel } from '@/lib/ai/models'
-import { PROOFREADING_PROFILE_ID } from '@/lib/ai/personas'
 import { recordAiUsage } from '@/lib/ai/usage'
 import { buildReviewSystemPrompt, PROOFREAD_COMMENT_GUIDANCE } from '@/lib/ai/prompts'
 import { AppError, errorResponse } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
+import { sortByGenrePriority } from '@/lib/genre-priority'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { getFileContent, getLatestCommitSha } from '@/lib/git/github'
-import type { AiCapability } from '@/lib/schemas/enums'
+import type { AiCapability, WritingGenre } from '@/lib/schemas/enums'
 import {
   manuscriptFilePathSchema,
   proofreadRequestSchema,
@@ -79,13 +79,26 @@ export async function POST(req: Request) {
       )
     }
 
-    // 校正・校閲プロファイル＋担当の校正さん（default_persona_id 経由）
-    const { data: profile, error: profileError } = await supabase
-      .from('review_profiles')
-      .select('prompt_template, personas (description, ai_capability)')
-      .eq('id', PROOFREADING_PROFILE_ID)
+    // 校正プロファイルのサーバー側ジャンル解決（SPEC-genre-profiles §校正）。
+    // 選択UIはなく、標準行（is_default）限定＝従来の「実質標準固定」セマンティクスを保ったまま、
+    // プロジェクトの執筆ジャンルに合う標準プロファイル（技術書→技術書校正）を自動選択する。
+    // 担当ペルソナは従来どおり default_persona_id 経由
+    const { data: proposal, error: proposalError } = await supabase
+      .from('proposals')
+      .select('writing_genre')
+      .eq('project_id', link.projects.id)
       .maybeSingle()
+    if (proposalError) throw new AppError('internal', proposalError.message)
+    const writingGenre = (proposal?.writing_genre ?? 'novel') as WritingGenre
+
+    const { data: candidates, error: profileError } = await supabase
+      .from('review_profiles')
+      .select('prompt_template, writing_genre, personas (description, ai_capability)')
+      .eq('target_phase', 'proofreading')
+      .eq('is_default', true)
+      .order('created_at')
     if (profileError) throw new AppError('internal', profileError.message)
+    const profile = sortByGenrePriority(candidates ?? [], writingGenre)[0]
     if (!profile?.personas) {
       throw new AppError('internal', '校正プロファイルまたは担当ペルソナが見つかりません')
     }

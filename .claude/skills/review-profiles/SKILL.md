@@ -24,6 +24,8 @@ AIを「フェーズ限定の機能」ではなく「役割を持つキャラク
 | 喫茶店のマスター | medium | conversational | 壁打ち相手。要約＋深掘り質問、最後にメモ化 | その場の会話 |
 | 読者代表 | medium | reviewer | ターゲット層になりきった主観的感想（「刺さった」「飽きた」）を賛否両論で。辛辣なことも言う。**設定資料は参照しない**（読者は設定資料を読まないため） | 原稿＋企画のジャンル・ターゲット層 |
 | 近所の書店員 | high | reviewer | 作家のサポーターとして売り込み分析（どの棚・どの客層・何を推すか）。あらすじ・キャッチコピー作成も担当。評価者ではない（Issue #14で役割変更） | 原稿＋企画のジャンル・ターゲット層 |
+| 技術書編集者 | high | reviewer | 技術書の企画書レビュー・原稿編集。対象読者定義・前提知識の積み上げ・学習曲線・用語統一を重点。技術的正確さは「動作確認を促す」形で指摘（Issue #95） | すべて（all） |
+| エンジニア読者 | medium | reviewer | 技術書のターゲット読者そのもの。前提知識のギャップで詰まった箇所を正直に言う。設定資料は参照しない（Issue #95） | 原稿＋企画のジャンル・ターゲット層 |
 
 ### 設計意図
 - **校正さんと担当編集の分離はコスト最適化**：重い整合性チェック（high）と軽い表記チェック（low〜medium）をモデルレベルで使い分ける
@@ -35,24 +37,48 @@ AIを「フェーズ限定の機能」ではなく「役割を持つキャラク
 ```
 personas: id, name, description（性格・口調・スタンス→プロンプトに反映）,
   ai_capability（high|medium|low）, reference_scope（all|manuscript_only|chat_only|manuscript_plus_target 等）,
-  persona_type（reviewer|conversational）, is_default
+  persona_type（reviewer|conversational|illustrator）, is_default,
+  writing_genre（novel|tech_book|other|null。null=全ジャンル共通）
 
-review_profiles: id, name, target_phase（proposal|character|structure|scene|proofreading）,
-  prompt_template（編集可能なプロンプト本文）, default_persona_id, is_default
+review_profiles: id, name, target_phase（proposal|character|structure|scene|proofreading|manuscript）,
+  prompt_template（編集可能なプロンプト本文）, default_persona_id, is_default,
+  writing_genre（novel|tech_book|other|null。null=全ジャンル共通）
 ```
 
 - テンプレあり＋自由編集可：標準プロファイルを同梱しつつ、ユーザーが複製・編集・新規作成できる
 - プロンプト差し替えでレビューフレームワーク自体を変更できる設計（別の指南書への切り替え等）
 
-## 標準プロファイル（初期セット・5種）
+## 標準プロファイル（12種）
+
+小説向け（writing_genre: novel）:
 
 1. **企画書レビュー**（target_phase: proposal、担当編集）— コンセプト・キャラクター・テーマの三要素が成立しているか＋ジャンル・ターゲット層に刺さる企画か
 2. **キャラクターレビュー**（character、担当編集）— 5つの問い（誰が・何を・なぜ・失敗の代償・どう変わるか）
 3. **構成レビュー**（structure、担当編集）— 4部構成・5転換点チェックリスト
 4. **シーンレビュー**（scene、担当編集）— シチュエーション・出来事・感情変化・葛藤の4観点
-5. **校正・校閲**（proofreading、校正さん）— 表記揺れ・誤字脱字・一貫性＋文体・表現
+5. **読者講評**（manuscript、読者代表）— 作品全体の読書体験
+6. **売り込み分析**（manuscript、書店員）— どの棚・どの客層・何を推すか
+7. **あらすじ作成**（manuscript、書店員）
+8. **キャッチコピー作成**（manuscript、書店員）
 
-各チェックリストの詳細な観点は story-engineering スキルを参照。
+全ジャンル共通（writing_genre: null）:
+
+9. **校正・校閲**（proofreading、校正さん）— 表記揺れ・誤字脱字・一貫性＋文体・表現（構造化出力）
+
+技術書向け（writing_genre: tech_book。Issue #95・SPEC-genre-profiles）:
+
+10. **技術書企画書レビュー**（proposal、技術書編集者）— テーマ・対象読者と前提知識・本のゴール・スコープ実現可能性
+11. **技術書講評**（manuscript、エンジニア読者）— 前提知識の穴・コード例の追従可能性・学びの実感
+12. **技術書校正**（proofreading、校正さん）— 技術用語の表記統一＋コードブロック校正除外（構造化出力）
+
+小説系チェックリストの詳細な観点は story-engineering スキルを参照。
+
+## 既定選択の自動適用（SPEC-genre-profiles）
+
+- プロジェクトの執筆ジャンル（proposals.writing_genre）に応じ、一覧を**一致→共通(null)→他ジャンル**の
+  優先順にソートして返す（lib/genre-priority.ts。取得後のJS側ソート・同順位内は is_default desc→created_at）
+- UIの「一覧先頭＝既定選択」挙動に乗せる。選択肢の絞り込みはしない（クロスジャンル手動選択可）
+- 校正はサーバー側ジャンル解決（選択UIなし・標準行限定。/api/proofread）
 
 ## レビューゲート（企画フェーズ）
 
