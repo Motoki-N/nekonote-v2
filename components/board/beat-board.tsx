@@ -97,16 +97,22 @@ export function BeatBoard({
     [activeId, scenes],
   );
 
+  // ビートボードに描画する小説シーンのみ（chapter=目次ボードの章カードは枚数・感情線に含めない。
+  // state には全件を保持し、並べ替え保存の全件送信で章カードを保全する。SPEC-outline-board §4）
+  const novelScenes = useMemo(() => scenes.filter((s) => s.part !== "chapter"), [scenes]);
+
   const noteCounts = useMemo(
     () =>
       Object.fromEntries(Object.entries(notesMap).map(([sceneId, notes]) => [sceneId, notes.length])),
     [notesMap],
   );
 
-  /** over 先のレーンを解決する（レーン id か、レーン内カードの id） */
+  /** over 先のレーンを解決する（レーン id か、レーン内カードの id）。
+   * chapter カード（目次ボード）はビートボードに描画されないため実際には到達しない */
   function resolveLane(overId: string): ScenePart | null {
     if ((sceneParts as readonly string[]).includes(overId)) return overId as ScenePart;
-    return scenes.find((s) => s.id === overId)?.part ?? null;
+    const part = scenes.find((s) => s.id === overId)?.part;
+    return part && part !== "chapter" ? part : null;
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -274,7 +280,7 @@ export function BeatBoard({
     <div className="flex min-h-0 flex-1">
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">シーン {scenes.length}枚</span>
+          <span className="text-xs text-muted-foreground">シーン {novelScenes.length}枚</span>
           {structureApproved && (
             <Badge variant="secondary">
               <BadgeCheck data-icon="inline-start" />
@@ -329,7 +335,7 @@ export function BeatBoard({
           </DragOverlay>
         </DndContext>
 
-        <EmotionLine scenes={scenes} />
+        <EmotionLine scenes={novelScenes} />
       </main>
 
       {/* key は兄弟間（パネル2種＋ダイアログ）で衝突しないようプレフィックスを付ける

@@ -25,12 +25,17 @@ export default async function ProjectLayout({
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: project } = await supabase
-    .from("projects")
-    .select("id, title, status, event_name, deadline, target_pages, repo, base_path")
-    .eq("id", id)
-    .maybeSingle();
+  const [{ data: project }, { data: proposal }] = await Promise.all([
+    supabase
+      .from("projects")
+      .select("id, title, status, event_name, deadline, target_pages, repo, base_path")
+      .eq("id", id)
+      .maybeSingle(),
+    // 構成ボードのタブ文言の出し分けキー（Issue #96・SPEC-outline-board §3.1）
+    supabase.from("proposals").select("writing_genre").eq("project_id", id).maybeSingle(),
+  ]);
   if (!project) notFound();
+  const boardLabel = (proposal?.writing_genre ?? "novel") === "novel" ? "ビートボード" : "目次";
 
   return (
     <div className="flex h-full flex-col">
@@ -64,7 +69,7 @@ export default async function ProjectLayout({
           }}
         />
           <div className="ml-auto">
-            <ProjectTabs projectId={project.id} />
+            <ProjectTabs projectId={project.id} boardLabel={boardLabel} />
           </div>
         </header>
       </ChromeHeader>

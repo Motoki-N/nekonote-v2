@@ -136,7 +136,8 @@ export function SceneDialog({
 }) {
   const [title, setTitle] = useState(scene.title);
   const [content, setContent] = useState(scene.content);
-  const [part, setPart] = useState<ScenePart>(scene.part);
+  // chapter（目次ボードの章カード）はビートボードから開かれない防御的フォールバック
+  const [part, setPart] = useState<ScenePart>(scene.part === "chapter" ? "setup" : scene.part);
   const [anchor, setAnchor] = useState<SceneAnchor | null>(scene.anchor);
   const [emotionStart, setEmotionStart] = useState<Emotion | null>(scene.emotion_start);
   const [emotionEnd, setEmotionEnd] = useState<Emotion | null>(scene.emotion_end);

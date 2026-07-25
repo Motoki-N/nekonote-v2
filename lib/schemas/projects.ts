@@ -5,7 +5,7 @@ import {
   projectStatuses,
   proposalStatuses,
   sceneAnchors,
-  sceneParts,
+  scenePartsAll,
   writingGenres,
 } from './enums'
 import { manuscriptFilePathSchema } from './manuscript'
@@ -94,7 +94,7 @@ const emotionIntensitySchema = z.number().int().min(EMOTION_MIN).max(EMOTION_MAX
 
 export const sceneInputSchema = z.object({
   project_id: z.uuid(),
-  part: z.enum(sceneParts),
+  part: z.enum(scenePartsAll),
   anchor: z.enum(sceneAnchors).nullish(),
   order_index: z.number().int().min(0).default(0),
   title: z.string().default(''),
@@ -111,7 +111,7 @@ export type SceneUpdate = z.infer<typeof sceneUpdateSchema>
 export const sceneEditSchema = z.object({
   title: z.string().max(200),
   content: z.string().max(20000),
-  part: z.enum(sceneParts),
+  part: z.enum(scenePartsAll),
   anchor: z.enum(sceneAnchors).nullable(),
   emotion_start: emotionIntensitySchema.nullable(),
   emotion_end: emotionIntensitySchema.nullable(),
@@ -122,6 +122,6 @@ export type SceneEdit = z.infer<typeof sceneEditSchema>
 
 // D&D確定時の全シーン最終順序（レーン=part はドロップ先で確定する）
 export const sceneOrderSchema = z
-  .array(z.object({ id: z.uuid(), part: z.enum(sceneParts) }))
+  .array(z.object({ id: z.uuid(), part: z.enum(scenePartsAll) }))
   .max(500)
 export type SceneOrder = z.infer<typeof sceneOrderSchema>

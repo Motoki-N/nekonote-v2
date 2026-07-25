@@ -1,13 +1,20 @@
 // ビートボードの純関数ヘルパー（SPEC-beat-board §4）。
 // Server Actions / API / クライアントUI で共用するため副作用を持たない
 
-import type { ApprovalStatus, Emotion, SceneAnchor, ScenePart } from '@/lib/schemas/enums'
-import { sceneParts } from '@/lib/schemas/enums'
+import type {
+  ApprovalStatus,
+  Emotion,
+  SceneAnchor,
+  ScenePart,
+  ScenePartAll,
+} from '@/lib/schemas/enums'
+import { scenePartsAll } from '@/lib/schemas/enums'
 
 export type SceneRecord = {
   id: string
   project_id: string
-  part: ScenePart
+  /** 'chapter' は目次ボードの章カード（SPEC-outline-board。ビートボードには描画しない） */
+  part: ScenePartAll
   anchor: SceneAnchor | null
   order_index: number
   title: string
@@ -20,11 +27,12 @@ export type SceneRecord = {
   manuscript_path: string | null
 }
 
-export const PART_LABEL: Record<ScenePart, string> = {
+export const PART_LABEL: Record<ScenePartAll, string> = {
   setup: '設定',
   response: '反応',
   attack: '攻撃',
   resolution: '解決',
+  chapter: '章',
 }
 
 // レーンヘッダーの短い説明（story-engineering の4部構成準拠）
@@ -69,8 +77,8 @@ export const ANCHOR_TO_PART: Record<SceneAnchor, ScenePart> = {
 
 export type BoundaryAnchor = 'pp1' | 'midpoint' | 'pp2'
 
-/** 各レーン末尾の固定スロットに置く境界アンカー（解決レーンにはない） */
-export const BOUNDARY_ANCHOR_BY_PART: Partial<Record<ScenePart, BoundaryAnchor>> = {
+/** 各レーン末尾の固定スロットに置く境界アンカー（解決・章レーンにはない） */
+export const BOUNDARY_ANCHOR_BY_PART: Partial<Record<ScenePartAll, BoundaryAnchor>> = {
   setup: 'pp1',
   response: 'midpoint',
   attack: 'pp2',
@@ -80,20 +88,23 @@ export function isBoundaryAnchor(anchor: SceneAnchor | null): anchor is Boundary
   return anchor === 'pp1' || anchor === 'midpoint' || anchor === 'pp2'
 }
 
-/** part と整合しないアンカーを解除する（D&Dのレーン間移動・ダイアログのパート変更の正規化） */
-export function normalizeAnchor(anchor: SceneAnchor | null, part: ScenePart): SceneAnchor | null {
+/** part と整合しないアンカーを解除する（D&Dのレーン間移動・ダイアログのパート変更の正規化。
+ * chapter は ANCHOR_TO_PART に存在せず常に不一致 → null になる） */
+export function normalizeAnchor(anchor: SceneAnchor | null, part: ScenePartAll): SceneAnchor | null {
   if (anchor !== null && ANCHOR_TO_PART[anchor] !== part) return null
   return anchor
 }
 
 /**
- * 正準順序: レーンをパート順（設定→反応→攻撃→解決）に連結した通し順序。
+ * 正準順序: レーンをパート順（設定→反応→攻撃→解決→章）に連結した通し順序。
  * 境界アンカー付きシーンは各レーン末尾に固定し、order_index を 0..N-1 で振り直す。
- * 入力配列の並びがレーン内の相対順として保存される
+ * 入力配列の並びがレーン内の相対順として保存される。
+ * 章レーンを末尾に含めて全走査することで、片方のビュー（ビートボード/目次ボード）から
+ * 全件送信された並べ替えでも、もう一方のビューのカードが保全される（SPEC-outline-board §4）
  */
 export function toCanonicalOrder(scenes: SceneRecord[]): SceneRecord[] {
   const result: SceneRecord[] = []
-  for (const part of sceneParts) {
+  for (const part of scenePartsAll) {
     const lane = scenes.filter((s) => s.part === part)
     const boundary = BOUNDARY_ANCHOR_BY_PART[part]
     result.push(...lane.filter((s) => !(boundary && s.anchor === boundary)))
