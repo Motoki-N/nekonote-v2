@@ -20,9 +20,15 @@ export type WritingGenre = (typeof writingGenres)[number]
 export const approvalStatuses = ['draft', 'approved'] as const
 export type ApprovalStatus = (typeof approvalStatuses)[number]
 
-// 4部構成のレーン（設定・反応・攻撃・解決）
+// 4部構成のレーン（設定・反応・攻撃・解決）。ビートボードの4レーン描画はこの配列が正
 export const sceneParts = ['setup', 'response', 'attack', 'resolution'] as const
 export type ScenePart = (typeof sceneParts)[number]
+
+// 目次ボードの章カード（Issue #96・SPEC-outline-board。小説レーンには描画しない）
+export const CHAPTER_PART = 'chapter' as const
+// DBのCHECK制約（20260725000004）・zod検証・正準順序（toCanonicalOrder）用の全語彙
+export const scenePartsAll = [...sceneParts, CHAPTER_PART] as const
+export type ScenePartAll = (typeof scenePartsAll)[number]
 
 // 5転換点アンカー
 export const sceneAnchors = ['pp1', 'pinch1', 'midpoint', 'pinch2', 'pp2'] as const

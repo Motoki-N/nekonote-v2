@@ -6,6 +6,7 @@
 //   - 売り込み分析への改名＋あらすじ・キャッチコピー2種: 20260717000001_bookseller_marketing_and_copy_profiles.sql
 //   - イラストレーター: 20260717000002_illustrator_foundation.sql
 //   - 技術書ペルソナ2人＋技術書プロファイル3種: 20260725000003_genre_personas_and_profiles.sql
+//   - 技術書構成レビュー: 20260725000004_outline_board_chapter_part.sql
 
 export const ASSISTANT_PERSONA_ID = 'e5a1c0de-0001-4000-8000-000000000001'
 export const CAFE_MASTER_PERSONA_ID = 'e5a1c0de-0002-4000-8000-000000000002'
@@ -32,3 +33,4 @@ export const CATCHCOPY_PROFILE_ID = 'e5a1c0de-1009-4000-8000-000000001009'
 export const TECH_PROPOSAL_REVIEW_PROFILE_ID = 'e5a1c0de-1010-4000-8000-000000001010'
 export const TECH_CRITIQUE_PROFILE_ID = 'e5a1c0de-1011-4000-8000-000000001011'
 export const TECH_PROOFREADING_PROFILE_ID = 'e5a1c0de-1012-4000-8000-000000001012'
+export const TECH_STRUCTURE_REVIEW_PROFILE_ID = 'e5a1c0de-1013-4000-8000-000000001013'

@@ -123,7 +123,10 @@ export function buildProposalReviewInput({
 
 /**
  * 構成レビューの user 入力（SPEC-beat-board §3.5。紐づけノート全文はIssue #58）。
- * 企画書＋全シーンを構成順に整形（パート・アンカー・タイトル・本文・感情の起点→終点・紐づけノート全文）
+ * 小説: 企画書＋全シーンを構成順に整形（パート・アンカー・タイトル・本文・感情の起点→終点・紐づけノート全文）。
+ * 非小説（技術書・その他）: 目次ボードの章カードのみを目次形式で整形（SPEC-outline-board §5。
+ * パートラベル・アンカー・感情は小説理論の項目のため出さない）。
+ * ジャンル切替で両種のカードが混在していても、レビュー入力は表示中のビューと一致する
  */
 export function buildStructureReviewInput({
   proposal,
@@ -137,19 +140,34 @@ export function buildStructureReviewInput({
   sceneNotes: Record<string, NoteContext[]>
   history: FeedbackHistoryItem[]
 }): string {
-  const lines: string[] = [...proposalSection(proposal), '', '# 構成（4部構成・構成順）']
+  const isNovel = proposal.writingGenre === 'novel'
+  const visible = scenes.filter((s) => (isNovel ? s.part !== 'chapter' : s.part === 'chapter'))
+  const lines: string[] = [
+    ...proposalSection(proposal),
+    '',
+    isNovel ? '# 構成（4部構成・構成順）' : '# 構成（目次・構成順）',
+  ]
 
-  if (scenes.length === 0) {
-    lines.push('（シーンはまだない）')
+  if (visible.length === 0) {
+    lines.push(isNovel ? '（シーンはまだない）' : '（章はまだない）')
   } else {
-    scenes.forEach((scene, index) => {
-      lines.push(
-        `## ${index + 1}. [${PART_LABEL[scene.part]}]${anchorLabel(scene.anchor)} ${scene.title || '（無題）'}`,
-        `感情の起伏: ${emotionArc(scene.emotion_start, scene.emotion_end)}`,
-        '"""',
-        scene.content || '（本文なし）',
-        '"""',
-      )
+    visible.forEach((scene, index) => {
+      if (isNovel) {
+        lines.push(
+          `## ${index + 1}. [${PART_LABEL[scene.part]}]${anchorLabel(scene.anchor)} ${scene.title || '（無題）'}`,
+          `感情の起伏: ${emotionArc(scene.emotion_start, scene.emotion_end)}`,
+          '"""',
+          scene.content || '（本文なし）',
+          '"""',
+        )
+      } else {
+        lines.push(
+          `## ${index + 1}. ${scene.title || '（無題）'}`,
+          '"""',
+          scene.content || '（内容メモなし）',
+          '"""',
+        )
+      }
       const notes = sceneNotes[scene.id] ?? []
       if (notes.length > 0) {
         lines.push(...notesSection('紐づけノート（設定資料）:', notes, '###'))
@@ -197,12 +215,15 @@ export function buildSceneReviewInput({
     '# 全シーン一覧（構成順。→ が対象シーン）',
   ]
 
-  scenes.forEach((item, index) => {
-    const marker = item.id === scene.id ? '→ ' : ''
-    lines.push(
-      `${index + 1}. ${marker}[${PART_LABEL[item.part]}]${anchorLabel(item.anchor)} ${item.title || '（無題）'}（感情: ${emotionArc(item.emotion_start, item.emotion_end)}）`,
-    )
-  })
+  // シーンレビューは小説専用機能のため、章カード（目次ボード）は一覧に混ぜない
+  scenes
+    .filter((item) => item.part !== 'chapter')
+    .forEach((item, index) => {
+      const marker = item.id === scene.id ? '→ ' : ''
+      lines.push(
+        `${index + 1}. ${marker}[${PART_LABEL[item.part]}]${anchorLabel(item.anchor)} ${item.title || '（無題）'}（感情: ${emotionArc(item.emotion_start, item.emotion_end)}）`,
+      )
+    })
 
   lines.push(...historySection(history))
   return lines.join('\n')

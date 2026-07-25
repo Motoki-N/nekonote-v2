@@ -9,12 +9,14 @@ import type { LinkedNote } from '@/lib/actions/projects'
 import { normalizeAnchor, toCanonicalOrder, type SceneRecord } from '@/lib/board'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
-import { sceneParts } from '@/lib/schemas/enums'
+import { OUTLINE_TEMPLATE, outlineTemplateKeys } from '@/lib/constants/outline-template'
+import { scenePartsAll } from '@/lib/schemas/enums'
 import { sceneEditSchema, sceneOrderSchema, type SceneEdit, type SceneOrder } from '@/lib/schemas/projects'
 import { createClient } from '@/lib/supabase/server'
 
 const uuidSchema = z.uuid()
-const partSchema = z.enum(sceneParts)
+const partSchema = z.enum(scenePartsAll)
+const outlineTemplateKeySchema = z.enum(outlineTemplateKeys)
 
 const SCENE_COLUMNS =
   'id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status, manuscript_path'
@@ -120,6 +122,44 @@ export async function createScene(
 
     revalidatePath(`/projects/${pid}/board`)
     return { ok: true, data: { scenes: next, createdId: created.id } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * 定番構成テンプレの一括追加（Issue #96・SPEC-outline-board §3.4）。
+ * 章カード（part='chapter'）N 枚を章レーン末尾に1回の upsert で追加する（原子的）
+ */
+export async function applyOutlineTemplate(
+  projectId: string,
+  templateKey: string,
+): Promise<ActionResult<{ scenes: SceneRecord[] }>> {
+  try {
+    const pid = uuidSchema.parse(projectId)
+    const key = outlineTemplateKeySchema.parse(templateKey)
+    const supabase = await createClient()
+    await assertProjectOwned(supabase, pid)
+
+    const scenes = await fetchProjectScenes(supabase, pid)
+    const created: SceneRecord[] = OUTLINE_TEMPLATE[key].chapters.map((title, index) => ({
+      id: randomUUID(),
+      project_id: pid,
+      part: 'chapter',
+      anchor: null,
+      order_index: scenes.length + index, // 仮値。toCanonicalOrder で確定する
+      title,
+      content: '',
+      emotion_start: null,
+      emotion_end: null,
+      status: 'draft',
+      manuscript_path: null,
+    }))
+    const next = toCanonicalOrder([...scenes, ...created])
+    await persistChanges(supabase, toMap(scenes), next)
+
+    revalidatePath(`/projects/${pid}/board`)
+    return { ok: true, data: { scenes: next } }
   } catch (error) {
     return toActionError(error)
   }
