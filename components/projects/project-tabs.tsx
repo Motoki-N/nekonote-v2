@@ -20,6 +20,8 @@ export function ProjectTabs({
     { href: `/projects/${projectId}/board`, label: boardLabel, exact: false },
     { href: `/projects/${projectId}/manuscript`, label: "原稿", exact: false },
     { href: `/projects/${projectId}/editor`, label: "エディタ", exact: false },
+    // 過去レビューセッションの閲覧（SPEC-review-history §3.1）
+    { href: `/projects/${projectId}/reviews`, label: "レビュー履歴", exact: false },
   ];
 
   return (
