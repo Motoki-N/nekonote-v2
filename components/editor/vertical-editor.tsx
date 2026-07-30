@@ -7,6 +7,7 @@ import {
   BookOpen,
   BookOpenText,
   ExternalLink,
+  FileDown,
   FilePlus2,
   FileText,
   Info,
@@ -62,6 +63,7 @@ import { Button } from '@/components/ui/button'
 import { useChrome } from '@/components/layout/app-chrome'
 import { CritiquePanel } from '@/components/manuscript/critique-panel'
 import { ProofreadPanel } from '@/components/manuscript/proofread-panel'
+import { AozoraExportDialog } from '@/components/editor/aozora-export-dialog'
 import { BranchCreateDialog } from '@/components/editor/branch-create-dialog'
 import { BranchMenu } from '@/components/editor/branch-menu'
 import { BuildDialog } from '@/components/editor/build-dialog'
@@ -135,6 +137,8 @@ export function VerticalEditor({
   const [creating, setCreating] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [buildOpen, setBuildOpen] = useState(false)
+  /** 青空文庫形式の書き出し（SPEC-aozora-export）。source は開いた時点の編集中本文 */
+  const [aozoraSource, setAozoraSource] = useState<string | null>(null)
   /** ブランチ切替・作成・PR（SPEC-vertical-editor-phase5） */
   const [branchSwitching, setBranchSwitching] = useState(false)
   const [branchCreateOpen, setBranchCreateOpen] = useState(false)
@@ -1201,6 +1205,17 @@ export function VerticalEditor({
           >
             <Settings />
           </Button>
+          {/* 青空文庫形式の書き出し（SPEC-aozora-export。開いている章の編集中の内容が対象） */}
+          <Button
+            size="sm"
+            variant="outline"
+            title="青空文庫形式で書き出し（投稿サイト用）"
+            disabled={!selectedPath || chapterLoading}
+            onClick={() => setAozoraSource(contentRef.current)}
+          >
+            <FileDown data-icon="inline-start" />
+            書き出し
+          </Button>
           <Button size="sm" variant="outline" onClick={() => setBuildOpen(true)}>
             ビルド
           </Button>
@@ -1641,6 +1656,14 @@ export function VerticalEditor({
         dirty={dirty || draftPaths.size > 0}
         nonDefaultBranch={okWs.branch !== okWs.defaultBranch}
         onOpenChange={setBuildOpen}
+      />
+      <AozoraExportDialog
+        open={aozoraSource !== null}
+        fileName={selectedName ?? 'chapter.txt'}
+        source={aozoraSource ?? ''}
+        onOpenChange={(open) => {
+          if (!open) setAozoraSource(null)
+        }}
       />
       <BranchCreateDialog
         open={branchCreateOpen}
