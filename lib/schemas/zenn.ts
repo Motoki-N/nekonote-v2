@@ -50,3 +50,27 @@ export const zennArticleInputSchema = z.object({
 
 export type ZennArticleInput = z.input<typeof zennArticleInputSchema>
 export type ZennArticle = z.output<typeof zennArticleInputSchema>
+
+// ---- 画像アップロード（SPEC-zenn-integration §11） ----
+
+// Zennの画像仕様: 1枚3MB以内・png/jpg/jpeg/webp/gif のみ
+export const ZENN_MAX_IMAGE_BYTES = 3 * 1024 * 1024
+
+// ファイル名: 英数字始まり・英数と ._- のみ・.. 拒否・拡張子allowlist
+// （縦書きエディタの imageFileNameSchema と同形。パス合成はサーバー側で行う）
+export const zennImageFileNameSchema = z
+  .string()
+  .regex(/^(?!.*\.\.)[0-9A-Za-z][0-9A-Za-z._-]{0,80}\.(png|jpe?g|webp|gif)$/, {
+    error: '画像ファイル名が不正です（英数字始まり・png/jpg/jpeg/webp/gif のみ）',
+  })
+
+export const zennImageBase64Schema = z
+  .string()
+  .regex(/^[A-Za-z0-9+/]+={0,2}$/, { error: '画像データが不正です' })
+  // 長さが4の倍数でない不正base64はGitHub側の422（conflictに正規化される）まで
+  // 到達させず入口で弾く（security-reviewer L-1）
+  .refine((v) => v.length % 4 === 0, { error: '画像データが不正です' })
+  // base64は元サイズの約4/3。デコード前に長さで粗く弾く（正確な検査はデコード後）
+  .max(Math.ceil((ZENN_MAX_IMAGE_BYTES / 3) * 4) + 8, {
+    error: '画像が大きすぎます（Zennの上限3MB）',
+  })
