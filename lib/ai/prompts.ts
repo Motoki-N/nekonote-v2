@@ -461,16 +461,20 @@ export function buildDashboardChatPrompt({
 
 /**
  * 掘り下げ支援の system プロンプト。
- * ペルソナの口調（personas.description）＋役割指示＋対象ノートのコンテキストを組み立てる
+ * ペルソナの口調（personas.description）＋役割指示＋対象ノートのコンテキスト
+ * ＋関連ノート（同じ仮タイトルタグのノート群。Issue #46）を組み立てる
  */
 export function buildDeepDivePrompt({
   personaDescription,
   note,
+  relatedNotes,
 }: {
   personaDescription: string
   note: NoteContext
+  /** 同じ仮タイトルタグを持つ関連ノート（なければ空配列） */
+  relatedNotes: NoteContext[]
 }): string {
-  return [
+  const lines = [
     personaDescription,
     '',
     '# 今回の仕事: ネタの掘り下げ支援',
@@ -492,7 +496,20 @@ export function buildDeepDivePrompt({
     '"""',
     note.content || '（まだ何も書かれていない）',
     '"""',
-  ].join('\n')
+  ]
+
+  if (relatedNotes.length > 0) {
+    lines.push(
+      '',
+      ...notesSection(
+        '# 関連ノート（同じ仮タイトルタグを持つ、同じ作品候補の資料。参考情報）',
+        relatedNotes,
+      ),
+      '掘り下げの主対象はあくまで「対象ノート」。関連ノートは作品世界の文脈や設定の整合性を踏まえるための参考として使う。',
+    )
+  }
+
+  return lines.join('\n')
 }
 
 // ========================================
