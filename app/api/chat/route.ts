@@ -17,6 +17,7 @@ import { chatTitleFrom } from '@/lib/chat-title'
 import {
   buildDashboardChatPrompt,
   buildDeepDivePrompt,
+  type NoteContext,
   type ScheduleContext,
 } from '@/lib/ai/prompts'
 import { AppError, errorResponse } from '@/lib/errors'
@@ -53,6 +54,54 @@ function jstDate(at: Date): string {
 }
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
+
+/** 掘り下げに同梱する関連ノートの上限（トークンコスト抑制。SPEC-ai-deep-dive §3.2） */
+const RELATED_NOTES_LIMIT = 10
+
+/**
+ * 対象ノートと同じ仮タイトルタグ（working_title）を持つ関連ノートを取得する（Issue #46）。
+ * RLS 越しの取得＝自分のノートのみ。ごみ箱内は除外し、更新が新しい順に上限件数まで。
+ * 本文は保存済みDB値（対象ノートだけがエディタ現在値。SPEC-ai-deep-dive §3.2）
+ */
+async function fetchRelatedNotes(
+  supabase: SupabaseServerClient,
+  noteId: string,
+): Promise<NoteContext[]> {
+  // 対象ノートに付いている仮タイトルタグ
+  const { data: tagLinks, error: tagError } = await supabase
+    .from('note_tags')
+    .select('tag_id, tags!inner(kind)')
+    .eq('note_id', noteId)
+    .eq('tags.kind', 'working_title')
+  if (tagError) throw new AppError('internal', tagError.message)
+  const tagIds = (tagLinks ?? []).map((link) => link.tag_id)
+  if (tagIds.length === 0) return []
+
+  // 同じ仮タイトルタグを持つ他のノートID（複数タグ一致による重複は除去）
+  const { data: noteLinks, error: linkError } = await supabase
+    .from('note_tags')
+    .select('note_id')
+    .in('tag_id', tagIds)
+    .neq('note_id', noteId)
+  if (linkError) throw new AppError('internal', linkError.message)
+  const noteIds = [...new Set((noteLinks ?? []).map((link) => link.note_id))]
+  if (noteIds.length === 0) return []
+
+  const { data: notes, error: notesError } = await supabase
+    .from('notes')
+    .select('title, content, note_tags(tags(name))')
+    .in('id', noteIds)
+    .is('deleted_at', null)
+    .order('updated_at', { ascending: false })
+    .limit(RELATED_NOTES_LIMIT)
+  if (notesError) throw new AppError('internal', notesError.message)
+
+  return (notes ?? []).map((note) => ({
+    title: note.title,
+    content: note.content,
+    tags: note.note_tags.flatMap((link) => (link.tags ? [link.tags.name] : [])),
+  }))
+}
 
 /**
  * スケジュールコンテキストをサーバーで組み立てる（SPEC-conversational-personas §5.2）。
@@ -221,9 +270,14 @@ export async function POST(req: Request) {
       if (thread.notes?.deleted_at) {
         throw new AppError('not_found', 'ノートがごみ箱に入っています。復元してから掘り下げてください')
       }
+      // note 分岐は kind 検証済みのため thread.note_id は非 null
+      const relatedNotes = thread.note_id
+        ? await fetchRelatedNotes(supabase, thread.note_id)
+        : []
       system = buildDeepDivePrompt({
         personaDescription: thread.personas.description,
         note: context.note,
+        relatedNotes,
       })
       // 掘り下げでもメモ化ツールを使えるようにする（Issue #50・SPEC §10）。
       // saveSchedule はプロジェクト文脈がないため未登録＝モデルから見えない
