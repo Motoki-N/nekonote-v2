@@ -1,6 +1,7 @@
 # SPEC-zenn-integration: Zenn連携（記事の新規投稿）
 
 作成日: 2026-07-25（Issue #126 のインタビュー駆動で策定）
+改訂: 2026-07-30（Issue #132・§11 画像アップロードを追加。§9 から画像アップロードを除外）
 ステータス: **確定**（2026-07-25 レビュー済み・プラン承認をもって設計確認とする）
 起点Issue: #126（ネコノテで執筆した記事をGitHub経由でZennへ投稿したい）
 
@@ -202,7 +203,6 @@ alter table public.user_settings add column zenn_repo text;
 
 - 既存記事の一覧・開き直し編集・published切替・削除
 - 埋め込みプレビュー（embedOrigin。リンク・カード・ツイート等はプレビュー上ではリンク表示）
-- 画像アップロード（Zennの `/images` ディレクトリ運用）
 - books/（Zennの本）対応・「Zenn記事→技術書」ビルドパイプライン
 - KaTeX数式CSS・mermaid のプレビュー完全対応
 - 初回コミット後のslug変更（リネーム）
@@ -225,3 +225,60 @@ alter table public.user_settings add column zenn_repo text;
 9. **プレビュー**: `:::message`・ファイル名つきコードブロックがZennの見た目で表示。
    アプリをダークテーマにしてもプレビューはライト背景のまま。フォーム・ボタンはテーマ追従
 10. **回帰**: 既存の原稿タブ・縦書きエディタ・設定画面（PAT登録）が従来どおり動く
+
+## 11. 画像アップロード（Issue #132・2026-07-30 改訂）
+
+§9 でスコープ外としていた「画像アップロード」を実装する（#128 のドッグフーディング実需）。
+
+### 11.1 決定事項
+
+| 論点 | 決定 |
+|---|---|
+| 配置先 | `images/<slug>/`（Zenn公式推奨の記事ごとフォルダ分け。Zennはリポジトリルート `/images` 配下の任意サブフォルダを認める） |
+| 本文への挿入記法 | `![<ファイル名のstem>](/images/<slug>/<ファイル名>)`（Zennは `/images/` 始まりの絶対パス参照） |
+| 挿入トリガー | ヘッダーの「画像を挿入」ボタンのみ（ファイル選択→即コミット→カーソル位置へ記法挿入）。D&D・クリップボードペーストはスコープ外 |
+| 制約 | Zenn仕様に合わせ 1枚 **3MB以内**・png / jpg / jpeg / webp / gif のみ |
+| コミット方式 | アップロード＝即コミット（縦書きエディタ phase3 §6 と同じ「本文とは独立に画像だけ先にコミット」方式）。同名衝突は `-2` からの連番リネームで自動回避（最大5回） |
+| プレビュー | アップロード時にブラウザ内で保持した Blob URL を `/images/...` パスへ割り当てて表示。**新規APIルート・PATプロキシは作らない**（この画面で上げた画像のみ表示＝「新規投稿のみ」の現行スコープと一致。リロード後のプレビューには出ないが、参照パス自体は正しい） |
+| slug変更との関係 | 初回コミット前に slug を変えても、挿入済み記法はアップロード先の実パスを指すため壊れない（フォルダ名と最終slugがズレるだけ・許容） |
+
+### 11.2 Server Action（lib/actions/zenn.ts に追加）
+
+```
+uploadZennImage(slug, fileName, base64Content):
+  ActionResult<{ path: string; fileName: string }>
+  // loadZennContext → enforceRateLimit(userId, 'zenn-upload', { perMinute: 6, perDay: 100 })
+  //   （editor-upload と同水準）
+  // zennSlugSchema / zennImageFileNameSchema / zennImageBase64Schema（3MB・二段検査）で検証
+  // パスはサーバーで images/<slug>/<name> を合成（クライアントから生パスは受け取らない）
+  // createBinaryFileContent で即コミット。conflict は連番リネームで再試行
+  // 戻り値 path はリポジトリパス（images/<slug>/<name>）。記法の先頭 / はクライアントで付す
+```
+
+### 11.3 セキュリティ
+
+- パス成分は slug（`[a-z0-9_-]{12,50}`）とファイル名（英数字始まり・英数と `._-` のみ・
+  `..` 拒否・拡張子allowlist）のみで合成し、パストラバーサル不能
+- base64 は正規表現＋長さの粗検査に加え、デコード後バイト数で 3MB を再検査（二段）
+- PAT復号を伴う Server Action の追加のため **security-reviewer を必ず通す**（§8 どおり）
+
+### 11.4 対象ファイル
+
+| ファイル | 変更 |
+|---|---|
+| `lib/schemas/zenn.ts` | zennImageFileNameSchema / zennImageBase64Schema / ZENN_MAX_IMAGE_BYTES 追加 |
+| `lib/actions/zenn.ts` | uploadZennImage 追加 |
+| `components/zenn/zenn-workspace.tsx` | 「画像を挿入」ボタン・アップロード→記法挿入・Blob URL管理 |
+| `components/zenn/zenn-preview.tsx` | imageUrls による `/images/...` → Blob URL の差し替え |
+
+クライアントの `sanitizeImageFileName` / `fileToBase64` は `lib/editor/image.ts` を流用する
+（汎用ユーティリティのため。挿入記法だけはZenn形式なので流用しない）。
+
+### 11.5 E2E検証手順（追加分）
+
+1. 画像を選択→`images/<slug>/<name>` へコミットされ、カーソル位置に
+   `![stem](/images/<slug>/<name>)` が挿入される。プレビューに画像が表示される
+2. 同名ファイルを再アップロード→`-2` 連番でコミットされる
+3. 3MB超の画像→アップロード前に日本語エラーで拒否（コミットされない）
+4. 非対応形式（svg等）→拒否
+5. 記事本文の保存フローが従来どおり動く（画像コミットと本文コミットが独立）

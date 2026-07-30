@@ -5,10 +5,21 @@ import { z } from 'zod'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
-import { createFileContent, getDefaultBranch, putFileContent } from '@/lib/git/github'
+import {
+  createBinaryFileContent,
+  createFileContent,
+  getDefaultBranch,
+  putFileContent,
+} from '@/lib/git/github'
 import { enforceRateLimit } from '@/lib/rate-limit'
 import { repoSchema } from '@/lib/schemas/projects'
-import { zennArticleInputSchema } from '@/lib/schemas/zenn'
+import {
+  ZENN_MAX_IMAGE_BYTES,
+  zennArticleInputSchema,
+  zennImageBase64Schema,
+  zennImageFileNameSchema,
+  zennSlugSchema,
+} from '@/lib/schemas/zenn'
 import type { ZennArticleInput } from '@/lib/schemas/zenn'
 import { createClient } from '@/lib/supabase/server'
 import { buildZennArticleFile } from '@/lib/zenn/frontmatter'
@@ -149,6 +160,53 @@ export async function saveZennArticle(
         ),
       )
     }
+    return toActionError(error)
+  }
+}
+
+/**
+ * 画像を `images/<slug>/` へ即コミットする（SPEC §11・縦書きエディタ phase3 §6 と同方式）。
+ * 同名ファイルがある場合は `-2` からの連番でリネームして再試行する。
+ * 挿入記法の追記・プレビュー用Blob URLの管理はクライアントの責務
+ */
+export async function uploadZennImage(
+  slug: string,
+  fileName: string,
+  base64Content: string,
+): Promise<ActionResult<{ path: string; fileName: string }>> {
+  try {
+    const ctx = await loadZennContext()
+    enforceRateLimit(ctx.userId, 'zenn-upload', { perMinute: 6, perDay: 100 })
+    const safeSlug = zennSlugSchema.parse(slug)
+    const name = zennImageFileNameSchema.parse(fileName)
+    const content = zennImageBase64Schema.parse(base64Content)
+    // 粗い長さ検査（スキーマ）に加え、デコード後バイト数でZenn上限を再検査（二段）
+    if (Buffer.from(content, 'base64').length > ZENN_MAX_IMAGE_BYTES) {
+      throw new AppError('validation', '画像が大きすぎます（Zennの上限3MB）')
+    }
+
+    const dot = name.lastIndexOf('.')
+    const stem = name.slice(0, dot)
+    const ext = name.slice(dot)
+    // 同名衝突は連番リネームで自動回避（最大5回。使い勝手優先で聞き返さない）
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const candidate = attempt === 1 ? name : `${stem}-${attempt}${ext}`
+      // slug は [a-z0-9_-]・ファイル名は英数始まり＋allowlist のみ＝パストラバーサル不能
+      const path = `images/${safeSlug}/${candidate}`
+      try {
+        await createBinaryFileContent(ctx.token, ctx.repo, path, {
+          base64Content: content,
+          message: `Zenn: ${path} を追加（ネコノテAI）`,
+          // branch 省略＝デフォルトブランチへ直接コミット（SPEC §2）
+        })
+        return { ok: true, data: { path, fileName: candidate } }
+      } catch (error) {
+        if (error instanceof AppError && error.code === 'conflict') continue
+        throw error
+      }
+    }
+    throw new AppError('conflict', '同名の画像が既に多数あります。ファイル名を変えてください')
+  } catch (error) {
     return toActionError(error)
   }
 }

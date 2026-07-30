@@ -23,7 +23,14 @@ function loadMarkdownToHtml(): Promise<MarkdownToHtml> {
  * テーマ例外（SPEC §3.4）: .znc コンテナは「Zennと同じ見た目」が目的の例外領域として
  * ライト背景固定（zenn-content-css がライト前提。アプリ側ダークテーマでも切り替えない）
  */
-export function ZennPreview({ body }: { body: string }) {
+export function ZennPreview({
+  body,
+  imageUrls = {},
+}: {
+  body: string
+  /** この画面でアップロードした画像の `/images/...` パス → Blob URL（SPEC §11） */
+  imageUrls?: Record<string, string>
+}) {
   const [html, setHtml] = useState('')
 
   useEffect(() => {
@@ -32,7 +39,12 @@ export function ZennPreview({ body }: { body: string }) {
       void (async () => {
         try {
           const markdownToHtml = await loadMarkdownToHtml()
-          const rendered = await markdownToHtml(body)
+          let rendered = await markdownToHtml(body)
+          // アップロード済み画像の参照パスをブラウザ内のBlob URLへ差し替える
+          // （パスは [a-z0-9_./-] のみ＝HTML属性値として安全。SPEC §11）
+          for (const [path, url] of Object.entries(imageUrls)) {
+            rendered = rendered.split(`src="${path}"`).join(`src="${url}"`)
+          }
           if (!cancelled) setHtml(rendered)
         } catch {
           if (!cancelled) setHtml('<p>プレビューの変換に失敗しました</p>')
@@ -43,7 +55,7 @@ export function ZennPreview({ body }: { body: string }) {
       cancelled = true
       clearTimeout(timer)
     }
-  }, [body])
+  }, [body, imageUrls])
 
   return (
     <div
