@@ -20,6 +20,7 @@ import {
   Save,
   Settings,
   SpellCheck,
+  Trash2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -932,6 +933,37 @@ export function VerticalEditor({
     view.focus()
   }, [])
 
+  /** コメント一覧から該当コメントを本文から削除する（Issue #19。Cmd/Ctrl+Z で取り消せる通常の編集） */
+  const deleteComment = useCallback(
+    (comment: ManuscriptComment) => {
+      const view = editorViewRef.current
+      if (!view) return
+      const doc = view.state.doc
+      // 一覧はデバウンス更新のため、直後の編集で位置がずれ得る。今も単一のコメント本体
+      // （途中に終端記号がない）を指しているか検証してから消す
+      const target = comment.to <= doc.length ? doc.sliceString(comment.from, comment.to) : ''
+      if (!target.startsWith('<!--') || target.indexOf('-->') !== target.length - 3) {
+        recount()
+        toast.error('本文が変更されたため削除を中止しました。一覧を更新したのでやり直してください')
+        return
+      }
+      // コメントだけの行なら行ごと（末尾の改行含む）削除して空行を残さない
+      const startLine = doc.lineAt(comment.from)
+      const endLine = doc.lineAt(comment.to)
+      const standalone =
+        doc.sliceString(startLine.from, comment.from).trim() === '' &&
+        doc.sliceString(comment.to, endLine.to).trim() === ''
+      view.dispatch({
+        changes: standalone
+          ? { from: startLine.from, to: Math.min(endLine.to + 1, doc.length) }
+          : { from: comment.from, to: comment.to },
+        userEvent: 'delete',
+      })
+      recount()
+    },
+    [recount],
+  )
+
   /** ペイン比率のドラッグ可変（SPEC §3.2） */
   const startDrag = useCallback((event: React.PointerEvent) => {
     event.preventDefault()
@@ -1338,17 +1370,27 @@ export function VerticalEditor({
               ) : (
                 <ul className="flex flex-col gap-0.5" aria-label="コメント一覧">
                   {comments.map((comment) => (
-                    <li key={`${comment.from}:${comment.to}`}>
+                    <li key={`${comment.from}:${comment.to}`} className="flex items-start gap-0.5">
                       <button
                         type="button"
                         onClick={() => jumpToComment(comment)}
-                        className="flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-secondary/50"
+                        className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-secondary/50"
                       >
                         <span className="shrink-0 pt-px text-[10px] tabular-nums leading-4 text-muted-foreground">
                           L{comment.line}
                         </span>
                         <span className="min-w-0 break-all">{comment.summary}</span>
                       </button>
+                      {/* 消化済みコメントのワンタッチ削除（Issue #19。Cmd/Ctrl+Z で取り消せる） */}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`L${comment.line} のコメントを削除`}
+                        className="shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => deleteComment(comment)}
+                      >
+                        <Trash2 />
+                      </Button>
                     </li>
                   ))}
                 </ul>
