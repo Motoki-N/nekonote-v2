@@ -2,11 +2,13 @@
 
 import { Pin } from "lucide-react";
 
-import { ANCHOR_LABEL, type BoundaryAnchor, type SceneRecord } from "@/lib/board";
+import { ANCHOR_LABEL, type SceneRecord } from "@/lib/board";
+import type { SceneAnchor } from "@/lib/schemas/enums";
 import { SceneCardContent } from "@/components/board/scene-card";
 
 /**
- * 境界アンカー（PP1・ミッドポイント・PP2）の固定スロット（SPEC-beat-board §3.2）。
+ * 境界アンカー（PP1・ミッドポイント等、テンプレートの【アンカー】転換点）の固定スロット
+ * （SPEC-beat-board §3.2・SPEC-structure-templates §3）。
  * レーン末尾に常時表示し、未設定時はプレースホルダーで「まだ決まっていない転換点」を可視化する。
  * アンカー付きシーンはドラッグ不可（外すには編集ダイアログでアンカーを解除する）
  */
@@ -16,7 +18,7 @@ export function AnchorSlot({
   noteCount,
   onEdit,
 }: {
-  anchor: BoundaryAnchor;
+  anchor: SceneAnchor;
   scene: SceneRecord | undefined;
   noteCount?: number;
   onEdit: (scene: SceneRecord) => void;

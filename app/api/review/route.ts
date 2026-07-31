@@ -20,7 +20,13 @@ import { AppError, errorResponse } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
 import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
 import { enforceRateLimit } from '@/lib/rate-limit'
-import type { AiCapability, ReferenceScope, ReviewVerdict, WritingGenre } from '@/lib/schemas/enums'
+import type {
+  AiCapability,
+  ReferenceScope,
+  ReviewVerdict,
+  StructureTemplate,
+  WritingGenre,
+} from '@/lib/schemas/enums'
 import { CRITIQUE_CONFIRM_CHARS, CRITIQUE_MAX_CHARS } from '@/lib/schemas/manuscript'
 import { reviewRequestSchema } from '@/lib/schemas/review'
 import { createClient } from '@/lib/supabase/server'
@@ -101,6 +107,21 @@ async function fetchProposalWithNotes(supabase: Supabase, proposalId: string, pr
     }))
 
   return { proposal, notes }
+}
+
+/** プロジェクトの構成テンプレートを取得（構成・シーンレビューのコンテキスト用。Issue #54） */
+async function fetchStructureTemplate(
+  supabase: Supabase,
+  projectId: string,
+): Promise<StructureTemplate> {
+  const { data, error } = await supabase
+    .from('projects')
+    .select('structure_template')
+    .eq('id', projectId)
+    .maybeSingle()
+  if (error) throw new AppError('internal', error.message)
+  if (!data) throw new AppError('not_found', 'プロジェクトが見つかりません')
+  return data.structure_template as StructureTemplate
 }
 
 /** プロジェクトの全シーンを構成順で取得（RLS越し） */
@@ -298,7 +319,8 @@ export async function POST(req: Request) {
           `構成（企画書・シーン・紐づけノート）の合計が約${structureInputChars.toLocaleString('ja-JP')}字あり、レビューの上限（${CRITIQUE_MAX_CHARS.toLocaleString('ja-JP')}字）を超えています。シーンの紐づけノートを減らしてください`,
         )
       }
-      prompt = buildStructureReviewInput({ proposal, scenes, sceneNotes, history })
+      const structureTemplate = await fetchStructureTemplate(supabase, session.project_id)
+      prompt = buildStructureReviewInput({ proposal, structureTemplate, scenes, sceneNotes, history })
     } else if (phase === 'scene') {
       // シーンレビュー: target_ref = scene id（RLS越し取得＋プロジェクト一致の検証）
       const scenes = await fetchScenes(supabase, session.project_id)
@@ -317,7 +339,8 @@ export async function POST(req: Request) {
           `シーンと紐づけノートの合計が約${sceneInputChars.toLocaleString('ja-JP')}字あり、レビューの上限（${CRITIQUE_MAX_CHARS.toLocaleString('ja-JP')}字）を超えています。紐づけノートを減らしてください`,
         )
       }
-      prompt = buildSceneReviewInput({ proposal, scene, scenes, notes, history })
+      const structureTemplate = await fetchStructureTemplate(supabase, session.project_id)
+      prompt = buildSceneReviewInput({ proposal, structureTemplate, scene, scenes, notes, history })
     } else if (phase === 'manuscript') {
       // 講評: target_ref = project id（SPEC-dashboard-critique-settings §3.3。作品全体が対象）
       if (targetRef.data !== session.project_id) {

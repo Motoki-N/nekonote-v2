@@ -1,7 +1,7 @@
 import type { LinkedNote } from "@/lib/actions/projects";
 import { createClient } from "@/lib/supabase/server";
 import type { SceneRecord } from "@/lib/board";
-import type { ApprovalStatus, WritingGenre } from "@/lib/schemas/enums";
+import type { ApprovalStatus, StructureTemplate, WritingGenre } from "@/lib/schemas/enums";
 import { BeatBoard } from "@/components/board/beat-board";
 import { OutlineBoard } from "@/components/board/outline-board";
 
@@ -23,8 +23,12 @@ export default async function BoardPage({ params }: { params: Promise<{ id: stri
         )
         .eq("project_id", id)
         .order("order_index"),
-      // 構成レビューのゲート状態（Issue #57）
-      supabase.from("projects").select("structure_status").eq("id", id).maybeSingle(),
+      // 構成レビューのゲート状態（Issue #57）＋構成テンプレート（Issue #54）
+      supabase
+        .from("projects")
+        .select("structure_status, structure_template")
+        .eq("id", id)
+        .maybeSingle(),
       // シーンごとの紐づけノート（Issue #56。ごみ箱中は表示から除外する）
       supabase
         .from("scene_notes")
@@ -37,6 +41,7 @@ export default async function BoardPage({ params }: { params: Promise<{ id: stri
 
   const genre = (proposal?.writing_genre ?? "novel") as WritingGenre;
   const structureStatus = (project?.structure_status ?? "draft") as ApprovalStatus;
+  const structureTemplate = (project?.structure_template ?? "four_part") as StructureTemplate;
 
   if (genre !== "novel") {
     return (
@@ -60,6 +65,7 @@ export default async function BoardPage({ params }: { params: Promise<{ id: stri
       initialScenes={(scenes ?? []) as SceneRecord[]}
       initialLinkedNotes={linkedNotes}
       structureStatus={structureStatus}
+      structureTemplate={structureTemplate}
     />
   );
 }
