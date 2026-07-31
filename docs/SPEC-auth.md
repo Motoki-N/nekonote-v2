@@ -53,7 +53,7 @@ Vercelプレビューデプロイでもログイン可能とする。必要な�
 （ログインボタンの `redirectTo` は `location.origin` ベースのため、許可リストに載れば任意のプレビューURLで動作する）。
 
 - **Supabase Redirect URLs**（Dashboard > Authentication > URL Configuration）に
-  `https://nekonote-v2-*-motokis-projects-b4ffebfe.vercel.app/**` を追加。
+  `https://nekonote-v2-*-<team-slug>.vercel.app/**` を追加。
   Vercelのチームスコープ付きワイルドカードのため、第三者のデプロイが許可リストに乗ることはない
 - **Vercel Preview 環境の環境変数**: 本番と同値の
   `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `ALLOWED_EMAILS` /

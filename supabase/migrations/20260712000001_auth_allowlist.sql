@@ -17,7 +17,10 @@ create table private.auth_allowlist (
 revoke all on schema private from anon, authenticated;
 revoke all on private.auth_allowlist from anon, authenticated;
 
-insert into private.auth_allowlist (email) values ('motoking55@gmail.com');
+-- 許可するメールアドレスを投入する。空のままだとトリガーが全サインアップを拒否する
+-- （フェイルクローズ）ため、このプロジェクトを利用する場合は自分のメールに書き換えて
+-- 適用するか、適用後に SQL Editor 等から手動で insert すること。
+-- insert into private.auth_allowlist (email) values ('you@example.com');
 
 create or replace function public.check_email_allowlist()
 returns trigger
