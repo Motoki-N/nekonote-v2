@@ -20,18 +20,66 @@ export type WritingGenre = (typeof writingGenres)[number]
 export const approvalStatuses = ['draft', 'approved'] as const
 export type ApprovalStatus = (typeof approvalStatuses)[number]
 
-// 4部構成のレーン（設定・反応・攻撃・解決）。ビートボードの4レーン描画はこの配列が正
-export const sceneParts = ['setup', 'response', 'attack', 'resolution'] as const
+// 構成テンプレート（projects.structure_template。20260731000001 の CHECK 制約と対応。
+// SPEC-structure-templates。レーン・転換点の構成は lib/board-templates.ts が正）
+export const structureTemplates = [
+  'four_part',
+  'three_act',
+  'structure',
+  'save_the_cat',
+  'heros_journey',
+  'story_anatomy',
+] as const
+export type StructureTemplate = (typeof structureTemplates)[number]
+
+// 小説レーン（全テンプレートの和集合。どのレーンがどのテンプレートに属するかは
+// lib/board-templates.ts が正。値を変更するときは同ファイルと 20260731000001 も同時に更新すること）
+export const sceneParts = [
+  // 4部構成
+  'setup', 'response', 'attack', 'resolution',
+  // 三幕構成
+  'act1', 'act2_first', 'act2_second', 'act3',
+  // ストラクチャー式
+  'reaction1', 'reaction2', 'action1', 'action2',
+  // Save The Cat式
+  'stc_part1', 'stc_part2', 'stc_part3', 'stc_part4',
+  // ヒーローズジャーニー式
+  'hj_separation', 'hj_descent', 'hj_initiation', 'hj_return',
+  // ストーリー解剖学式
+  'sa_part1', 'sa_part2', 'sa_part3', 'sa_part4',
+] as const
 export type ScenePart = (typeof sceneParts)[number]
 
 // 目次ボードの章カード（Issue #96・SPEC-outline-board。小説レーンには描画しない）
 export const CHAPTER_PART = 'chapter' as const
-// DBのCHECK制約（20260725000004）・zod検証・正準順序（toCanonicalOrder）用の全語彙
+// DBのCHECK制約（20260731000001）・zod検証・正準順序（toCanonicalOrder）用の全語彙
 export const scenePartsAll = [...sceneParts, CHAPTER_PART] as const
 export type ScenePartAll = (typeof scenePartsAll)[number]
 
-// 5転換点アンカー
-export const sceneAnchors = ['pp1', 'pinch1', 'midpoint', 'pinch2', 'pp2'] as const
+// 転換点アンカー（全テンプレートの和集合。テンプレ内の定義順に並べる=編集ダイアログ等の表示順）
+export const sceneAnchors = [
+  // 4部構成
+  'pp1', 'pinch1', 'midpoint', 'pinch2', 'pp2',
+  // 三幕構成
+  'ta_pp1', 'ta_midpoint', 'ta_pp2',
+  // ストラクチャー式
+  'st_hook', 'st_inciting', 'st_key_event', 'st_pp1',
+  'st_pinch1', 'st_midpoint', 'st_pinch2', 'st_pp2', 'st_climax', 'st_resolution',
+  // Save The Cat式
+  'stc_opening_image', 'stc_theme', 'stc_setup', 'stc_catalyst', 'stc_debate', 'stc_tp1',
+  'stc_b_story', 'stc_fun', 'stc_midpoint',
+  'stc_bad_guys', 'stc_all_is_lost', 'stc_dark_night', 'stc_tp2',
+  'stc_finale', 'stc_final_image',
+  // ヒーローズジャーニー式
+  'hj_ordinary', 'hj_call', 'hj_refusal', 'hj_mentor', 'hj_threshold',
+  'hj_tests', 'hj_ordeal', 'hj_reward', 'hj_road_back', 'hj_resurrection', 'hj_elixir',
+  // ストーリー解剖学式
+  'sa_self_discovery', 'sa_ghost', 'sa_weakness', 'sa_inciting', 'sa_desire',
+  'sa_ally', 'sa_opponent', 'sa_fake_ally', 'sa_revelation1',
+  'sa_plan', 'sa_opponent_plan', 'sa_drive', 'sa_ally_attack',
+  'sa_apparent_defeat', 'sa_revelation2', 'sa_audience_revelation', 'sa_revelation3',
+  'sa_gauntlet', 'sa_battle', 'sa_self_revelation', 'sa_moral_decision', 'sa_new_equilibrium',
+] as const
 export type SceneAnchor = (typeof sceneAnchors)[number]
 
 // 感情の強度: -5〜+5の11段階整数（0=中立)。null=未設定（emotion_start/emotion_end列）。

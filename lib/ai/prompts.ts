@@ -1,4 +1,6 @@
 import { ANCHOR_LABEL, PART_LABEL, formatEmotion, type SceneRecord } from '@/lib/board'
+import { BOARD_TEMPLATES } from '@/lib/board-templates'
+import type { StructureTemplate } from '@/lib/schemas/enums'
 import { WRITING_GENRE_LABEL } from '@/lib/constants/proposal-template'
 import type { Emotion, ProjectStatus, SceneAnchor, WritingGenre } from '@/lib/schemas/enums'
 import { isMilestoneAchieved, type Schedule } from '@/lib/schemas/schedule'
@@ -122,19 +124,44 @@ export function buildProposalReviewInput({
 }
 
 /**
+ * 「採用中の構成テンプレート」節（Issue #54・SPEC-structure-templates §7）。
+ * レーン構成・転換点一覧はレジストリ定義から自動生成し、手法固有のレビュー観点を続ける
+ */
+function templateSection(template: StructureTemplate): string[] {
+  const def = BOARD_TEMPLATES[template]
+  return [
+    `# 採用中の構成テンプレート: ${def.label}`,
+    'レーン構成と転換点（この定義順が構成の正しい並び。【アンカー】はレーン末尾固定の境界転換点）:',
+    ...def.lanes.map((lane) => {
+      const points = lane.turningPoints
+        .map((tp) => `${tp.label}${tp.boundary ? '【アンカー】' : ''}`)
+        .join(' → ')
+      return `- ${lane.label}（${lane.description}）${points ? `: ${points}` : ''}`
+    }),
+    '',
+    'この手法のレビュー観点:',
+    def.reviewChecklist,
+  ]
+}
+
+/**
  * 構成レビューの user 入力（SPEC-beat-board §3.5。紐づけノート全文はIssue #58）。
- * 小説: 企画書＋全シーンを構成順に整形（パート・アンカー・タイトル・本文・感情の起点→終点・紐づけノート全文）。
+ * 小説: 企画書＋採用中の構成テンプレート（Issue #54）＋全シーンを構成順に整形
+ * （パート・アンカー・タイトル・本文・感情の起点→終点・紐づけノート全文）。
  * 非小説（技術書・その他）: 目次ボードの章カードのみを目次形式で整形（SPEC-outline-board §5。
- * パートラベル・アンカー・感情は小説理論の項目のため出さない）。
+ * パートラベル・アンカー・感情・テンプレート節は小説理論の項目のため出さない）。
  * ジャンル切替で両種のカードが混在していても、レビュー入力は表示中のビューと一致する
  */
 export function buildStructureReviewInput({
   proposal,
+  structureTemplate,
   scenes,
   sceneNotes,
   history,
 }: {
   proposal: ProposalContext
+  /** 採用中の構成テンプレート（projects.structure_template） */
+  structureTemplate: StructureTemplate
   scenes: SceneRecord[]
   /** シーンID→紐づけノート全文（Issue #58） */
   sceneNotes: Record<string, NoteContext[]>
@@ -145,7 +172,10 @@ export function buildStructureReviewInput({
   const lines: string[] = [
     ...proposalSection(proposal),
     '',
-    isNovel ? '# 構成（4部構成・構成順）' : '# 構成（目次・構成順）',
+    ...(isNovel ? [...templateSection(structureTemplate), ''] : []),
+    isNovel
+      ? `# 構成（${BOARD_TEMPLATES[structureTemplate].label}・構成順）`
+      : '# 構成（目次・構成順）',
   ]
 
   if (visible.length === 0) {
@@ -186,12 +216,15 @@ export function buildStructureReviewInput({
  */
 export function buildSceneReviewInput({
   proposal,
+  structureTemplate,
   scene,
   scenes,
   notes,
   history,
 }: {
   proposal: ProposalContext
+  /** 採用中の構成テンプレート（パート・アンカー名の解釈用に明示する。Issue #54） */
+  structureTemplate: StructureTemplate
   scene: SceneRecord
   scenes: SceneRecord[]
   /** 対象シーンの紐づけノート全文（Issue #58） */
@@ -200,6 +233,8 @@ export function buildSceneReviewInput({
 }): string {
   const lines: string[] = [
     ...proposalSection(proposal),
+    '',
+    `構成テンプレート: ${BOARD_TEMPLATES[structureTemplate].label}`,
     '',
     '# 対象シーン',
     `パート: ${PART_LABEL[scene.part]}${scene.anchor ? ` ${anchorLabel(scene.anchor)}` : ''}`,

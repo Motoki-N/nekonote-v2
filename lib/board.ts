@@ -1,12 +1,14 @@
 // ビートボードの純関数ヘルパー（SPEC-beat-board §4）。
 // Server Actions / API / クライアントUI で共用するため副作用を持たない
 
+import { BOARD_TEMPLATES, boardTemplateList } from '@/lib/board-templates'
 import type {
   ApprovalStatus,
   Emotion,
   SceneAnchor,
   ScenePart,
   ScenePartAll,
+  StructureTemplate,
 } from '@/lib/schemas/enums'
 import { scenePartsAll } from '@/lib/schemas/enums'
 
@@ -27,38 +29,34 @@ export type SceneRecord = {
   manuscript_path: string | null
 }
 
-export const PART_LABEL: Record<ScenePartAll, string> = {
-  setup: '設定',
-  response: '反応',
-  attack: '攻撃',
-  resolution: '解決',
+// ---- テンプレートレジストリからのグローバル対応表の導出（Issue #54） ----
+// スラッグがテンプレート横断で一意なため、全テンプレートを平坦化した対応表が成立する。
+// Record の網羅性は「enums の全語彙がいずれかのテンプレート定義に現れること」に依存する
+// （語彙を追加するときは lib/board-templates.ts も同時に更新すること）
+
+const allLanes = boardTemplateList.flatMap((t) => t.lanes)
+const allTurningPoints = boardTemplateList.flatMap((t) =>
+  t.lanes.flatMap((lane) => lane.turningPoints.map((tp) => ({ ...tp, part: lane.id }))),
+)
+
+export const PART_LABEL = {
+  ...Object.fromEntries(allLanes.map((lane) => [lane.id, lane.label])),
   chapter: '章',
-}
+} as Record<ScenePartAll, string>
 
-// レーンヘッダーの短い説明（story-engineering の4部構成準拠）
-export const PART_DESCRIPTION: Record<ScenePart, string> = {
-  setup: '主人公の日常と危機の醸成。フックで引き込む',
-  response: '一変した状況への反応・逃避・模索',
-  attack: '主導権を握り、問題へ攻勢をかける',
-  resolution: '内面の悪魔を克服した主人公による決着',
-}
+// レーンヘッダーの短い説明
+export const PART_DESCRIPTION = Object.fromEntries(
+  allLanes.map((lane) => [lane.id, lane.description]),
+) as Record<ScenePart, string>
 
-export const ANCHOR_LABEL: Record<SceneAnchor, string> = {
-  pp1: 'PP1: プロットポイント1',
-  pinch1: 'ピンチポイント1',
-  midpoint: 'ミッドポイント',
-  pinch2: 'ピンチポイント2',
-  pp2: 'PP2: プロットポイント2',
-}
+export const ANCHOR_LABEL = Object.fromEntries(
+  allTurningPoints.map((tp) => [tp.id, tp.label]),
+) as Record<SceneAnchor, string>
 
 /** カード上のアンカーバッジ用の短縮ラベル */
-export const ANCHOR_BADGE: Record<SceneAnchor, string> = {
-  pp1: 'PP1',
-  pinch1: 'ピンチ1',
-  midpoint: 'ミッド',
-  pinch2: 'ピンチ2',
-  pp2: 'PP2',
-}
+export const ANCHOR_BADGE = Object.fromEntries(
+  allTurningPoints.map((tp) => [tp.id, tp.badge]),
+) as Record<SceneAnchor, string>
 
 /** 感情の強度の表示用テキスト（null=未設定、0=0、それ以外は符号付き数値） */
 export function formatEmotion(value: Emotion | null): string {
@@ -67,25 +65,24 @@ export function formatEmotion(value: Emotion | null): string {
 }
 
 /** アンカーが属するパート（pp1⇔setup 等の整合はこの対応表が正） */
-export const ANCHOR_TO_PART: Record<SceneAnchor, ScenePart> = {
-  pp1: 'setup',
-  pinch1: 'response',
-  midpoint: 'response',
-  pinch2: 'attack',
-  pp2: 'attack',
-}
+export const ANCHOR_TO_PART = Object.fromEntries(
+  allTurningPoints.map((tp) => [tp.id, tp.part]),
+) as Record<SceneAnchor, ScenePart>
 
-export type BoundaryAnchor = 'pp1' | 'midpoint' | 'pp2'
+/** 各レーン末尾の固定スロットに置く境界アンカー（持たないレーンもある。SPEC-structure-templates §3） */
+export const BOUNDARY_ANCHOR_BY_PART: Partial<Record<ScenePartAll, SceneAnchor>> =
+  Object.fromEntries(
+    allLanes
+      .map((lane) => [lane.id, lane.turningPoints.find((tp) => tp.boundary)?.id])
+      .filter(([, anchor]) => anchor !== undefined),
+  )
 
-/** 各レーン末尾の固定スロットに置く境界アンカー（解決・章レーンにはない） */
-export const BOUNDARY_ANCHOR_BY_PART: Partial<Record<ScenePartAll, BoundaryAnchor>> = {
-  setup: 'pp1',
-  response: 'midpoint',
-  attack: 'pp2',
-}
+const boundaryAnchors = new Set<SceneAnchor>(
+  allTurningPoints.filter((tp) => tp.boundary).map((tp) => tp.id),
+)
 
-export function isBoundaryAnchor(anchor: SceneAnchor | null): anchor is BoundaryAnchor {
-  return anchor === 'pp1' || anchor === 'midpoint' || anchor === 'pp2'
+export function isBoundaryAnchor(anchor: SceneAnchor | null): anchor is SceneAnchor {
+  return anchor !== null && boundaryAnchors.has(anchor)
 }
 
 /** part と整合しないアンカーを解除する（D&Dのレーン間移動・ダイアログのパート変更の正規化。
@@ -111,4 +108,44 @@ export function toCanonicalOrder(scenes: SceneRecord[]): SceneRecord[] {
     if (boundary) result.push(...lane.filter((s) => s.anchor === boundary))
   }
   return result.map((s, index) => ({ ...s, order_index: index }))
+}
+
+/**
+ * レーン内の転換点の並び順制約の検証（SPEC-structure-templates §5）。
+ * 各レーンで転換点付きシーンの相対順がテンプレート定義順（turningPoints の配列順）に
+ * 一致しない最初の違反を返す（prior=定義順で先の転換点が later の後ろに置かれている）。
+ * scenes はボード表示順（正準順序）で渡すこと。クライアント（ドロップ時）とサーバー
+ * （updateScene / reorderScenes）で共用する
+ */
+export function findTurningPointOrderViolation(
+  scenes: SceneRecord[],
+  template: StructureTemplate,
+): { prior: SceneAnchor; later: SceneAnchor } | null {
+  for (const lane of BOARD_TEMPLATES[template].lanes) {
+    const defIndex = new Map(lane.turningPoints.map((tp, index) => [tp.id, index]))
+    let maxIndex = -1
+    let maxAnchor: SceneAnchor | null = null
+    for (const scene of scenes) {
+      if (scene.part !== lane.id || scene.anchor === null) continue
+      const index = defIndex.get(scene.anchor)
+      // part↔anchor 不整合はここでは扱わない（normalizeAnchor が解除する）
+      if (index === undefined) continue
+      if (index < maxIndex && maxAnchor !== null) {
+        return { prior: scene.anchor, later: maxAnchor }
+      }
+      if (index > maxIndex) {
+        maxIndex = index
+        maxAnchor = scene.anchor
+      }
+    }
+  }
+  return null
+}
+
+/** 順序違反の日本語メッセージ（トースト・AppError 共用） */
+export function turningPointOrderMessage(violation: {
+  prior: SceneAnchor
+  later: SceneAnchor
+}): string {
+  return `「${ANCHOR_LABEL[violation.prior]}」は「${ANCHOR_LABEL[violation.later]}」より前に置く必要があります`
 }

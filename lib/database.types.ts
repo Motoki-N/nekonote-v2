@@ -422,6 +422,7 @@ export type Database = {
           schedule: Json | null
           status: string
           structure_status: string
+          structure_template: string
           target_pages: number | null
           title: string
           updated_at: string
@@ -437,6 +438,7 @@ export type Database = {
           schedule?: Json | null
           status?: string
           structure_status?: string
+          structure_template?: string
           target_pages?: number | null
           title: string
           updated_at?: string
@@ -452,6 +454,7 @@ export type Database = {
           schedule?: Json | null
           status?: string
           structure_status?: string
+          structure_template?: string
           target_pages?: number | null
           title?: string
           updated_at?: string

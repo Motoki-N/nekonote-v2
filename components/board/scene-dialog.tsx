@@ -9,14 +9,14 @@ import type { LinkedNote } from "@/lib/actions/projects";
 import {
   ANCHOR_LABEL,
   ANCHOR_TO_PART,
-  PART_LABEL,
   formatEmotion,
   isBoundaryAnchor,
   type SceneRecord,
 } from "@/lib/board";
+import { BOARD_TEMPLATES } from "@/lib/board-templates";
 import { LinkedNoteChips } from "@/components/notes/linked-note-chips";
-import { EMOTION_MAX, EMOTION_MIN, sceneAnchors, sceneParts } from "@/lib/schemas/enums";
-import type { Emotion, SceneAnchor, ScenePart } from "@/lib/schemas/enums";
+import { EMOTION_MAX, EMOTION_MIN, sceneAnchors } from "@/lib/schemas/enums";
+import type { Emotion, SceneAnchor, ScenePart, StructureTemplate } from "@/lib/schemas/enums";
 import type { SceneEdit } from "@/lib/schemas/projects";
 import {
   AlertDialog,
@@ -113,6 +113,7 @@ function EmotionStepper({
  */
 export function SceneDialog({
   scene,
+  structureTemplate,
   allScenes,
   linkedNotes,
   onAttachNote,
@@ -123,6 +124,8 @@ export function SceneDialog({
   onClose,
 }: {
   scene: SceneRecord;
+  /** パート選択肢の出典（現テンプレートのレーンのみ出す。Issue #54） */
+  structureTemplate: StructureTemplate;
   /** アンカー付け替えの注意書き表示用（1転換点1シーン） */
   allScenes: SceneRecord[];
   /** このシーンの紐づけノート（Issue #56。attach/detach は保存ボタンと独立に即時反映） */
@@ -134,10 +137,15 @@ export function SceneDialog({
   onReview: (scene: SceneRecord) => void;
   onClose: () => void;
 }) {
+  const templateLanes = BOARD_TEMPLATES[structureTemplate].lanes;
   const [title, setTitle] = useState(scene.title);
   const [content, setContent] = useState(scene.content);
-  // chapter（目次ボードの章カード）はビートボードから開かれない防御的フォールバック
-  const [part, setPart] = useState<ScenePart>(scene.part === "chapter" ? "setup" : scene.part);
+  // 現テンプレートのレーンでないパート（章カード等）はビートボードから開かれない防御的フォールバック
+  const [part, setPart] = useState<ScenePart>(
+    templateLanes.some((lane) => lane.id === scene.part)
+      ? (scene.part as ScenePart)
+      : templateLanes[0].id,
+  );
   const [anchor, setAnchor] = useState<SceneAnchor | null>(scene.anchor);
   const [emotionStart, setEmotionStart] = useState<Emotion | null>(scene.emotion_start);
   const [emotionEnd, setEmotionEnd] = useState<Emotion | null>(scene.emotion_end);
@@ -254,9 +262,9 @@ export function SceneDialog({
                 value={part}
                 onChange={(e) => handlePartChange(e.target.value as ScenePart)}
               >
-                {sceneParts.map((p) => (
-                  <option key={p} value={p}>
-                    {PART_LABEL[p]}
+                {templateLanes.map((lane) => (
+                  <option key={lane.id} value={lane.id}>
+                    {lane.label}
                   </option>
                 ))}
               </select>

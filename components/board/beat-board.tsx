@@ -27,17 +27,31 @@ import {
   deleteScene,
   detachSceneNote,
   reorderScenes,
+  switchStructureTemplate,
   updateScene,
 } from "@/lib/actions/scenes";
 import {
   BOUNDARY_ANCHOR_BY_PART,
+  findTurningPointOrderViolation,
   isBoundaryAnchor,
   normalizeAnchor,
   toCanonicalOrder,
+  turningPointOrderMessage,
   type SceneRecord,
 } from "@/lib/board";
-import { sceneParts, type ApprovalStatus, type ScenePart } from "@/lib/schemas/enums";
+import { BOARD_TEMPLATES, boardTemplateList } from "@/lib/board-templates";
+import type { ApprovalStatus, ScenePart, StructureTemplate } from "@/lib/schemas/enums";
 import type { SceneEdit } from "@/lib/schemas/projects";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmotionLine } from "@/components/board/emotion-line";
@@ -65,6 +79,7 @@ export function BeatBoard({
   initialScenes,
   initialLinkedNotes,
   structureStatus,
+  structureTemplate,
 }: {
   projectId: string;
   initialScenes: SceneRecord[];
@@ -72,9 +87,17 @@ export function BeatBoard({
   initialLinkedNotes: Record<string, LinkedNote[]>;
   /** 構成レビューのゲート状態（projects.structure_status。Issue #57） */
   structureStatus: ApprovalStatus;
+  /** 構成テンプレート（projects.structure_template。Issue #54） */
+  structureTemplate: StructureTemplate;
 }) {
   const router = useRouter();
   const [scenes, setScenes] = useState<SceneRecord[]>(() => toCanonicalOrder(initialScenes));
+  // 切替確定の楽観的反映（structureApproved と同じ理由で props と別に持つ）
+  const [template, setTemplate] = useState<StructureTemplate>(structureTemplate);
+  // セレクトで選ばれた切替先（確認ダイアログ表示中。null = ダイアログ非表示）
+  const [pendingTemplate, setPendingTemplate] = useState<StructureTemplate | null>(null);
+  const [switching, setSwitching] = useState(false);
+  const templateDef = BOARD_TEMPLATES[template];
   const [notesMap, setNotesMap] = useState<Record<string, LinkedNote[]>>(initialLinkedNotes);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<SceneRecord | null>(null);
@@ -110,7 +133,7 @@ export function BeatBoard({
   /** over 先のレーンを解決する（レーン id か、レーン内カードの id）。
    * chapter カード（目次ボード）はビートボードに描画されないため実際には到達しない */
   function resolveLane(overId: string): ScenePart | null {
-    if ((sceneParts as readonly string[]).includes(overId)) return overId as ScenePart;
+    if (templateDef.lanes.some((lane) => lane.id === overId)) return overId as ScenePart;
     const part = scenes.find((s) => s.id === overId)?.part;
     return part && part !== "chapter" ? part : null;
   }
@@ -165,6 +188,14 @@ export function BeatBoard({
       }
     }
 
+    // 転換点の並び順制約（SPEC-structure-templates §5）: 違反ドロップはロールバックして保存しない
+    const violation = findTurningPointOrderViolation(next, template);
+    if (violation) {
+      if (before) setScenes(before);
+      toast.error(turningPointOrderMessage(violation));
+      return;
+    }
+
     // ドロップ確定: 楽観的更新は済んでいるので、差分があればサーバーへ一括保存
     if (!before || sameOrder(before, next)) return;
     void reorderScenes(
@@ -210,6 +241,28 @@ export function BeatBoard({
     }
     setScenes(result.data.scenes);
     return true;
+  }
+
+  /** テンプレート切替の確定（Issue #54）。確認ダイアログの「切り替える」から呼ばれる */
+  async function handleSwitchTemplate(next: StructureTemplate) {
+    if (switching) return;
+    setSwitching(true);
+    try {
+      const result = await switchStructureTemplate(projectId, next);
+      if (!result.ok || !result.data) {
+        toast.error(result.ok ? "テンプレートの切替に失敗しました" : result.error.message);
+        return;
+      }
+      setScenes(result.data.scenes);
+      setTemplate(next);
+      // 構成が丸ごと変わるため承認はサーバー側で draft に戻している（ローカルも同期）
+      setStructureApproved(false);
+      setPendingTemplate(null);
+      toast(`構成テンプレートを「${BOARD_TEMPLATES[next].label}」に切り替えました`);
+      router.refresh();
+    } finally {
+      setSwitching(false);
+    }
   }
 
   /** 「通す」確定（Issue #57）。サーバー検証成功後にゲート状態をローカルへ反映する */
@@ -280,6 +333,24 @@ export function BeatBoard({
     <div className="flex min-h-0 flex-1">
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
+          <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            構成テンプレート
+            <select
+              className="h-8 rounded-md border border-input bg-transparent px-2.5 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50"
+              value={template}
+              disabled={switching}
+              onChange={(e) => {
+                const next = e.target.value as StructureTemplate;
+                if (next !== template) setPendingTemplate(next);
+              }}
+            >
+              {boardTemplateList.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <span className="text-xs text-muted-foreground">シーン {novelScenes.length}枚</span>
           {structureApproved && (
             <Badge variant="secondary">
@@ -311,7 +382,8 @@ export function BeatBoard({
           onDragCancel={handleDragCancel}
         >
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {sceneParts.map((part) => {
+            {templateDef.lanes.map((lane) => {
+              const part = lane.id;
               const boundary = BOUNDARY_ANCHOR_BY_PART[part];
               const laneScenes = scenes.filter((s) => s.part === part);
               return (
@@ -346,7 +418,7 @@ export function BeatBoard({
           kind="structure"
           targetId={projectId}
           title="構成レビュー"
-          emptyText="4部構成・5転換点の観点で、担当編集がボード全体（シーン構成と企画書）を見ます。承認が出るまで、指摘 → 改稿 → 再レビューを繰り返します。"
+          emptyText={`「${templateDef.label}」の観点で、担当編集がボード全体（シーン構成と企画書）を見ます。承認が出るまで、指摘 → 改稿 → 再レビューを繰り返します。`}
           showVerdict
           onClose={() => setReview(null)}
           renderFooter={({ latestVerdict, busy, sessionId }) => {
@@ -410,10 +482,45 @@ export function BeatBoard({
         />
       )}
 
+      {/* テンプレート切替の確認（Issue #54。破壊的変更のため必ず確認を挟む） */}
+      <AlertDialog
+        open={pendingTemplate !== null}
+        onOpenChange={(open) => !open && setPendingTemplate(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              構成テンプレートを「
+              {pendingTemplate ? BOARD_TEMPLATES[pendingTemplate].label : ""}」に切り替えますか？
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              全シーンは新テンプレートの先頭レーン「
+              {pendingTemplate ? BOARD_TEMPLATES[pendingTemplate].lanes[0].label : ""}
+              」に移動し、転換点マークはすべて解除されます。構成の承認状態もリセットされます。
+              シーンのタイトル・本文・感情・ノート紐づけは保持されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={switching}>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={switching}
+              onClick={(e) => {
+                // 確定はサーバー保存の完了を待ってから閉じる（失敗時はダイアログを残す）
+                e.preventDefault();
+                if (pendingTemplate) void handleSwitchTemplate(pendingTemplate);
+              }}
+            >
+              切り替える
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {editing && (
         <SceneDialog
           key={`dialog-${editing.id}`}
           scene={editing}
+          structureTemplate={template}
           allScenes={scenes}
           linkedNotes={notesMap[editing.id] ?? []}
           onAttachNote={(note) => handleAttachNote(editing.id, note)}

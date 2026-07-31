@@ -6,17 +6,31 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 
 import type { LinkedNote } from '@/lib/actions/projects'
-import { normalizeAnchor, toCanonicalOrder, type SceneRecord } from '@/lib/board'
+import {
+  findTurningPointOrderViolation,
+  normalizeAnchor,
+  toCanonicalOrder,
+  turningPointOrderMessage,
+  type SceneRecord,
+} from '@/lib/board'
+import { BOARD_TEMPLATES } from '@/lib/board-templates'
 import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
 import { OUTLINE_TEMPLATE, outlineTemplateKeys } from '@/lib/constants/outline-template'
-import { scenePartsAll } from '@/lib/schemas/enums'
+import {
+  CHAPTER_PART,
+  scenePartsAll,
+  structureTemplates,
+  type ScenePartAll,
+  type StructureTemplate,
+} from '@/lib/schemas/enums'
 import { sceneEditSchema, sceneOrderSchema, type SceneEdit, type SceneOrder } from '@/lib/schemas/projects'
 import { createClient } from '@/lib/supabase/server'
 
 const uuidSchema = z.uuid()
 const partSchema = z.enum(scenePartsAll)
 const outlineTemplateKeySchema = z.enum(outlineTemplateKeys)
+const structureTemplateSchema = z.enum(structureTemplates)
 
 const SCENE_COLUMNS =
   'id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status, manuscript_path'
@@ -34,15 +48,37 @@ async function fetchProjectScenes(supabase: Supabase, projectId: string): Promis
   return (data ?? []) as SceneRecord[]
 }
 
-/** RLS越しのプロジェクト所有確認（他人・不存在はともに not_found に正規化） */
-async function assertProjectOwned(supabase: Supabase, projectId: string): Promise<void> {
+/** RLS越しのプロジェクト所有確認（他人・不存在はともに not_found に正規化）。
+ * 検証に使う構成テンプレートも返す（Issue #54） */
+async function getOwnedProject(
+  supabase: Supabase,
+  projectId: string,
+): Promise<{ structureTemplate: StructureTemplate }> {
   const { data, error } = await supabase
     .from('projects')
-    .select('id')
+    .select('id, structure_template')
     .eq('id', projectId)
     .maybeSingle()
   if (error) throw new AppError('internal', error.message)
   if (!data) throw new AppError('not_found', 'プロジェクトが見つかりません')
+  return { structureTemplate: data.structure_template as StructureTemplate }
+}
+
+/** part が「章」またはプロジェクトの現テンプレートのレーンであることの担保
+ * （DB CHECK は全テンプレートの和集合のため、テンプレート整合はここで守る。SPEC-structure-templates §4） */
+function assertPartInTemplate(part: ScenePartAll, template: StructureTemplate): void {
+  if (part === CHAPTER_PART) return
+  if (BOARD_TEMPLATES[template].lanes.some((lane) => lane.id === part)) return
+  throw new AppError(
+    'validation',
+    'レーンが現在の構成テンプレートと一致しません。再読み込みしてください',
+  )
+}
+
+/** レーン内の転換点の並び順制約の担保（SPEC-structure-templates §5。scenes は正準順序で渡す） */
+function assertTurningPointOrder(scenes: SceneRecord[], template: StructureTemplate): void {
+  const violation = findTurningPointOrderViolation(scenes, template)
+  if (violation) throw new AppError('validation', turningPointOrderMessage(violation))
 }
 
 /**
@@ -100,7 +136,8 @@ export async function createScene(
     const pid = uuidSchema.parse(projectId)
     const targetPart = partSchema.parse(part)
     const supabase = await createClient()
-    await assertProjectOwned(supabase, pid)
+    const { structureTemplate } = await getOwnedProject(supabase, pid)
+    assertPartInTemplate(targetPart, structureTemplate)
 
     const scenes = await fetchProjectScenes(supabase, pid)
     const created: SceneRecord = {
@@ -139,7 +176,7 @@ export async function applyOutlineTemplate(
     const pid = uuidSchema.parse(projectId)
     const key = outlineTemplateKeySchema.parse(templateKey)
     const supabase = await createClient()
-    await assertProjectOwned(supabase, pid)
+    await getOwnedProject(supabase, pid)
 
     const scenes = await fetchProjectScenes(supabase, pid)
     const created: SceneRecord[] = OUTLINE_TEMPLATE[key].chapters.map((title, index) => ({
@@ -189,6 +226,9 @@ export async function updateScene(
     if (!target) throw new AppError('not_found', 'シーンが見つかりません')
     const current = target as SceneRecord
 
+    const { structureTemplate } = await getOwnedProject(supabase, current.project_id)
+    assertPartInTemplate(parsed.part, structureTemplate)
+
     const scenes = await fetchProjectScenes(supabase, current.project_id)
     const anchor = normalizeAnchor(parsed.anchor, parsed.part)
 
@@ -204,6 +244,8 @@ export async function updateScene(
       if (moved) updatedScenes = [...updatedScenes.filter((s) => s.id !== sid), moved]
     }
     const next = toCanonicalOrder(updatedScenes)
+    // アンカー付与・付け替えが転換点の並び順制約に違反しないか（SPEC-structure-templates §5）
+    assertTurningPointOrder(next, structureTemplate)
     await persistChanges(supabase, toMap(scenes), next)
 
     revalidatePath(`/projects/${current.project_id}/board`)
@@ -225,7 +267,8 @@ export async function reorderScenes(
     const pid = uuidSchema.parse(projectId)
     const parsed = sceneOrderSchema.parse(order)
     const supabase = await createClient()
-    await assertProjectOwned(supabase, pid)
+    const { structureTemplate } = await getOwnedProject(supabase, pid)
+    for (const entry of parsed) assertPartInTemplate(entry.part, structureTemplate)
 
     const scenes = await fetchProjectScenes(supabase, pid)
     const byId = toMap(scenes)
@@ -245,7 +288,53 @@ export async function reorderScenes(
       return { ...scene, part: entry.part, anchor: normalizeAnchor(scene.anchor, entry.part) }
     })
     const next = toCanonicalOrder(submitted)
+    // 転換点の並び順制約（SPEC-structure-templates §5。クライアントの事前検証をすり抜けた場合の砦）
+    assertTurningPointOrder(next, structureTemplate)
     await persistChanges(supabase, byId, next)
+
+    revalidatePath(`/projects/${pid}/board`)
+    return { ok: true, data: { scenes: next } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * 構成テンプレートの切替（Issue #54・SPEC-structure-templates §2）。
+ * 全小説シーンを新テンプレートの先頭レーンへ集約し、転換点マークを全解除する
+ * （タイトル・本文・感情・ノート紐づけ・シーン承認状態は保全。章カードは対象外）。
+ * 構成の承認状態はリセットする（構成が丸ごと変わるため）。
+ * supabase-js にトランザクションがないため scenes → projects の2文で更新する。
+ * scenes 側を先に更新することで、途中失敗しても再実行すれば整合が回復する
+ */
+export async function switchStructureTemplate(
+  projectId: string,
+  template: string,
+): Promise<ActionResult<{ scenes: SceneRecord[] }>> {
+  try {
+    const pid = uuidSchema.parse(projectId)
+    const nextTemplate = structureTemplateSchema.parse(template)
+    const supabase = await createClient()
+    const { structureTemplate } = await getOwnedProject(supabase, pid)
+
+    const scenes = await fetchProjectScenes(supabase, pid)
+    if (nextTemplate === structureTemplate) {
+      return { ok: true, data: { scenes } }
+    }
+
+    const firstLane = BOARD_TEMPLATES[nextTemplate].lanes[0].id
+    const moved = scenes.map(
+      (scene): SceneRecord =>
+        scene.part === CHAPTER_PART ? scene : { ...scene, part: firstLane, anchor: null },
+    )
+    const next = toCanonicalOrder(moved)
+    await persistChanges(supabase, toMap(scenes), next)
+
+    const { error } = await supabase
+      .from('projects')
+      .update({ structure_template: nextTemplate, structure_status: 'draft' })
+      .eq('id', pid)
+    if (error) throw new AppError('internal', error.message)
 
     revalidatePath(`/projects/${pid}/board`)
     return { ok: true, data: { scenes: next } }
