@@ -9,9 +9,9 @@ next-env.d.ts
 # production
 build/
 
-# env
-.env
-.env*.local
+# env（.env.production 等の変種も含めて全て除外。example のみコミット対象）
+.env*
+!.env*.example
 
 # vercel
 .vercel

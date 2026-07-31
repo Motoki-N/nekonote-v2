@@ -25,7 +25,7 @@ Phase 2 完了（2026-07-16・PR #12・本番反映済み）により以下が�
 - **Server Actions**: `lib/actions/editor.ts`（`loadEditorContext` による認証＋所有確認＋PAT解決・レート制限の型）
 - **GitHubクライアント**: `lib/git/github.ts`（`getFileContent` / `putFileContent` / `createFileContent` / `getManuscriptTree` / `getDefaultBranch`）。タグ作成・Release取得は本Phaseで追加（§6）
 - **book.config.js の正規表現抽出**: `lib/editor/book-config.ts`（`extractEntryPaths` / `extractThemePath` / `joinRepoPath`）
-- **原稿リポジトリ規約**: Actions 入稿ビルドは `v*-nyuko` タグ push がトリガー、成果物は同タグの Release に添付（`docs/templates/manuscript-repo/`・manuscript-poc で実走済み）
+- **原稿リポジトリ規約**: Actions 入稿ビルドは `v*-nyuko` タグ push がトリガー、成果物は同タグの Release に添付（`docs/templates/manuscript-repo/`・<poc-repo> で実走済み）
 - **テーマの記法クラス**: 傍点 `.tenten`・縦中横 `.tcy`（`themes/nekonote-parts.css`）
 
 ## 3. コメント一覧UI
@@ -111,7 +111,7 @@ Phase 2 完了（2026-07-16・PR #12・本番反映済み）により以下が�
 | 5 | 設定フォーム（書誌・entry管理＋新規章の自動追記・組み設定・奥付） | フォーム保存→ファイル反映→章順・プレビューに反映 |
 | 6 | 入稿ビルドUI（タグ作成→Releaseポーリング→PDFリンク） | 完了条件5 |
 
-各ステップで typecheck / lint。ステップ4〜6 の後に security-reviewer。E2Eは manuscript-poc に対して実施（実コミット・実タグが発生する——検証リポジトリの本来の用途。検証後は不要タグ・Release・画像を削除し、設定を元に戻す）。
+各ステップで typecheck / lint。ステップ4〜6 の後に security-reviewer。E2Eは <poc-repo> に対して実施（実コミット・実タグが発生する——検証リポジトリの本来の用途。検証後は不要タグ・Release・画像を削除し、設定を元に戻す）。
 
 ## 11. スコープ外（Phase 4以降・積み残し）
 

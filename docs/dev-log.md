@@ -228,7 +228,7 @@
 - マイグレーション `20260713000003_github_pat_and_proofreading.sql`: user_settings に github_pat_ciphertext / github_username（null可・既存RLS踏襲）＋校正プロファイル（…1005）の出力形式節を構造化出力前提に改訂
 - **security-reviewer ゲート×2回通過**: ①マイグレーション=指摘なし（Low 2件は実装側引き継ぎ: 復号失敗の情報非漏洩・github_username を信頼しない表示値として扱う→両方実装済み）。②実装=Critical/High/Medium なし、Low 2件を修正（repo 正規表現を GitHub 実仕様に強化＝`..`等のURL正規化による別エンドポイント到達を遮断／/api/proofread で DB由来 file_path を manuscriptFilePathSchema で再検証＝PostgREST直叩きで作られた不正行への多層防御）
 - 実装: `lib/crypto.ts`（AES-256-GCM・server-only・iv+authTag+暗号文のbase64）、`lib/git/credentials.ts`（GitCredentialProvider 抽象化＋PAT実装）、`lib/git/github.ts`（fetch直叩き薄ラッパー: ツリー・本文・ファイル単位SHA・疎通検証。AppError正規化）、`lib/actions/settings.ts`（登録=GET /user 疎通→暗号化upsert・削除。**暗号文・平文は一切クライアントへ返さない**）、`/settings` ページ、プロジェクト編集に repo/base_path 欄、原稿タブ（ファイル一覧・読み込み専用ビュー・更新バナー・誘導表示のフェイルソフト）、`/api/proofread`（streamObject 配列・onFinish で pending 置き換え＋last_reviewed_commit 更新）、校正パネル（useObject 逐次カード・stop・statusバッジ）
-- **E2E検証（SPEC §8）11項目すべて通過**（検証はユーザーの実原稿リポ Motoki-N/writings を流用。前半は読み取り専用なので安全）: PAT登録（DB暗号文のみ・無効トークン日本語エラー）／誘導表示（repo未設定・PAT未登録）／原稿読み込み（日本語パスのツリー・本文2218字・manuscript_links自動作成）／AI校正（実原稿の表記揺れ「バシャッバシャッと」を検出・pending/sentence保存・SHA記録）／再校正（on_hold残存・pending置き換え）／更新バナー（SHA不一致→表示、校正完了→自動消灯）／PAT削除→誘導復帰／キー未設定の日本語エラー／モバイル375px（ボトムシート）／anon REST 401／既存タブ回帰
+- **E2E検証（SPEC §8）11項目すべて通過**（検証はユーザーの実原稿リポ <owner>/<manuscripts-repo> を流用。前半は読み取り専用なので安全）: PAT登録（DB暗号文のみ・無効トークン日本語エラー）／誘導表示（repo未設定・PAT未登録）／原稿読み込み（日本語パスのツリー・本文2218字・manuscript_links自動作成）／AI校正（実原稿の表記揺れ（オノマトペのカタカナ・ひらがな混在）を検出・pending/sentence保存・SHA記録）／再校正（on_hold残存・pending置き換え）／更新バナー（SHA不一致→表示、校正完了→自動消灯）／PAT削除→誘導復帰／キー未設定の日本語エラー／モバイル375px（ボトムシート）／anon REST 401／既存タブ回帰
 - E2E検証で発見・修正した3件（教訓）:
   1. **【重要インシデント】Next.js dev の Server Action ログが引数を平文出力し、登録PATがターミナルログに露出** → `next.config.ts` に `logging: { serverFunctions: false }` で恒久停止＋ユーザーがPATをローテーション（Revoke→再発行→差し替え）。**秘密情報を Server Action の引数で受ける機能を作るときは、このログ抑止が前提条件**
   2. **`.env.local` への追記で ANTHROPIC_API_KEY を破損**（末尾改行なしのファイルに `>>` 追記して行連結→キーが401に）。修復して復旧。**追記前に末尾改行の有無を確認する**（`tail -c 1` チェックか `printf '\n...'` 前置）
@@ -245,10 +245,10 @@
 - **まとめてコミット**（`commitAcceptedSuggestions`＋`putFileContent`）: accepted（未コミット）を作成順に適用し Contents API PUT で**1コミット**書き戻し（ネコノテからGitへの唯一の書き込み）。blob SHA の楽観ロックでリモート先行更新は conflict に。成功後 `committed_sha` 記録＋`last_reviewed_commit` を新コミットSHAへ進める（**自分のコミットで更新バナーを出さない**）。コミットメッセージは `校正: {ファイル名} に修正n件を適用（ネコノテAI）`。確認ダイアログ（AlertDialog）経由でのみ実行
 - **writing_progress 集計**: `openManuscriptFile` 時に base_path 配下の全原稿ファイルの総文字数（空白除外・表示と同じ数え方）を当日分（**JST基準**・`sv-SE`+Asia/Tokyo）として upsert。同時取得は10並列に制限（secondary rate limit 対策）。失敗しても原稿読み込みは成功させる（補助機能のフェイルソフト）
 - **security-reviewer ゲート通過**: Critical/High ゼロ。Medium 1件＋Low 4件を全て修正——①コミット成立後の committed_sha 記録失敗→再試行で二重適用の恐れ（リトライ3回＋失敗時は警告つき成功応答に。エラー扱いにすると「未コミット扱い→再コミット→二重適用」の事故経路になる）②updateSuggestionStatus の check-then-update TOCTOU（UPDATE に `.is('committed_sha', null)` を含めて原子化）③書き込み経路に base_path 前置チェック追加（読み取り側と対称の多層防御）④進捗集計の並列制限（上記）⑤PUT の 422 一括 conflict 扱いを「does not match」文言判定に（実装バグ由来の422を誤案内しない）
-- **E2E検証（実リポ Motoki-N/writings・全53ファイル・ユーザー承認の上で書き込み検証）**:
+- **E2E検証（実リポ <owner>/<manuscripts-repo>・全53ファイル・ユーザー承認の上で書き込み検証）**:
   - 状態遷移: 保留→受入・未処理→拒否→未処理に戻す、DB反映・バッジ・ボタン出し分けすべて期待どおり
   - 適用不能: 原稿に存在しない原文のダミー提案（一時挿入→検証後削除）で、バッジ表示・受入無効化・**accepted に混ざるとコミットボタン無効＋警告文**を確認
-  - コミット: 受入1件（表記揺れ「バシャッバシャッと」→「バシャバシャと」）→確認ダイアログ→**実コミット成立**（`校正: シーン1.txt に修正1件を適用（ネコノテAI）`）。committed_sha・last_reviewed_commit 同値更新・バナー非表示・「コミット済み」バッジ＋ボタン消滅・本文更新・pending 3件残存を三面（DB/GitHub/UI）で確認
+  - コミット: 受入1件（表記揺れのオノマトペ1件を統一）→確認ダイアログ→**実コミット成立**（`校正: シーン1.txt に修正1件を適用（ネコノテAI）`）。committed_sha・last_reviewed_commit 同値更新・バナー非表示・「コミット済み」バッジ＋ボタン消滅・本文更新・pending 3件残存を三面（DB/GitHub/UI）で確認
   - **安全弁の実地動作**: コミットで原文が変わった結果、陳腐化した既存 pending 提案が自動で「適用不能」表示に切り替わった（SPEC §3.4 の想定シナリオそのもの）
   - 進捗: writing_progress に当日行（JST 7/14）37,490字 → コミット後の開き直しで **37,488字に upsert 更新**（「ッ」2文字減を正確に追従）
   - モバイル375px: ボトムシート内のカード・バッジ・ボタン成立
@@ -277,7 +277,7 @@
 - **E2E検証（SPEC §8・アプリ内ブラウザペイン＋DB直接確認）**: 手動集計（37,488字を当日行に upsert・DB確認）／プロファイル複製→編集（DB prompt 692字）→企画書レビューでカスタムプロファイル×読者代表を実行し**プロンプト編集内容が反映**（フィードバック1行目に「【カスタムレビュー】」）／**セッション並存**（企画書レビュー×担当編集 と カスタム×読者代表 が target_ref 同一で running 2本並存・DB確認）／ペルソナ選択が persona_id に記録／新規セッション時のみペルソナselect表示・既存は固定表示／書店員講評の完走（completed・verdict null・1096字）／読者講評のゲート（ターゲット層未設定で実行不可＋企画書誘導→設定後に実行可）／文字数ガード（定数を一時的に 3万/3.5万字へ下げて 15万字段の確認ダイアログと 30万字段の実行不可エラー両方を再現→定数を git で復元）／AIモデル設定の保存・デフォルトに戻す（行の upsert/削除をDB確認）・Google選択で警告バッジがリアクティブ表示／プロファイル削除→履歴の review_profile_id が null 化で残存／未認証で全経路が opaqueredirect（307→/login）／モバイル375px（ダッシュボード縦積み・講評ボトムシート・編集ダイアログが画面内）／既存の構成レビュー回帰
 - E2E後の後片付け: 検証で作った講評セッション・カスタムプロファイル由来の宙ぶらりんセッションをDB削除（ai_model_settings の low 帯行は元からあるユーザー行なので残置）
 - **Sprint 5前半（ダッシュボード・プロファイル選択・講評・設定フル編集）完了**。レビュー型ペルソナ6人全員に起用経路が通り、設定変更のみでモデル追従・プロファイル編集ができる状態に。次: Sprint 5後半の別SPEC＝**対話型ペルソナ（アシスタントのスケジュール提案・喫茶店のマスターの壁打ち・メモ化）**のインタビュー→策定。スコープ外に残ったキャラクターレビューの実行UI（プロファイル …1002 はシード済み・設定画面には表示される）も要検討
-- **本番デプロイ完了**（dev-log書き戻し後にユーザー依頼で実施）: `npm run build` 成功→`npx vercel deploy --prod --yes`（dpl_5mrwC5EW41cytR89oCJZBb7ZwYmF・READY・https://nekonote-v2.vercel.app ）。本番の未認証アクセスで /・/settings・/projects・POST /api/review すべて 307→/login（returnTo付き・フェイルクローズ維持）を確認。マイグレーションは本セッション前半で本番DB適用済みのため環境整合
+- **本番デプロイ完了**（dev-log書き戻し後にユーザー依頼で実施）: `npm run build` 成功→`npx vercel deploy --prod --yes`（dpl_xxx・READY・https://nekonote-v2.vercel.app ）。本番の未認証アクセスで /・/settings・/projects・POST /api/review すべて 307→/login（returnTo付き・フェイルクローズ維持）を確認。マイグレーションは本セッション前半で本番DB適用済みのため環境整合
 
 ### セッション⑱: SPEC-conversational-personas インタビュー・策定（Sprint 5後半 入り口）
 
@@ -459,20 +459,20 @@
   2. 全面挿絵のimgを絶対配置する際、**figureに `position: relative` を付けてはいけない**——縦書きフロー上のfigure位置（右端）が基準になり画像が帯状に切れる。無指定ならページ領域基準で解決され全面に描ける
   3. **Ghostscript 10.x のSAFERモードで press-ready が `/invalidfileaccess` で失敗**（一時ICCプロファイルを読めない）→ `GS_OPTIONS=-dNOSAFER` で回避。Actionsワークフロー雛形にも組み込み済み
 - **残注意点**: 目次に扉・奥付も載る（entryタイトル全部が対象。Phase 2でtoc生成のカスタマイズ要検討）／本文中カット直後の行送りに改善余地／macOSは游明朝・Linux(Actions)はNoto Serif CJK JPで書体が変わる（版面設計は同一。テーマにフォールバック明示済み）／pdf-libをページ数検査用にdevDependencies追加
-- **Phase 1 の残り（要ユーザー判断）**: ①実際の原稿リポジトリ（Motoki-N/writings）へのテンプレート適用方針（既存構成との整合・別リポジトリにするか）②タグpush→Actions実走→Releases添付のE2E確認 ③手持ち原稿での組版品質の目視確認。ローカル生成PDF（A6/B6・press変換済み4本）はスクラッチパッド `phase1-poc/output/` にあり
+- **Phase 1 の残り（要ユーザー判断）**: ①実際の原稿リポジトリ（<owner>/<manuscripts-repo>）へのテンプレート適用方針（既存構成との整合・別リポジトリにするか）②タグpush→Actions実走→Releases添付のE2E確認 ③手持ち原稿での組版品質の目視確認。ローカル生成PDF（A6/B6・press変換済み4本）はスクラッチパッド `phase1-poc/output/` にあり
 - 検証コマンドの通し（画像検査→A6/B6ビルド→ページ数検査→press-ready×2）はローカルで一気通貫グリーン。アプリ本体のコード変更なし（typecheck/lint対象外）
 
 ### セッション㉛ 追記: Phase 1 E2E完走（検証リポジトリでのActions実走＋実原稿での品質検証・7/16）
 
-- **SPEC-vertical-editor Phase 1 の完了条件をすべて満たした**。検証場所と原稿は AskUserQuestion で確定（①新規検証リポジトリ ②異世界デバッガーのVFM化、いずれも推奨案を採用）
-- **検証リポジトリ**: `Motoki-N/manuscript-poc`（private・gh CLIで作成）。テンプレート一式＋実原稿で構成
-- **実原稿のVFM化**: writings の「異世界デバッガー」パート1（シーン1〜11・約9.4万バイト≒3.1万字。パート2〜4はメモ段階のため対象外）を変換スクリプト（scratchpadの convert-to-vfm.mjs）で一括変換——青空文庫式ルビ `｜親文字《るび》`/`漢字《るび》` → VFM `{親文字|るび}`、1行1段落 → 空行区切り（VFMは単一改行を<br>にするため）。変換漏れゼロ
+- **SPEC-vertical-editor Phase 1 の完了条件をすべて満たした**。検証場所と原稿は AskUserQuestion で確定（①新規検証リポジトリ ②DシリーズのVFM化、いずれも推奨案を採用）
+- **検証リポジトリ**: `<owner>/<poc-repo>`（private・gh CLIで作成）。テンプレート一式＋実原稿で構成
+- **実原稿のVFM化**: <manuscripts-repo> の「Dシリーズ」パート1（シーン1〜11・約9.4万バイト≒3.1万字。パート2〜4はメモ段階のため対象外）を変換スクリプト（scratchpadの convert-to-vfm.mjs）で一括変換——青空文庫式ルビ `｜親文字《るび》`/`漢字《るび》` → VFM `{親文字|るび}`、1行1段落 → 空行区切り（VFMは単一改行を<br>にするため）。変換漏れゼロ
 - **E2E結果**: タグ `v0.2-nyuko` push → Actions（ubuntu）で 画像検査→A6/B6組版→ページ数検査→press-ready→**Releases添付まで全ステップ成功**。実原稿3.1万字が文庫A6で74ページ（4の倍数警告も正しく発火・白ページ2枚追加の提案）。Releasesの成果物は PDF/X-1a:2001・トンボ/塗り足し込み・A6版16.5MB/B6版15.5MB
 - **実原稿での組版品質**: 字下げ・行頭行末禁則・ダーシ（──）の縦組み・拗促音・長文段落の折り返しすべて自然。Linux（Noto Serif CJK JP）とmacOS（游明朝）で書体は変わるが版面設計（16行×40字）は同一で、折り返し位置も一致
 - **1回目の実走（v0.1-nyuko）で発見した罠2件（テンプレートへ反映済み）**:
   1. **press-ready は pdffonts（poppler-utils）を要求する**——ubuntuランナーに無く変換が失敗。apt install に poppler-utils を追加
   2. **press-ready は内部エラーでも exit 0 で終わる**（ステップが緑のまま成果物なし）→ 変換後に `test -f` で成果物の存在を検査して失敗を可視化する
-- 運用メモ: 検証リポジトリはこのまま残し、Phase 2（Webエディタ）のGitHub読み書き先としても使える。writings への本適用（既存 .txt 構成との同居設計・タグ命名のプロジェクト分離）は Phase 2 着手時に改めて設計する
+- 運用メモ: 検証リポジトリはこのまま残し、Phase 2（Webエディタ）のGitHub読み書き先としても使える。<manuscripts-repo> への本適用（既存 .txt 構成との同居設計・タグ命名のプロジェクト分離）は Phase 2 着手時に改めて設計する
 - 次: Phase 2（2ペインWebエディタ）のSPEC詳細化 or 7/17〜20 ドッグフーディング（Sprint 7）を優先
 
 ### セッション㉜: 縦書きエディタ Phase 2（2ペインWebエディタ）SPEC詳細化・確定（7/16）
@@ -484,7 +484,7 @@
   - **画像プロキシ** `/api/editor/asset`（セッション必須＋所有確認＋パス検証＋拡張子allowlist）と新規書き込み経路が security-reviewer 必須ゲート。保存とプロキシに rate-limit 適用
   - 保存＝コミット（メッセージ自動生成＋編集可・putFileContent 拡張で新blob SHAを返し楽観ロック基準を自己前進）、IndexedDB待避（`{repo}:{branch}:{path}` キー・baseSha 付き）、競合は **@codemirror/merge の2ペインdiff** で手動マージ支援（自動マージなし）
   - 章一覧は book.config.js の entry を**実行せず正規表現抽出**（失敗時はファイル名昇順フォールバック）
-- **インタビューで5論点確定**: 対象リポジトリ=**既存 projects.repo/base_path を共有**（竜の巣の設定を manuscript-poc へ切替・スキーマ変更なし・base_path はプロジェクトルート規約）／ルーティング=**/projects/[id]/editor**（board・manuscript と同列タブ）／ブランチ=**デフォルトのみ**／**全体プレビューと新規章作成は Phase 2 に含める**（スマホのタブ切替は Phase 3 へ）
+- **インタビューで5論点確定**: 対象リポジトリ=**既存 projects.repo/base_path を共有**（竜の巣の設定を <poc-repo> へ切替・スキーマ変更なし・base_path はプロジェクトルート規約）／ルーティング=**/projects/[id]/editor**（board・manuscript と同列タブ）／ブランチ=**デフォルトのみ**／**全体プレビューと新規章作成は Phase 2 に含める**（スマホのタブ切替は Phase 3 へ）
 - 実装ステップ6段（スパイク→章一覧＋CodeMirror→プレビュー接続→保存＋待避→競合→全体プレビュー＋新規章）・E2E 10項目を定義。アプリ本体のコード変更なし（typecheck/lint対象外）
 - 次: Phase 2 実装（ステップ1の技術スパイクから）。着手前に竜の巣プロジェクトの repo 設定切替（ユーザー操作）が必要
 
@@ -499,11 +499,11 @@
   - 保存＝コミット: `putFileContent` を拡張し**新 blob SHA を返す**→再取得なしで楽観ロック基準を自己前進（校正の `last_reviewed_commit` 前進と同じ発想）。IndexedDB 待避（`lib/editor/draft-store.ts`・キー `{repo}:{branch}:{path}`・baseSha付き・1秒デバウンス）、競合は `@codemirror/merge` の2ペインdiff（左リモート読取専用・右ローカル・`revertControls: 'a-to-b'`）で手動マージ
   - 章一覧は `book.config.js` を**実行せず正規表現で entry 抽出**（`lib/editor/book-config.ts`）。entry順→未登録章（ファイル名昇順・末尾）。未登録は「entry未登録」印つき表示
 - **security-reviewer（必須ゲート）**: Critical/High なし。**Medium 2件を修正**——①`getEditorWorkspace` に明示 `getUser()` チェックを追加（middleware/RLS 依存だった多層防御の欠け・`userId: ''` の罠も解消）②プレビューHTMLの `theme.inlineCss` を `</style>` ブレイクアウト対策でエスケープ（リポジトリCSS由来のタグ注入防止。Blob URL＝同一オリジンのため実行されればセッション権限に及ぶ self-XSS 相当）。Low の新規章ファイル名スキーマに `(?!.*\.\.)` を追加。画像プロキシのパストラバーサル三段防御（schema `..` 拒否＋拡張子allowlist＋`joinRepoPath` 正規化）・PAT非漏洩・認可は問題なし
-- **E2E結果（manuscript-poc・実コミット発生）**: 章一覧entry順✓／CodeMirror表示＋ルビハイライト＋A6縦書きプレビュー✓／編集→プレビュー反映・コメントは出力に出ない✓／未保存リロード→復元バナー→復元✓／保存→コミット（GitHub反映確認）✓／**競合（gh CLIでリモート更新）→日本語バナー＋トースト→マージビュー→取り込み→再保存成功**✓／画像プロキシ（認証200・未ログイン=/login誘導・拡張子外400・トラバーサル拒否）✓／全体プレビュー（全章結合1/32通しノンブル・目次なし注記）✓／新規章作成（雛形コミット・entry未登録印・同名衝突で日本語エラー）✓／回帰（原稿タブ全17ファイル・校正ボタン・進捗集計33,133字）✓
+- **E2E結果（<poc-repo>・実コミット発生）**: 章一覧entry順✓／CodeMirror表示＋ルビハイライト＋A6縦書きプレビュー✓／編集→プレビュー反映・コメントは出力に出ない✓／未保存リロード→復元バナー→復元✓／保存→コミット（GitHub反映確認）✓／**競合（gh CLIでリモート更新）→日本語バナー＋トースト→マージビュー→取り込み→再保存成功**✓／画像プロキシ（認証200・未ログイン=/login誘導・拡張子外400・トラバーサル拒否）✓／全体プレビュー（全章結合1/32通しノンブル・目次なし注記）✓／新規章作成（雛形コミット・entry未登録印・同名衝突で日本語エラー）✓／回帰（原稿タブ全17ファイル・校正ボタン・進捗集計33,133字）✓
   - **ハマり: 画像プロキシの ZodError が 500 になる**（`.parse()` の ZodError → `toAppError` で internal 扱い）。トラバーサルは安全に拒否されるが status が 400 でなく 500。コードベース共通の慣習（Zod→internal・固定文言でリーク無し）なので現状維持
   - **ハマり: CodeMirror は表示外の行をDOMに描画しない**（仮想化）→ `.cm-content.textContent` での本文全体検証は不成立。末尾の編集は GitHub上のコミット内容で検証した
   - ペインのボタンクリックは座標ズレで外れやすく、`nav[...] button` を `textContent` で探して `.click()` する JS フォールバックが安定（既存メモリの定石どおり）
-- **前提の消化**: 竜の巣プロジェクトの repo を `Motoki-N/manuscript-poc`（base_path空）へ切替（ユーザー操作）。**既存PATの対象リポジトリに manuscript-poc を追加**が必要だった（Fine-grained PAT のトークン値は不変なので再登録不要・ユーザー実施）。E2E後は検証で汚した 11-scene1.md を Phase 1 時点（da3101e5）の内容へ復元し、テスト新規章も削除
+- **前提の消化**: 竜の巣プロジェクトの repo を `<owner>/<poc-repo>`（base_path空）へ切替（ユーザー操作）。**既存PATの対象リポジトリに <poc-repo> を追加**が必要だった（Fine-grained PAT のトークン値は不変なので再登録不要・ユーザー実施）。E2E後は検証で汚した 11-scene1.md を Phase 1 時点（da3101e5）の内容へ復元し、テスト新規章も削除
 - 依存追加: `@vivliostyle/vfm`・`@vivliostyle/viewer`・`@vivliostyle/theme-bunko`・`codemirror` v6系（`@codemirror/state`/`view`/`language`/`commands`/`lang-markdown`/`merge`）・`@lezer/highlight`。postinstall で `scripts/copy-vivliostyle.mjs`（Viewer＋テーマを `public/vivliostyle/` へ）。eslint ignore に `public/vivliostyle/**` と `docs/templates/**` を追加
 - **スコープ外（Phase 3以降）**: コメント一覧UI・ルビ入力補助・字数/ページ見積り・画像D&D・`book.config.js`/判型のフォームUI・入稿ビルドUI起動・ブランチ切替/PR連携・スマホのタブ切替
 - **本番反映済み**: PR #12 をユーザーがマージ（`feda746`）→ Vercel 自動デプロイ完了（`nekonote-v2.vercel.app`）。ビルドログで postinstall の Viewer コピー実行を確認、本番で `/vivliostyle/viewer/` の静的配信も確認（200/image/png）。ビルド中の「Dynamic server usage」ログは cookie 使用ルートの静的化プローブによる既存の無害な出力
@@ -525,7 +525,7 @@
   - 副産物の教訓: **プレビューが非表示（モバイル幅の hidden）だと iframe 内の組版が壊れた寸法で走る**。E2E中にペイン幅が変わって現象が混線した——組版検証は必ずデスクトップ幅で
   - 実ページ数の取得も「コンテナ数の2回一致」では組版途中の値で確定した→ **Viewer の `data-vivliostyle-viewer-status=complete` を待って `#vivliostyle-total-pages` を読む**方式に修正（`9c2c12e`）。Viewer は表示外ページのコンテナをDOMから間引くため要素数は信用できない
 - **security-reviewer（必須ゲート）**: Critical/High ゼロ。**M-1: Server Actions の bodySizeLimit 既定1MBで10MB画像がスキーマ検証前に落ちる**→ `next.config.ts` に 15mb を明示。**L-1: `String.replace` の `$` 特殊パターン未エスケープ**（置換後検証で fail-closed は確認済み）→ 置換を関数形式に（`3318f95`）。注入系（entry経由JS断片・CSS・奥付HTML・パストラバーサル・タグref）はすべて fail-closed を確認済みの評
-- **E2E（SPEC §13 全7項目合格・manuscript-poc 実コミット）**: 字数2,206字＋概算/実測ページ切替✓／コメント一覧・ジャンプ・空コメントで字数不変・プレビュー非出現✓／ルビ`<ruby>`・傍点sesame・縦中横all が組版で確認✓／画像D&D→コミット→プロキシ経由プレビュー・11MB/svg拒否✓／設定4区画すべて差分プレビュー→コミット→GitHub反映（著者・entry並べ替え・行数16→14→16でページ数5→6→5・奥付）＋新規章のentry自動追記✓／入稿ビルド v0.3-nyuko→Actions実走→ダイアログ再開でポーリング復帰→PDFリンク2本→302到達・未ログイン307✓／回帰（復元バナー→破棄・原稿タブ17ファイル・校正ボタン）✓
+- **E2E（SPEC §13 全7項目合格・<poc-repo> 実コミット）**: 字数2,206字＋概算/実測ページ切替✓／コメント一覧・ジャンプ・空コメントで字数不変・プレビュー非出現✓／ルビ`<ruby>`・傍点sesame・縦中横all が組版で確認✓／画像D&D→コミット→プロキシ経由プレビュー・11MB/svg拒否✓／設定4区画すべて差分プレビュー→コミット→GitHub反映（著者・entry並べ替え・行数16→14→16でページ数5→6→5・奥付）＋新規章のentry自動追記✓／入稿ビルド v0.3-nyuko→Actions実走→ダイアログ再開でポーリング復帰→PDFリンク2本→302到達・未ログイン307✓／回帰（復元バナー→破棄・原稿タブ17ファイル・校正ボタン）✓
   - E2Eの検証産物は削除済み（98-e2e-phase3.md・e2e-image.png・v0.3-nyuko タグ/Release）。奥付・configの著者「灰谷 汀」は実データの改善として残置。テーマ行数・entry順は復元済み
   - ペインE2Eの新定石: **CodeMirror の選択・編集はDOM選択では同期されない**→ ツールバーボタンの React fiber から `viewRef` を辿って EditorView を取得し `view.dispatch` で操作する（`__cmView` に保持）。設定フォームの label 検索は「著者」が書誌と奥付の両方に居るので前方一致だけだと誤爆する（一度奥付を先にコミットしてしまった——アプリ側は正常動作）
 - typecheck / lint / build グリーン。依存追加なし（Phase 2 の資産のみで完結）
@@ -547,7 +547,7 @@
 - **コメント無害化**: `--` を全角 `−−` へ置換（HTMLコメントの閉じ子 `-->`/`--!>` は連続ASCII `--` 必須のため脱出不能）。校正コメントは原文20字切り詰め＋修正案/理由全文の1行形式
 - **lint の新ルール対応**: `react-hooks/set-state-in-effect`（effect 本体の同期 setState 禁止）に2回当たった→ 原稿画面は「useState 初期化子で選択済みにして effect は fetch のみ」、エディタは「openChapterFlow が同期 setState を含むため setTimeout(0) 経由」で解決
 - **security-reviewer（必須ゲート）**: Critical/High ゼロ。**M-1: `writeBackCritique` のみ書き込み先パスの再検証が欠落**（DB由来 base_path の `..` が PostgREST 直叩き経由で設定外リポジトリへの PUT に化けうる）→ `manuscriptFilePathSchema.parse()` を1行追加で修正・実測で再検証済み。`-->` 注入・`?file=` 経路・PAT露出・セッション検証は指摘なしの評
-- **E2E（SPEC §6 全5項目合格・manuscript-poc 実コミット）**: 相互リンク往復＋不正 `?file=`（トラバーサル文字列）は未選択フォールバック✓／校正2件を保留→一括書き戻し→該当行直前にコメント2行・コミットメッセージ・エディタのコメント一覧L9/L18表示・プレビュー非出現・バッジ「コメント書き戻し済み」・ボタン消滅（対象0件）✓／安全弁=UIガード（適用不能の保留で警告＋ボタン無効）＋サーバー側（パネルを開いたまま gh CLI でリモート書き換え→書き戻し実行→日本語エラーでコミットされず）✓／講評実行→書き戻しで 00-review-notes.md 新規作成（ヘッダ＋講評ブロック・entry非掲載）→リロード後の再書き戻しで追記（2ブロック目）→エディタ章一覧に entry未登録印つき表示・コメント一覧に2件✓／回帰=校正実行・提案の受入/拒否/保留・適用不能検知・エディタ表示すべて従来どおり✓
+- **E2E（SPEC §6 全5項目合格・<poc-repo> 実コミット）**: 相互リンク往復＋不正 `?file=`（トラバーサル文字列）は未選択フォールバック✓／校正2件を保留→一括書き戻し→該当行直前にコメント2行・コミットメッセージ・エディタのコメント一覧L9/L18表示・プレビュー非出現・バッジ「コメント書き戻し済み」・ボタン消滅（対象0件）✓／安全弁=UIガード（適用不能の保留で警告＋ボタン無効）＋サーバー側（パネルを開いたまま gh CLI でリモート書き換え→書き戻し実行→日本語エラーでコミットされず）✓／講評実行→書き戻しで 00-review-notes.md 新規作成（ヘッダ＋講評ブロック・entry非掲載）→リロード後の再書き戻しで追記（2ブロック目）→エディタ章一覧に entry未登録印つき表示・コメント一覧に2件✓／回帰=校正実行・提案の受入/拒否/保留・適用不能検知・エディタ表示すべて従来どおり✓
   - **興味深い副作用の実証**: 書き戻しコメントに原文抜粋が含まれるため、再校正で同じ箇所が指摘されると「適用不能」（一意一致が2箇所）になる——安全弁が正しく機能した形（コミット前にUIで止まる）。原文切り詰め（20字）が衝突を減らすが、短い原文では起きうる。実害は fail-closed で吸収される設計
   - 検証産物は削除済み（11-scene1.md 復元・00-review-notes.md 削除×2回・検証コミットはGit履歴に残置）。竜の巣の revision_suggestions に検証行4件（書き戻し済み保留2・拒否2）が残るが実運用に影響なし
 - typecheck / lint グリーン。依存追加なし・マイグレーションなし
@@ -713,7 +713,7 @@
 - **Issue #99 を `/fix-issue` フローで処理**（影響範囲分析→実装→ペイン実機検証→subagent自己レビュー→PR #101→マージまで1セッション・設計確認基準に非該当のため確認なしで直行）: 企画書レビューのフィードバックはボリュームが多く指摘箇所も複数に及ぶため、対応漏れが起きやすい（P1・enhancement）。フィードバックをノートに転記して、指摘対応のメモを取りながら進められるようにした
 - **実装は3ファイル（+108）**: Server Action `saveFeedbackAsNote(feedbackId)`（lib/actions/review.ts）は RLS 越しにフィードバック＋セッション＋プロジェクトを取得（所有確認を兼ねる・本文はDBから読み直し＝`saveChatMessageAsNote` と同じ流儀）→ ノート作成 → タグ付与（既存 `attachTag` を再利用）。共通 ReviewPanel の FeedbackCard ヘッダーに「ノートに転記」ボタン（成功トースト＋「ノートをひらく」アクション・多重実行ガード）。構成・シーン等でも使われる共通パネルのため opt-in の `enableCopyToNote` prop とし企画書レビューパネルのみ有効化、サーバー側でも `target_phase = 'proposal'` を検証
 - 設計メモ: 企画書（proposals）に独自タイトルがないため「企画書のタイトル」=プロジェクトタイトルと解釈。ノートタイトルは `「{プロジェクトタイトル}」{プロファイル名} 第{N}回（{日付}）`（「第N回」は同一セッション内 created_at 順の件数でパネル表示と一致）。タグは草稿→浄書モデルの「作品名で束ねる」流儀どおり `working_title` 種別でプロジェクトタイトル名を get-or-create。転記ノートは proposal_notes には紐づけない（レビュー結果が次回レビューの入力に混入するのを避ける）
-- 検証: typecheck / lint 通過。ペイン実機で第5回フィードバックの転記→ノート「「人魚の唄［Siren Song from Deep Ocean］」企画書レビュー 第5回（2026/7/20）」＋仮タイトルタグの生成を確認（検証ノートは開発DBに残置）。subagent 自己レビュー: 要件充足・ブロッカーなし（低深刻度2件は既存パターン踏襲・仕様上許容と判断し対応せず）。認証・RLS・秘密情報に非接触のため security-reviewer 不要判断。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
+- 検証: typecheck / lint 通過。ペイン実機で第5回フィードバックの転記→ノート「「セイレーン」企画書レビュー 第5回（2026/7/20）」＋仮タイトルタグの生成を確認（検証ノートは開発DBに残置）。subagent 自己レビュー: 要件充足・ブロッカーなし（低深刻度2件は既存パターン踏襲・仕様上許容と判断し対応せず）。認証・RLS・秘密情報に非接触のため security-reviewer 不要判断。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
 
 ### セッション51: /fix-issue #98 レビュー停止時のサーバー側中断——PR #100 マージ・本番反映（7/20）
 
@@ -721,7 +721,7 @@
 - **原因: `/api/review` の `streamText` に `abortSignal` 未指定**——クライアント（review-panel）は AbortController で fetch を中断していたが、サーバー側はプロバイダ呼び出しが継続し `onFinish` で `review_feedbacks` に保存されていた。旧コメント「stop によるクライアント切断時は保存しない」は実態と不一致（セッション㊷で「切断時は onFinish が発火せず未記録」と記した既知の計測漏れ①も同根の誤認で、実際は発火・保存されていた）
 - **修正は route.ts 1ファイル（+19/-17）**: `abortSignal: req.signal` を追加し切断で生成そのものを中断。AI SDK v7 は abort 時に `onAbort` のみ呼び `onFinish` はスキップする（dist 実装の abort 経路を追跡し、`finish` パート未記録→flush で onEnd 通知スキップを確認）＝フィードバック非保存・履歴非混入・draft→in_review 遷移も走らない。講評（読み切り型）が running のまま残らないよう `finalizeCritique` を onFinish 外へ抽出し `onAbort` / `onError` から failed 確定
 - **割り切り（コメント・PRに明記）**: ①中断時の AI 使用量記録は SDK が abort 時に usage を提供しないため不可（レート制限 3回/分・60回/日 が下限ガード）②Vercel での切断後処理の継続保証は、本Issueの症状（切断後も生成完走・保存）自体が継続実態の証拠と判断し waitUntil 等の新規依存は追加せず。万一 onAbort の DB 更新が落ちても講評セッションが running で残るだけ（一覧は completed のみ表示で実害なし）
-- **実機E2E（ユーザーにペインのGoogleログインを依頼して実施）**: 実データ（人魚の唄・既存フィードバック6件）でレビュー実行→約2秒で停止→ `POST /api/review` が**7.9秒で終了**（完走なら1分前後・abort伝播の証跡）→ `review_feedbacks` は停止直後も**60秒後も6件のまま**（遅延保存なし）→パネル再表示で第1回〜第6回のカードのみ。検証結果はPRコメントに記録
+- **実機E2E（ユーザーにペインのGoogleログインを依頼して実施）**: 実データ（セイレーン・既存フィードバック6件）でレビュー実行→約2秒で停止→ `POST /api/review` が**7.9秒で終了**（完走なら1分前後・abort伝播の証跡）→ `review_feedbacks` は停止直後も**60秒後も6件のまま**（遅延保存なし）→パネル再表示で第1回〜第6回のカードのみ。検証結果はPRコメントに記録
 - 検証: typecheck / lint 通過。subagent 自己レビュー指摘2件（使用量記録の後退・Vercel継続リスク）はいずれも上記の割り切りとして整理。認証・RLS・秘密情報に非接触のため security-reviewer 不要判断。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
 
 ### セッション52: /fix-issue #57 構成/シーンレビューのゲート化——PR #102 マージ・本番反映（7/21）
@@ -731,7 +731,7 @@
 - **実装は12ファイル（+288/-28）**: マイグレーション `20260721000001`（`scenes.status` / `projects.structure_status` 追加＋標準「構成レビュー」「シーンレビュー」プロファイル（固定UUID 1003/1004）の prompt_template に判定行指示を追記・書式は企画書と同一）→ `/api/review` の verdict パースを `VERDICT_PHASES`（proposal/structure/scene）に拡張 → Server Action `approveBoardReview(sessionId)` 新設（RLS越し取得＋running＋target_phase 限定＋最新 verdict=approved のサーバー側再検証→対象ステータス approved＋セッション completed。`approveProposal` と同水準）→ ビートボードの両パネルに判定バッジ・「構成を通す」「シーンを通す」フッター・承認済みメッセージ、ボードヘッダーに「構成承認済み」バッジ、シーンカードに「承認済み」バッジ
 - **subagent 自己レビュー指摘2件を修正して再レビュークローズ**: ①VerdictBadge が verdict=null（ゲート化前の構成/シーン履歴）を「差し戻し」誤表示→null ガード追加 ②シーン系アクションの upsert が取得時点の status を書き戻し `approveBoardReview` との競合で承認が巻き戻る窓→upsert ペイロードから status を除外（新規行は DB default 'draft'）
 - **security-reviewer 指摘ゼロ**（列追加は既存 FOR ALL ポリシーがテーブル単位で自動保護・所有確認と対象すり替え遮断は approveProposal と同一パターン・「通す」出現条件はクライアント値だがサーバー側で verdict 再検証・sceneEditSchema に status が無くクライアントから承認状態を直接操作する経路なし）
-- 検証: typecheck / lint 通過。`db push` 適用（migration list 一致・`db:types` 再生成が手動先行パッチと完全一致）。ペイン実機で構成レビュー実行→更新済みプロンプトが最終行に「判定: 差し戻し」を出力→「第1回 差し戻し」バッジ表示→差し戻し時に「通す」非表示を確認（人魚の唄に構成レビュー第1回・差し戻しが1件残置。実レビューとしてそのまま使える）。承認→「通す」の実経路は実データで承認判定が出た際に確認できる（サーバー検証は2重レビュー済み）。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
+- 検証: typecheck / lint 通過。`db push` 適用（migration list 一致・`db:types` 再生成が手動先行パッチと完全一致）。ペイン実機で構成レビュー実行→更新済みプロンプトが最終行に「判定: 差し戻し」を出力→「第1回 差し戻し」バッジ表示→差し戻し時に「通す」非表示を確認（セイレーンに構成レビュー第1回・差し戻しが1件残置。実レビューとしてそのまま使える）。承認→「通す」の実経路は実データで承認判定が出た際に確認できる（サーバー検証は2重レビュー済み）。マージ後: main 取り込み・ローカルブランチ削除・Vercel 自動デプロイ
 
 ### セッション53: /fix-issue #56 シーンカードへのノート・原稿ファイル紐づけ——PR #103 マージ・本番反映（7/21）
 
@@ -790,14 +790,14 @@
 - **設計確認（AskUserQuestion 3問）で Issue を分割**: Issueは「バージョン履歴＋エクスポート」の2要素だが、①スコープ→**エクスポートのみ先行**（履歴はスキーマ変更を伴うため **Issue #111 に分割起票**。取得タイミングは時間ベース間引き方式＝前回バージョンから一定時間経過時のみスナップショット、で方式まで合意済みの設計メモ付き）②出力形式→**ZIP（1ノート=1 .mdファイル・frontmatter に title/tags/created/updated）**（単一Markdown結合案は不採用。他ツールへの持ち出しに強い）
 - **実装は4ファイル（+120/-1）・スキーマ変更なし**: `app/api/notes/export/route.ts`（GET。認証必須→レートリミット分5/日100→ごみ箱除く全ノートをRLS越し取得→fflate（新規依存・ゼロ依存の軽量ZIP）で生成。`notes.content` は元々Markdown保存のため変換不要）→ ノート一覧ヘッダーにエクスポートボタン（Downloadアイコン・`<a href>` のみでJS不要）。ファイル名はタイトルのサニタイズ＋ID先頭8桁付与で重複・空タイトル衝突を回避、YAML値はJSON文字列化でエスケープ
 - **subagent 自己レビュー指摘2件を修正・再レビュー通過**: ①（中）PostgREST `max_rows=1000` で1000件超のノートが**エラーなくZIPから欠落**する→`.range()` によるページング取得ループ（`updated_at desc, id` の副キーで境界安定化）に変更 ②（低）アンカーの `download` 属性のせいでレート制限等のエラー時にJSONが「export」ファイルとして保存される→属性を削除（成功時は `Content-Disposition: attachment` でダウンロードされるため挙動不変・エラー時はブラウザ表示に）。rate-limit の日次超過文言が「AI利用回数」固定な点は既存共通関数の制約として未対応（PRに既知事項として明記・セッション54と同じ判断）
-- 検証: typecheck / lint 通過。ペイン実機で一覧ヘッダーのボタン表示→`/api/notes/export` が 200 / application/zip / attachment を返却→ZIP内9ファイル（全ノート分・日本語ファイル名＋ID接尾辞）→先頭エントリを DecompressionStream で展開し frontmatter（tags は `working_title/人魚の唄` 形式）＋Markdown本文を確認。マージ後: main 取り込み・dev-log 書き戻し
+- 検証: typecheck / lint 通過。ペイン実機で一覧ヘッダーのボタン表示→`/api/notes/export` が 200 / application/zip / attachment を返却→ZIP内9ファイル（全ノート分・日本語ファイル名＋ID接尾辞）→先頭エントリを DecompressionStream で展開し frontmatter（tags は `working_title/セイレーン` 形式）＋Markdown本文を確認。マージ後: main 取り込み・dev-log 書き戻し
 - **ペイン検証メモ**: 同一フォルダの別セッション dev サーバーが Next 16 の二重起動ロックで自前起動を阻むケースで、今回は停止済みプロセスだったため kill→`preview_start` で自前サーバーを起動した（稼働中なら従来どおり `preview_start {url}` で流用が定石）。ZIPの中身検証はダウンロード不要——ページ内 fetch でバイト列を取り、セントラルディレクトリ（PK\x01\x02）走査でファイル名一覧、`DecompressionStream('deflate-raw')` で個別エントリの本文まで確認できる
 
 ### セッション59: /fix-issue #28 Vercelプレビューデプロイでのログイン対応——PR #113 マージ・本番反映＋インシデントログ新設（7/23）
 
 - **Issue #28 を `/fix-issue` フローで処理**（影響範囲分析→AskUserQuestion 2問で設計確認→設定変更＋SPEC更新→security-reviewer→subagent自己レビュー→PR #113→マージまで1セッション）: プレビューデプロイでGoogle OAuthログインが通らず、動作確認はローカル起動で代替していた（P2・enhancement・SPEC-auth §8 スコープ外項目の昇格・認証設定変更のため security-reviewer 必須ゲート案件）
 - **調査の結論: アプリコードの変更は不要**。原因は2つ——①Vercel Preview 環境に環境変数がほぼ未登録（`NEXT_PUBLIC_SUPABASE_URL` 等がなく middleware の設定チェックで `/login?error=config` 落ち）②Supabase Redirect URLs 許可リストが localhost＋本番のみ。ログインボタンの `redirectTo` は `location.origin` ベース・コールバックもリクエストオリジンベースのため、設定2点の解消だけで任意のプレビューURLで動く。Google Cloud Console 側は変更不要（redirect URI は Supabase の `/auth/v1/callback` 固定でアプリURLが関与しない）
-- **実施内容**: Vercel Preview へ7キー登録（Supabase 2＋ALLOWED_EMAILS＋ENCRYPTION_KEY＋AI 3。値は `.env.local` から非表示のままパイプ）／Supabase Redirect URLs へワイルドカード `https://nekonote-v2-*-motokis-projects-b4ffebfe.vercel.app/**` 追加（ユーザーのダッシュボード作業。Vercelチームスラッグはグローバル一意のため第三者デプロイは許可リストに乗れない）／SPEC-auth 改訂（§2 環境分離の決定変更・§3.4 新設・§8 スコープ外から削除）。PR の diff は SPEC のみ
+- **実施内容**: Vercel Preview へ7キー登録（Supabase 2＋ALLOWED_EMAILS＋ENCRYPTION_KEY＋AI 3。値は `.env.local` から非表示のままパイプ）／Supabase Redirect URLs へワイルドカード `https://nekonote-v2-*-<team-slug>.vercel.app/**` 追加（ユーザーのダッシュボード作業。Vercelチームスラッグはグローバル一意のため第三者デプロイは許可リストに乗れない）／SPEC-auth 改訂（§2 環境分離の決定変更・§3.4 新設・§8 スコープ外から削除）。PR の diff は SPEC のみ
 - **security-reviewer: Critical/High ゼロ・M-1/L-1 対応**——M-1: Preview に本番 `SUPABASE_SERVICE_ROLE_KEY` が存在（Issue #51 時に Preview+Production 同時登録）。マージ前ブランチが動く環境にRLSバイパス鍵は不要→ユーザー判断で cron 関連3キーを Preview から削除し Production 専用化。L-1: この構成の実効的防壁が Vercel Deployment Protection である旨を SPEC §3.4 に前提として明記。なお reviewer subagent が Vercel CLI の保存トークンを直接 API に使った行為がハーネスに警告された——指摘内容は正規CLI・コード実読で裏取りしてから採用した
 - **インシデント INC-1（docs/incident-log.md 新設・初エントリ）**: M-1 対応の `npx vercel env rm <KEY> preview` が**環境スコープ指定にもかかわらずエントリ全体を削除**し、Production からも3キーが消失（Preview+Production 1エントリ登録だったため）。既存デプロイは環境変数をデプロイ時に固定するため即障害なし・直後の全量確認で発見・全キーに復旧経路があり同日中に完全復旧（service_role は `npx supabase projects api-keys` 再取得・CRON_SECRET は新規乱数で有効・RESEND_API_KEY はユーザー再登録）。**再発行不能な鍵（ENCRYPTION_KEY）が対象だったら重大事故**——経緯・原因・防壁の棚卸し・対策・教訓はインシデントログに詳述。ハインリッヒの法則でいう軽微事故として、今後のインシデントもこのログに集約する
 - 検証: typecheck / lint 通過。subagent 自己レビュー指摘ゼロ（3ファイル実読で「コード変更不要」を裏取り・Preview 7キーを `process.env` 全参照と突合し過不足なし・cron 3キーの使用箇所が cron ルート1本でフェイルクローズ 401 になることを確認）。ユーザーがプレビュー実機でログインE2E成功（Vercel 認証→アプリ `/login`→Google 認証→プレビューURLのままダッシュボード復帰）。マージ後: main 取り込み・ローカルブランチ削除・Issue #28 自動クローズ・Vercel 自動デプロイ
@@ -829,17 +829,17 @@
 - **security-reviewer 通過（Critical/High ゼロ・M-1 対応済み）**: インジェクション（全経路 encodeURIComponent/JSON.stringify・`:` 禁止でフォーク横断head注入も不可）・認可（全アクション loadEditorContext 経由・起点SHAとPR baseはサーバー側解決でクライアント注入不可）・PAT露出面の増加なしを確認。M-1=ブランチ名のパス要素ごとの `.lock`/`.` 検証漏れ（誤エラーメッセージになるだけ）を修正
 - **subagent 自己レビュー指摘4件を全反映**: ①切替中に旧ブランチの in-flight `openChapter` が解決して新ブランチの待避を誤削除しうるレース→openChapterFlow にブランチ世代ガード＋切替中は章クリック無効化 ②切替時に校正パネルが残留→closeReviewPanel を切替フローに追加 ③`?file=` リンク経由時は localStorage 復元をスキップする実装判断を SPEC §3.1 に追記 ④createBranchRef の 422 一律「既に存在します」を message 判別に変更
 - **実装バグ1件をペイン検証で発見・修正**: この UI キットの `DropdownMenuLabel` は Base UI の `Menu.GroupLabel` で **`DropdownMenuGroup` の外に置くとメニューを開いた瞬間にクラッシュ**する（"MenuGroupContext is missing"）。既存メニューにラベル使用例がなく初踏み。ラベルを使うときは必ず Group で包む
-- 検証: typecheck / lint 通過。ペイン実機（稼働中 dev サーバーを `preview_start {url}` で流用）でセレクタ表示・ブランチ一覧の実取得・現在チェック＋デフォルトバッジ・PR項目のデフォルト時無効化・作成ダイアログの命名バリデーション・`?branch=不存在` のフォールバック＋URLクリーンアップ・repo未設定ゲートの回帰なしを確認。**ブランチ作成・PR作成の実行系E2Eは実リポジトリへの書き込みを避けて未実施**——SPEC §7 の手順を manuscript-poc でのマージ後検証としてPRに明記（ユーザー検証待ち）。マージ後: main 取り込み・ローカルブランチ削除・Issue #21 自動クローズ・Vercel 自動デプロイ
+- 検証: typecheck / lint 通過。ペイン実機（稼働中 dev サーバーを `preview_start {url}` で流用）でセレクタ表示・ブランチ一覧の実取得・現在チェック＋デフォルトバッジ・PR項目のデフォルト時無効化・作成ダイアログの命名バリデーション・`?branch=不存在` のフォールバック＋URLクリーンアップ・repo未設定ゲートの回帰なしを確認。**ブランチ作成・PR作成の実行系E2Eは実リポジトリへの書き込みを避けて未実施**——SPEC §7 の手順を <poc-repo> でのマージ後検証としてPRに明記（ユーザー検証待ち）。マージ後: main 取り込み・ローカルブランチ削除・Issue #21 自動クローズ・Vercel 自動デプロイ
 - **ペイン検証メモ**: Base UI のメニューはペインの合成クリック（座標・ref とも）では開かないことがある→ PointerEvent/MouseEvent を dispatchEvent で直接発火すれば開く（既存定石「特定→検証→クリック」の亜種。メニュー内アイテムも同様）
 
 ### セッション63: /fix-issue #23 入力補助ツールバーに割注・改ページを追加——PR #118 マージ・本番反映（7/24）
 
-- **Issue #23 を `/fix-issue` フローで処理（PR #118）**: 入力補助ツールバー（ルビ・傍点・縦中横・コメント・画像）に割注と改ページを追加した（P2・enhancement・親SPEC/phase3 スコープ外項目の昇格）。Issueの候補選定基準「実原稿で使用頻度の高い記法」を検証するため manuscript-poc 全章を実調査→手書きの高度な記法は未使用（ルビ11件・全面挿絵1件のみ）だったため、AskUserQuestion で候補4つ（割注・改ページ・地付き/字上げ・傍点種類）を提示し**割注＋改ページの2つに確定**
+- **Issue #23 を `/fix-issue` フローで処理（PR #118）**: 入力補助ツールバー（ルビ・傍点・縦中横・コメント・画像）に割注と改ページを追加した（P2・enhancement・親SPEC/phase3 スコープ外項目の昇格）。Issueの候補選定基準「実原稿で使用頻度の高い記法」を検証するため <poc-repo> 全章を実調査→手書きの高度な記法は未使用（ルビ11件・全面挿絵1件のみ）だったため、AskUserQuestion で候補4つ（割注・改ページ・地付き/字上げ・傍点種類）を提示し**割注＋改ページの2つに確定**
 - **割注は行明示マークアップ方式**: 純CSSでは任意テキストの2行自動分割ができないため `<span class="warichu"><span>前半</span><span>後半</span></span>` と行を明示し、CSSは inline-block＋内側spanブロック化（縦書き2列・横書き2段。vertical-rl ではブロック進行方向が右→左のため前半が右列＝正しい読み順になる）。ダイアログは選択範囲からコードポイント単位の半分割プリセット・後半空欄は1行の小書き。改ページは `<div class="page-break"></div>`（`break-after: page`）をカーソル位置に独立行挿入（前後の空行を自動調整・選択範囲は非破壊）。両記法とも縦書き・横書き両テーマで表示（#97 の direction 出し分けの外側）
 - **実装は4ファイル（+160/-4）**: codemirror.ts に `insertWarichuText`/`insertPageBreak` → ツールバーにボタン2つ＋割注ダイアログ → テンプレート `nekonote-parts.css` に `.warichu`/`.page-break` → テンプレートREADME記法一覧更新。word-count は既存のHTMLタグ除去で新記法を正しく処理（割注は本文のみカウント・改ページ0字）するため変更不要
 - **subagent 自己レビュー2巡（VFM実測つき）で指摘3件を全反映**: ①改ページが選択テキストを無言で置換→`selection.main.head` の1点挿入に変更 ②③割注バリデーション不足——VFMは生HTMLタグの「間」もMarkdown解釈するため、前半・後半をまたいで強調・コード・リンクの対が成立すると `</span>` を越えてネストが崩壊する（レビュアーが `stringify` 実測で証明）→禁止文字を `/[<>&*_`[\n]/` に拡張。**教訓: 生HTML挿入系の入力補助は「HTMLとして安全」だけでは足りず「Markdownのペア記法をまたがない」まで検証が必要**
 - 検証: typecheck / lint 通過。ペイン実機（稼働中 dev サーバーを `preview_start {url}` で流用・原稿リポジトリ非接続のため一時検証ページを作業ツリーに作成→検証後削除）でボタン表示・半分割プリセット・挿入マークアップ・改ページの空行調整・vertical-rl での割注2列レンダリングを確認。改ページ空行計算はレビュアーが境界条件（文書先頭/末尾/行頭/行中/既存空行隣接）を全列挙検証。マージ後: main 取り込み・ローカルブランチ削除・Issue #23 自動クローズ・Vercel 自動デプロイ
-- **残タスク（ユーザー作業）**: テンプレートCSSはアプリから配布されないため、既存の原稿リポジトリ（manuscript-poc / writings）の `themes/nekonote-parts.css` に `.warichu`/`.page-break` を手動追記するまで新記法は組版に反映されない（挿入自体は可能）。入稿PDF（Vivliostyle CLI）での実組版確認もCSS反映後の実ビルドで
+- **残タスク（ユーザー作業）**: テンプレートCSSはアプリから配布されないため、既存の原稿リポジトリ（<poc-repo> / <manuscripts-repo>）の `themes/nekonote-parts.css` に `.warichu`/`.page-break` を手動追記するまで新記法は組版に反映されない（挿入自体は可能）。入稿PDF（Vivliostyle CLI）での実組版確認もCSS反映後の実ビルドで
 
 ### セッション64: Issue #26 の切り出し＋/fix-issue #119 EPUB出力——PR #120 マージ・本番反映（7/24）
 
@@ -848,7 +848,7 @@
 - **実装は7ファイル（+309/-40）**: テンプレート側= build-epub.yml（press-ready・ページ数検査・印刷向け画像検査は入稿PDF専用のため非実行・成果物存在検査あり）＋ book.config.epub.js ＋ themes/theme-epub.css（**@import なしの自己完結**——EPUBにはCSSがそのまま収録されるため node_modules 参照不可。傍点・縦中横・割注・改ページ・扉・奥付・挿絵をカバー）＋ README。アプリ側= editor.ts に `BuildKind`（タグ形式・次タグ提案・完了検知の成果物拡張子を種別対応）＋ build-dialog.tsx の種別選択（完了表示は選択中でなく実タグの接尾辞に従う）＋ ツールバー「入稿ビルド」→「ビルド」
 - **subagent 自己レビューで正しさに関わる指摘2件→修正・再レビュー解消**: ①**縦書きEPUBに必須の `readingProgression: 'rtl'` 欠落**——Vivliostyle CLI は CSS の writing-mode から spine の page-progression-direction を自動検出しない（レビュアーが @vivliostyle/cli 11.1.0 のバンドルを npm から取得して実装確認）。欠落するとページ送りが横書き方向に逆転する ②reset() を `setTag(suggestedTag)` にした変更が**作成済みタグの残留**を生む回帰（再フェッチの `current === ''` ガードを通らない）→ `setTag('')` へ戻す。**教訓: EPUB出力はテーマCSSだけでなくマニフェスト系設定（readingProgression 等）に縦書き要件が分散している**
 - 検証: typecheck / lint 通過。ペイン実機（launch.json の dev サーバー・原稿リポジトリ非接続のため一時検証ページ→検証後削除）で種別切替の文言/プレースホルダー追従・種別不一致タグのエラー＋開始ボタン無効化・コンソールエラーなしを確認。マージ後: main 取り込み・ローカルブランチ削除・Issue #119 自動クローズ・Vercel 自動デプロイ
-- **残タスク（ユーザー作業）**: テンプレートはアプリから配布されないため、原稿リポジトリ（manuscript-poc / writings）へ新規3ファイル＋README変更を手動適用するまで EPUB ビルドは動かない。適用後に `v*-epub` タグ実走で Actions 成功確認→生成EPUBのリーダー実機確認（Kindle・Kobo・Apple Books 等）。表紙画像（config の `cover`）は未設定——電子頒布時に要検討
+- **残タスク（ユーザー作業）**: テンプレートはアプリから配布されないため、原稿リポジトリ（<poc-repo> / <manuscripts-repo>）へ新規3ファイル＋README変更を手動適用するまで EPUB ビルドは動かない。適用後に `v*-epub` タグ実走で Actions 成功確認→生成EPUBのリーダー実機確認（Kindle・Kobo・Apple Books 等）。表紙画像（config の `cover`）は未設定——電子頒布時に要検討
 
 ### セッション65: /fix-issue #121 原稿リポジトリの初期セットアップ——SPEC策定＋PR #122 マージ・本番反映（7/24）
 
@@ -883,7 +883,7 @@
 
 ### セッション68: /fix-issue #126 Zenn連携——SPEC策定＋PR #127 マージ・本番反映（7/25）
 
-- **Issue #126 を `/fix-issue` フローで処理（PR #127）**: ネコノテからZenn連携リポジトリ（Motoki-N/zenn-docs）へ記事を直接執筆・投稿する新機能（enhancement / P2）。SPEC未策定のためインタビュー駆動で SPEC-zenn-integration を新規策定（3巡）→プラン承認（DBスキーマ変更を含むため設計確認を兼ねる）→実装→E2E→レビュー2系統の1セッション縦通し
+- **Issue #126 を `/fix-issue` フローで処理（PR #127）**: ネコノテからZenn連携リポジトリ（<owner>/zenn-docs）へ記事を直接執筆・投稿する新機能（enhancement / P2）。SPEC未策定のためインタビュー駆動で SPEC-zenn-integration を新規策定（3巡）→プラン承認（DBスキーマ変更を含むため設計確認を兼ねる）→実装→E2E→レビュー2系統の1セッション縦通し
 - **仕様インタビューで確定した点**: ①記事の実体は **zenn-docs の articles/<slug>.md 直接編集**（DBに本文なし＝原稿リポジトリと同じ思想。ノート記事化・リッチエディタ流用は不採用——TipTap経由だとZenn独自記法 `:::message`・` ```js:ファイル名 ` が壊れる）②main へ直接コミット・published はフォーム選択（デフォルト false）＋毎回確認ダイアログ（公開時は destructive 強調）③スコープは新規投稿のみ（同一画面での再保存＝blobSha 楽観ロックの再コミットは可。既存記事の一覧・開き直しはスコープ外）④保存先は user_settings.zenn_repo（列追加マイグレーション・RLSは既存の本人のみポリシー）⑤UIは CodeMirror ＋ **zenn-markdown-html のZenn同等プレビュー**2ペイン——「Zenn記事→技術書（Vivliostyle）」の将来構想に対し、Markdownソースが成果物なら zenn-markdown-html でHTML化→Vivliostyle 直組版のパイプラインが取れると確認したのが決め手
 - **設計の要点**: frontmatter 合成は **JSON.stringify の二重引用符スカラー/フロー配列方式**（YAML 1.2 はJSONの上位集合。js-yaml 等の依存追加なしで引用符・コロン・絵文字入り title に安全——実E2Eで `"引用符"と: コロン` を投稿しGitHub上のYAMLを js-yaml 解釈で検証）。slug 衝突は事前GETせず **sha なしPUTの conflict 正規化をそのまま使う**（TOCTOU回避・1往復で原子的）。slug は `[a-z0-9_-]{12,50}` でパストラバーサル不能・パスはサーバー合成。conflict の共通文言は校正フロー文脈のため publish/save で Zenn 文脈の文言に置換
 - **実装は18ファイル（+2431/-8）**: マイグレーション（zenn_repo・承認後 db push 適用済み）／lib/schemas/zenn.ts・lib/zenn/frontmatter.ts（server-only 純関数）・lib/actions/zenn.ts（gate方式 getZennWorkspace / publishZennArticle / saveZennArticle・zenn-save 12分600日レート制限）／settings.ts にZennリポジトリ3アクション（登録時 getDefaultBranch 疎通検証）／/zenn/new（workspace・frontmatterフォーム・slug自動生成＝randomUUID hex14字はサーバー生成でハイドレーション不一致回避・公開確認ダイアログ・Zenn用CodeMirror拡張新設）／設定画面セクション＋ナビ「Zenn」
@@ -902,7 +902,7 @@
 - **実装は14ファイル（+285/-32）**: マイグレーション（承認後 db push 適用・型再生成）→ enums.ts（writingGenres）→ テンプレRecord＋ラベル → proposalInputSchema 2行（partial().omit() 経由で updateProposal の保存対象に自動反映）→ 作成ダイアログの select → 企画書エディタ4項目化（執筆ジャンル select／執筆目的／内容ジャンル←旧「ジャンル」／ターゲット層。ProposalPayload 拡張で自動保存・localStorageドラフトに自動で乗る。旧形式ドラフトは 'novel' フォールバック）→ proposalSection() に執筆ジャンル・執筆目的追加＋「ジャンル:」→「内容ジャンル:」改称
 - **スコープ外と明示した点**: 講評の入力充足チェック（critique.ts）とフェイルクローズ条件は無変更（writing_genre は not null で常在・purpose は任意）。ジャンル別ペルソナの既定選択は #95、ボードのモード化は #96
 - **レビュー2系統**: security-reviewer は省略（RLS変更なしのカラム追加のみ・Issue記載どおりの事前判断）。subagent 自己レビュー=ブロッキングなし。非ブロッキング留意1件——zod の `.partial()` は `.default()` 付きフィールドにキー欠落時デフォルトを注入するため、writing_genre を含めない部分更新を直接送ると 'novel' に静かにリセットされる（現行呼び出し元は常に全フィールド送信で実害なし・既存 content の default と同質。updateProposal に新しい呼び出し元を作るときは全フィールド送信を守ること）
-- 検証: typecheck / lint 通過。ペイン実機E2E=技術書でプロジェクト作成→4見出しテンプレ挿入→執筆目的入力→自動保存→リロード復元→**ジャンル変更で本文不変**→既存プロジェクト（人魚の唄）が「小説」既定・既存値無傷→テストプロジェクト削除で原状復帰。ペイン定石の再確認: 同一フォルダ別セッションの dev サーバー稼働中は Next 16 二重起動ロックで自前サーバー不可→ `preview_start {url}` で既存サーバー（同じ作業ツリー配信）に接続して検証
+- 検証: typecheck / lint 通過。ペイン実機E2E=技術書でプロジェクト作成→4見出しテンプレ挿入→執筆目的入力→自動保存→リロード復元→**ジャンル変更で本文不変**→既存プロジェクト（セイレーン）が「小説」既定・既存値無傷→テストプロジェクト削除で原状復帰。ペイン定石の再確認: 同一フォルダ別セッションの dev サーバー稼働中は Next 16 二重起動ロックで自前サーバー不可→ `preview_start {url}` で既存サーバー（同じ作業ツリー配信）に接続して検証
 - **残タスク**: #95（ジャンル別標準ペルソナ・プロファイルと既定選択の自動適用。主工数は技術書向けレビュープロンプトの設計・執筆——story-engineering に相当する技術書フレームワークの選定から）と #96（構成ボードのモード化 or カンバン置き換え。着手時に方式再選定）が着手可能に。どちらも着手時に SPECインタビューから
 
 ### セッション70: /fix-issue #95 ジャンル別標準ペルソナ・プロファイル——SPEC-genre-profiles策定＋PR #130 マージ・本番反映（7/25）
@@ -924,7 +924,7 @@
 - **構成レビューは structure 流用でコード変更ほぼゼロ**: 承認ゲート（approveBoardReview・structure_status）・/api/review・ReviewPanel すべて無変更。追加は技術書構成レビュー（…1013・→技術書編集者。観点=章立ての流れ・前提知識の積み上がり・学習曲線・章間の重複と欠落・分量バランス・目次タイトルの魅力）のシードのみで、#95 のジャンル優先ソートが既定選択を自動適用。buildStructureReviewInput をジャンル分岐（novel=現行出力を chapter 除外付きで完全維持・非novel=「# 構成（目次・構成順）」で章タイトル＋メモのみ）。「その他」の構成レビュー既定は小説版のまま（#95 方針の帰結・SPEC §3.5 に明記）
 - **実装は18ファイル（+955/-72）**: マイグレーション（part CHECK 張り替え＋…1013 シード。判定行は parseVerdict 互換で一字一句同一）／outline-board.tsx（1レーンD&D・handleDragOver 不要・空時テンプレカード提示）／outline-dialog.tsx（scene-dialog の縮退版・原稿紐づけは同パターン流用）／outline-template.ts（純定数・templatesテーブル不使用の方針踏襲）／applyOutlineTemplate（1 upsert=原子的）／page/layout/tabs の出し分け（boardLabel prop）
 - **レビュー2系統**: security-reviewer は省略（/api/review の対象拡張なし・新規サーフェスは applyOutlineTemplate のみで既存パターンに閉じる——SPEC-beat-board §8 のゲート条件に非該当を確認）。subagent 自己レビュー=**指摘なし**（CHECK 制約の自動命名一致・テンプレ章タイトルのコメント一致・全件送信の整合・novel 出力の完全一致・E文字列検査まで）
-- 検証: typecheck / lint 通過。ペイン実機E2E=開発記（技術書化）でテンプレ提示→入門型6枚→常設メニューで問題解決型を末尾5枚→D&D並び替え（dnd-kit合成ドラッグ定石）→リロード保持→ダイアログ編集→**ジャンル往復のデータ保全**（章11枚→小説切替でシーン0枚表示・シーン2枚作成・D&D保存→DB実測 setup(0-1)→chapter(2-12) の正準順序で章無傷→技術書に戻して順序・メモ無傷）→全削除で空状態復帰。人魚の唄（実シーン10枚）の完全回帰確認。テストデータは削除して原状復帰（開発記の執筆ジャンルのみ技術書のまま=**#95 の推奨作業を消化**）
+- 検証: typecheck / lint 通過。ペイン実機E2E=開発記（技術書化）でテンプレ提示→入門型6枚→常設メニューで問題解決型を末尾5枚→D&D並び替え（dnd-kit合成ドラッグ定石）→リロード保持→ダイアログ編集→**ジャンル往復のデータ保全**（章11枚→小説切替でシーン0枚表示・シーン2枚作成・D&D保存→DB実測 setup(0-1)→chapter(2-12) の正準順序で章無傷→技術書に戻して順序・メモ無傷）→全削除で空状態復帰。セイレーン（実シーン10枚）の完全回帰確認。テストデータは削除して原状復帰（開発記の執筆ジャンルのみ技術書のまま=**#95 の推奨作業を消化**）
 - **これで #93（汎用執筆支援）の子Issue 4件がすべて完了**: #97 横書き（7/23）→ #94 ジャンル基盤 → #95 ジャンル別ペルソナ・プロファイル → #96 目次ボード。技術書の執筆フロー（企画→レビュー→目次→執筆→講評→校正→PDF/EPUB）が一気通貫で本番に揃った
 - **残タスク（ユーザー作業）**: ①開発記で目次を作り技術書構成レビューをAI実走（判定行→「構成を通す」まで）②技術書講評・技術書校正の実走（原稿ができてから）③親Issue #93 のクローズ（トラッキングIssueのため手動）
 
@@ -934,7 +934,7 @@
 - **設計の要点**: **スキーマ変更なし・読み取り専用**。completed になるとUIから見えなくなる仕様の穴（企画を通す→履歴消失）を、`/projects/[id]/reviews` タブで塞ぐ。Server Action 2本——`listReviewSessions`（サマリ一覧・本文なしで軽く保つ。フィードバック回数・最新判定は review_feedbacks の created_at 順から導出）／`getReviewHistoryFeedbacks`（行を開いたときの遅延取得。RLS越し存在確認→0件は not_found）。対象ラベルは target_ref の解釈（proposal/character=企画書id・structure=プロジェクトid・scene=シーンid）に従い scenes/notes をまとめて引き、**削除済みプロファイル・ペルソナ・シーン・ノートはフォールバック表示**（profile/persona は on delete set null の履歴保持設計・scene は FKなし text の仕様に沿う）。UIは critique-panel のアコーディオン（details/summary）パターン踏襲・色はテーマトークンのみ
 - **実装は5ファイル（+438）**: SPEC-review-history.md／lib/actions/review-history.ts／app/(app)/projects/[id]/reviews/page.tsx／components/reviews/review-history-list.tsx（フェーズ・ステータス・判定バッジ＋読み取り専用フィードバック表示＋navigator.clipboard コピー）／project-tabs.tsx にタブ追加（既存ファイル変更はこの2行のみ。既存パネル・承認フロー・API 無変更）
 - **レビュー2系統**: security-reviewer は省略（RLSポリシー変更なし・anon＋Cookie クライアントの読み取りのみ）。subagent 自己レビュー=**指摘なし**（RLS 所有境界・削除済み参照・target_ref 整合・テーマ規約まで確認。低優先観察2件——ReviewHistoryPhase の独自定義キャストは将来フェーズ追加時に空バッジ化・取得失敗キャッシュは開き直しで再試行されない——はどちらも現時点で実害なしのため未対応と記録）
-- 検証: typecheck / lint 通過。ペイン実機E2E=人魚の唄でキャラクター（ノート名付き）・構成（差し戻し）・企画書（完了・承認・6回）の3セッション降順一覧→展開で遅延取得→コピーで toast「フィードバックをコピーしました」＋URL遷移なし→開発記で空状態「まだレビュー履歴がありません」（タブは「目次」出し分けと共存）→モバイル375px成立・コンソールエラーなし。座標クリックが一度ダッシュボードへ誤遷移（定石どおり座標は外れやすい）→クリック後に location.pathname と toast をJSで実測検証する方式で確定
+- 検証: typecheck / lint 通過。ペイン実機E2E=セイレーンでキャラクター（ノート名付き）・構成（差し戻し）・企画書（完了・承認・6回）の3セッション降順一覧→展開で遅延取得→コピーで toast「フィードバックをコピーしました」＋URL遷移なし→開発記で空状態「まだレビュー履歴がありません」（タブは「目次」出し分けと共存）→モバイル375px成立・コンソールエラーなし。座標クリックが一度ダッシュボードへ誤遷移（定石どおり座標は外れやすい）→クリック後に location.pathname と toast をJSで実測検証する方式で確定
 - **残タスク（ユーザー作業）**: ドッグフーディングで実際の振り返り（承認済み企画書レビューの読み返し・コピーしてノートや原稿への引用）を試す。絞り込み・検索・プロジェクト横断はスコープ外（SPEC §6。実需が出たらIssue起票）
 
 ### セッション73: /fix-issue #46 掘り下げチャットへの関連ノート投入——SPEC-ai-deep-dive §3.2 改訂＋PR #139 マージ・本番反映（7/30）

@@ -8,7 +8,7 @@
 ## 1. 目的
 
 技術書執筆と技術ブログのシナジーを活かすため、ネコノテからZenn連携リポジトリ
-（GitHub連携済みの `Motoki-N/zenn-docs` 等）へ記事を直接執筆・投稿できるようにする。
+（GitHub連携済みの `<owner>/zenn-docs` 等）へ記事を直接執筆・投稿できるようにする。
 Zenn の GitHub 連携（リポジトリへの push が即デプロイ）はネコノテの
 「原稿の実体はGitHub」という思想と相性がよく、記事本文もDBに持たない。
 
@@ -211,8 +211,8 @@ alter table public.user_settings add column zenn_repo text;
 
 ## 10. E2E検証手順
 
-1. **設定登録**: /settings で `Motoki-N/zenn-docs` を登録→表示反映。不正形式（`foo`）と
-   存在しないrepo（`Motoki-N/no-such-repo`）で日本語エラー
+1. **設定登録**: /settings で `<owner>/zenn-docs` を登録→表示反映。不正形式（`foo`）と
+   存在しないrepo（`<owner>/no-such-repo`）で日本語エラー
 2. **ゲート**: zenn_repo 未登録状態で /zenn/new → 設定への誘導表示（PAT未登録側の誘導は
    実PATを消さずコード確認で代替可）
 3. **slug検証**: 自動生成値が `[a-z0-9_-]{12,50}` を満たす。11字に手直し→エラー、大文字→エラー

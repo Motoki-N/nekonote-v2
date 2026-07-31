@@ -257,7 +257,7 @@ SPECで意図的にスコープ外へ残置した機能と技術的負債を、*
 ### 番外：縦書きエディタ Phase 1・2 ✅ 完了（7/15〜7/16）
 
 - 要求仕様でスコープ外としていた縦書きエディタを、Vivliostyle により想定より低コストで実現できる見込みが立ったためスコープ内へ昇格（SPEC-vertical-editor 策定・確定）
-- Phase 1（VFM＋GitHub Actions 入稿PDFビルドパイプライン）：組版品質のローカル検証＋検証リポジトリ `manuscript-poc` でのE2E完走。実原稿3.1万字で入稿品質のPDF（PDF/X-1a）がReleasesに出ることを確認
+- Phase 1（VFM＋GitHub Actions 入稿PDFビルドパイプライン）：組版品質のローカル検証＋検証リポジトリ `<poc-repo>` でのE2E完走。実原稿3.1万字で入稿品質のPDF（PDF/X-1a）がReleasesに出ることを確認
 - Phase 2（2ペインWebエディタ）：CodeMirror＋Vivliostyle Viewer＋GitHub読み書き。E2E全10項目合格・security-reviewer 通過・本番反映済み（PR #12）
 - ✅ 完了条件達成：ブラウザだけで執筆→保存（コミット）→縦書きプレビューが回る
 
