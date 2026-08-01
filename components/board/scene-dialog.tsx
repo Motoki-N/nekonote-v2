@@ -220,7 +220,8 @@ export function SceneDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      {/* 低い画面でも保存ボタンに届くよう、ダイアログ全体を画面内に収めてスクロール（Issue #151） */}
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>シーンを編集</DialogTitle>
           <DialogDescription className="sr-only">
@@ -241,11 +242,12 @@ export function SceneDialog({
 
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             本文
+            {/* max-h で自動拡張を止め、以降は入力欄内スクロール（Issue #151: 保存ボタンの見切れ防止） */}
             <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
               placeholder={CONTENT_PLACEHOLDER}
-              className="min-h-32 text-sm text-foreground"
+              className="max-h-64 min-h-32 text-sm text-foreground"
             />
           </label>
 
