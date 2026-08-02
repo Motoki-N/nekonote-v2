@@ -1000,3 +1000,10 @@
 - **実装は4ファイル（+19/-13）**: lib/board.ts／lib/actions/scenes.ts／scene-dialog.tsx／SPEC-beat-board.md（§決定事項・§3.2・§3.3 の「placeholderで提示」3箇所を実態に更新）
 - **レビュー2系統**: security-reviewer は省略（RLS変更なし・既存パターンの書き込みのみ）。subagent 自己レビュー=**指摘なし**（呼び出し元2系統の分岐・duplicateScene/applyOutlineTemplate への波及・outline-dialog 非影響・SPEC整合まで確認。把握事項2件——新規カードのプレビューにテンプレ文言が表示される／本文未編集のままAIレビューするとテンプレ文言が入力に含まれる——はいずれもIssueの意図「テンプレとして残す」の自然な帰結と記録）
 - 検証: typecheck / lint 通過。ペイン実機=セイレーンのビートボードで「＋シーンを追加」→ダイアログの本文にテンプレが**実値**として入っていることを `textarea.value` で確認（placeholder との両建ても確認）→確認用シーンは削除して原状復帰。既存devサーバー（別セッション稼働・同一作業ツリー配信）を `preview_start {url}` で流用する定石を使用
+
+### セッション80: /fix-issue #153 章ダイアログの保存ボタン見切れ修正——PR #158 マージ・本番反映（8/2）
+
+- **Issue #153 を `/fix-issue` フローで処理（PR #158）**: アウトラインボード（目次ボード）の章編集ダイアログで内容メモが長くなると保存ボタンが見切れる。セッション77（Issue #151 / PR #152）で発見・起票済みの同種問題で、Issue本文に記載どおり PR #152 と同じ2点をそのまま適用。設計確認（③）は非該当（1ファイル・UIのみ）でスキップ
+- **修正は outline-dialog.tsx の2箇所（+4/-2）**: ①内容メモ Textarea に `max-h-64`（`field-sizing-content` の自動拡張を止めて入力欄内スクロール） ②DialogContent に `max-h-[calc(100dvh-2rem)] overflow-y-auto`。コメント書式含め scene-dialog.tsx の適用内容と完全一致
+- **レビュー2系統**: security-reviewer は省略（UIレイアウトのみ・認証/RLS/秘密情報に非接触）。subagent 自己レビュー=**指摘なし**（scene-dialog との一貫性・スコープ外変更なし・AlertDialogContent への波及不要まで確認）
+- 検証: typecheck / lint 通過。ペイン実機=開発記プロジェクトの目次ボードで白紙の章を作成し内容メモに30行入力→入力欄256pxで内部スクロール・ダイアログ全体が画面内に収まり保存/削除ボタン到達を確認→検証用の章は削除して原状復帰。既存devサーバー（別セッション稼働・同一作業ツリー配信）を `preview_start {url}` で流用する定石を使用。**Next.js 16 は同一ディレクトリの `next dev` 多重起動を拒否する**ため launch.json の autoPort では並行起動できない（流用が唯一の経路）ことを確認
