@@ -26,6 +26,7 @@ import {
   createScene,
   deleteScene,
   detachSceneNote,
+  duplicateScene,
   reorderScenes,
   switchStructureTemplate,
   updateScene,
@@ -316,6 +317,18 @@ export function BeatBoard({
     }));
   }
 
+  /** 複製（Issue #154）。サーバーで元シーンの直後に複製し、正準順序の全件で置き換える */
+  async function handleDuplicate(sceneId: string): Promise<boolean> {
+    const result = await duplicateScene(sceneId);
+    if (!result.ok || !result.data) {
+      toast.error(result.ok ? "シーンの複製に失敗しました" : result.error.message);
+      return false;
+    }
+    setScenes(result.data.scenes);
+    toast("シーンを複製しました");
+    return true;
+  }
+
   async function handleDelete(sceneId: string): Promise<boolean> {
     const result = await deleteScene(sceneId);
     if (!result.ok) {
@@ -526,6 +539,7 @@ export function BeatBoard({
           onAttachNote={(note) => handleAttachNote(editing.id, note)}
           onDetachNote={(noteId) => handleDetachNote(editing.id, noteId)}
           onSave={handleSave}
+          onDuplicate={handleDuplicate}
           onDelete={handleDelete}
           onReview={(scene) => {
             setEditing(null);

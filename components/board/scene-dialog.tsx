@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, MessageSquareText, Minus, Plus, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, MessageSquareText, Minus, Plus, Trash2 } from "lucide-react";
 
 import { getManuscriptTree, type ManuscriptTreeData } from "@/lib/actions/manuscripts";
 import type { LinkedNote } from "@/lib/actions/projects";
@@ -119,6 +119,7 @@ export function SceneDialog({
   onAttachNote,
   onDetachNote,
   onSave,
+  onDuplicate,
   onDelete,
   onReview,
   onClose,
@@ -133,6 +134,8 @@ export function SceneDialog({
   onAttachNote: (note: LinkedNote) => Promise<void>;
   onDetachNote: (noteId: string) => Promise<void>;
   onSave: (sceneId: string, edit: SceneEdit) => Promise<boolean>;
+  /** 複製（Issue #154）。保存済みの内容を複製する（ダイアログの未保存の編集は含まれない） */
+  onDuplicate: (sceneId: string) => Promise<boolean>;
   onDelete: (sceneId: string) => Promise<boolean>;
   onReview: (scene: SceneRecord) => void;
   onClose: () => void;
@@ -213,6 +216,17 @@ export function SceneDialog({
     try {
       const ok = await onDelete(scene.id);
       if (ok) onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 複製（Issue #154）。保存済みの内容を複製する。編集中の内容を失わないようダイアログは閉じない */
+  async function handleDuplicate() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onDuplicate(scene.id);
     } finally {
       setBusy(false);
     }
@@ -381,6 +395,15 @@ export function SceneDialog({
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => void handleDuplicate()}
+            >
+              <Copy data-icon="inline-start" />
+              複製
+            </Button>
             <Button variant="outline" size="sm" disabled={busy} onClick={() => onReview(scene)}>
               <MessageSquareText data-icon="inline-start" />
               シーンレビュー

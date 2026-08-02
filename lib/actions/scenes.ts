@@ -165,6 +165,59 @@ export async function createScene(
 }
 
 /**
+ * シーン複製（Issue #154）。元シーンの直後に複製を挿入する。
+ * タイトル・本文・パート・感情はコピーし、転換点マーク（1転換点1シーンの規則）・
+ * 承認ステータス・原稿/ノート紐づけ・レビュー履歴は引き継がない
+ */
+export async function duplicateScene(
+  sceneId: string,
+): Promise<ActionResult<{ scenes: SceneRecord[]; createdId: string }>> {
+  try {
+    const sid = uuidSchema.parse(sceneId)
+    const supabase = await createClient()
+
+    const { data: target, error: targetError } = await supabase
+      .from('scenes')
+      .select(SCENE_COLUMNS)
+      .eq('id', sid)
+      .maybeSingle()
+    if (targetError) throw new AppError('internal', targetError.message)
+    if (!target) throw new AppError('not_found', 'シーンが見つかりません')
+    const source = target as SceneRecord
+
+    const scenes = await fetchProjectScenes(supabase, source.project_id)
+    const created: SceneRecord = {
+      id: randomUUID(),
+      project_id: source.project_id,
+      part: source.part,
+      anchor: null,
+      order_index: 0, // 仮値。toCanonicalOrder で確定する
+      // sceneEditSchema の max(200) を超えると複製後に保存できなくなるため付加後に切り詰める
+      title: source.title === '' ? '' : `${source.title}のコピー`.slice(0, 200),
+      content: source.content,
+      emotion_start: source.emotion_start,
+      emotion_end: source.emotion_end,
+      status: 'draft',
+      manuscript_path: null,
+    }
+    // 元シーンの直後に挿入。元が境界アンカー付き（レーン末尾固定）でも、複製にアンカーは
+    // ないため正準順序で境界スロットの手前に収まる
+    const index = scenes.findIndex((s) => s.id === sid)
+    const next = toCanonicalOrder([
+      ...scenes.slice(0, index + 1),
+      created,
+      ...scenes.slice(index + 1),
+    ])
+    await persistChanges(supabase, toMap(scenes), next)
+
+    revalidatePath(`/projects/${source.project_id}/board`)
+    return { ok: true, data: { scenes: next, createdId: created.id } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
  * 定番構成テンプレの一括追加（Issue #96・SPEC-outline-board §3.4）。
  * 章カード（part='chapter'）N 枚を章レーン末尾に1回の upsert で追加する（原子的）
  */
