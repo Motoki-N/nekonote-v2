@@ -984,3 +984,11 @@
 - **レビュー2系統**: security-reviewer は省略（UIレイアウトのみ・認証/RLS/秘密情報に非接触）。subagent 自己レビュー=**指摘なし**（tailwind-merge の競合なし・`field-sizing` 非対応ブラウザでは元々発生しないため無害・削除確認 AlertDialog はポータル描画で overflow クリップの影響なし。軽微観察: 閉じるボタン X は absolute 配置のためスクロールで上に流れるが、ESC・オーバーレイで閉じられ実害なし）
 - 検証: typecheck / lint 通過。ペイン実機=シーンダイアログに30行入力し、本文欄256pxで内部スクロール切替・ダイアログ682px（100dvh−2rem）でスクロール後に保存ボタン完全表示を getBoundingClientRect 実測＋スクリーンショットで確認（保存せず閉じて原状維持）。**HMRが走るとダイアログが閉じて入力が消える**ため、修正後の再検証は開き直し→React native setter で再入力の手順
 - **同種問題を発見し Issue #153 起票**: outline-dialog.tsx（scene-dialog の縮退版）が同じパターンを持つ。/fix-issue の「ついで修正禁止」に従いスコープ外として分離し、PR #152 と同じ2点適用で直る見込みをIssue本文に記載
+
+### セッション78: /fix-issue #154 ビートボードのシーンカード複製機能——PR #156 マージ・本番反映（8/2）
+
+- **Issue #154 を `/fix-issue` フローで処理（PR #156）**: 構成検討時の仮配置用にシーンカードを複製したい（enhancement/P1）。設計確認（③）は非該当（スキーマ・認証・API変更なし、小規模な機能追加）でスキップし、そのまま縦通し
+- **設計の要点**: `duplicateScene` Server Action を新設（lib/actions/scenes.ts）。既存 createScene / updateScene と同型（uuid検証→RLS越し取得→toCanonicalOrder→persistChanges→revalidatePath）で、元シーンの直後に複製を挿入して全体を正準順序で再採番。**複製する**=タイトル（「のコピー」付加）・本文・パート・感情の起点/終点。**引き継がない**=転換点マーク（SPEC-beat-board §4「1転換点1シーン」の規則。anchor=null なので assertTurningPointOrder も不要——既存アンカーの相対順が不変で違反を新規に作れない）・承認ステータス（draft）・原稿/ノート紐づけ・レビュー履歴。元が境界アンカー付き（レーン末尾固定）でも複製は境界スロット手前に収まる
+- **UIは編集ダイアログのフッターに「複製」ボタン**（scene-dialog.tsx に onDuplicate prop・beat-board.tsx で接続）。SceneDialog の利用元はビートボードのみで目次ボード（outline-dialog）には影響なし
+- **subagent 自己レビュー=指摘2件をどちらも反映**: ①複製成功時に `onClose()` していたため編集中の未保存内容が黙って破棄される→**複製後もダイアログを閉じない**方式に変更（仮配置ユースケースでは編集とセットで使われやすい） ②タイトル200字（sceneEditSchema の max(200)）に「のコピー」を付加すると204字になり、複製シーンを開いて保存すると Zod 検証で保存不能→付加後に `.slice(0, 200)` で切り詰め。security-reviewer は省略(RLS変更なし・既存パターンの読み書きのみ)
+- 検証: typecheck / lint 通過。ペイン実機E2E=セイレーンの転換点マーク＋感情バッジ付きカードを複製→元の直後に「〜のコピー」配置・本文/感情コピー・マーク非継承・リロードで永続化（order_index 再採番込み）→修正後の再検証で複製後ダイアログ開いたまま＋トースト表示→複製カードは既存削除フローで削除して原状復帰。コンソールエラーなし
