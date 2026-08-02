@@ -992,3 +992,11 @@
 - **UIは編集ダイアログのフッターに「複製」ボタン**（scene-dialog.tsx に onDuplicate prop・beat-board.tsx で接続）。SceneDialog の利用元はビートボードのみで目次ボード（outline-dialog）には影響なし
 - **subagent 自己レビュー=指摘2件をどちらも反映**: ①複製成功時に `onClose()` していたため編集中の未保存内容が黙って破棄される→**複製後もダイアログを閉じない**方式に変更（仮配置ユースケースでは編集とセットで使われやすい） ②タイトル200字（sceneEditSchema の max(200)）に「のコピー」を付加すると204字になり、複製シーンを開いて保存すると Zod 検証で保存不能→付加後に `.slice(0, 200)` で切り詰め。security-reviewer は省略(RLS変更なし・既存パターンの読み書きのみ)
 - 検証: typecheck / lint 通過。ペイン実機E2E=セイレーンの転換点マーク＋感情バッジ付きカードを複製→元の直後に「〜のコピー」配置・本文/感情コピー・マーク非継承・リロードで永続化（order_index 再採番込み）→修正後の再検証で複製後ダイアログ開いたまま＋トースト表示→複製カードは既存削除フローで削除して原状復帰。コンソールエラーなし
+
+### セッション79: /fix-issue #155 シーン本文の4観点プレースホルダーを初期値化——PR #157 マージ・本番反映（8/2）
+
+- **Issue #155 を `/fix-issue` フローで処理（PR #157）**: シーン編集ダイアログの本文プレースホルダー（「4観点を目安に自由に…」）は入力すると消えるためテンプレとして使えない→新規シーン作成時に本文の初期値として入れて残す。設計確認（③）は非該当（スキーマ・認証・API変更なし）でスキップ
+- **設計の要点**: 共有定数 `SCENE_CONTENT_TEMPLATE` を lib/board.ts（クライアント/サーバー共用の純ヘルパー置き場）に新設し、createScene（lib/actions/scenes.ts）で本文初期値に注入。**createScene は目次ボードの章カード（part='chapter'）と共用**のため `targetPart === CHAPTER_PART ? '' : テンプレ` で小説シーンに限定（章カードは別ダイアログ・別文言で対象外）。duplicateScene（元の本文コピー）・applyOutlineTemplate（章カードは空のまま）は無変更。scene-dialog.tsx はローカル定数を削除して共有定数を placeholder に流用（本文を空にしたときは従来どおり同文言の placeholder 表示）
+- **実装は4ファイル（+19/-13）**: lib/board.ts／lib/actions/scenes.ts／scene-dialog.tsx／SPEC-beat-board.md（§決定事項・§3.2・§3.3 の「placeholderで提示」3箇所を実態に更新）
+- **レビュー2系統**: security-reviewer は省略（RLS変更なし・既存パターンの書き込みのみ）。subagent 自己レビュー=**指摘なし**（呼び出し元2系統の分岐・duplicateScene/applyOutlineTemplate への波及・outline-dialog 非影響・SPEC整合まで確認。把握事項2件——新規カードのプレビューにテンプレ文言が表示される／本文未編集のままAIレビューするとテンプレ文言が入力に含まれる——はいずれもIssueの意図「テンプレとして残す」の自然な帰結と記録）
+- 検証: typecheck / lint 通過。ペイン実機=セイレーンのビートボードで「＋シーンを追加」→ダイアログの本文にテンプレが**実値**として入っていることを `textarea.value` で確認（placeholder との両建ても確認）→確認用シーンは削除して原状復帰。既存devサーバー（別セッション稼働・同一作業ツリー配信）を `preview_start {url}` で流用する定石を使用
