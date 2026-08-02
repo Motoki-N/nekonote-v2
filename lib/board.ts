@@ -58,6 +58,16 @@ export const ANCHOR_BADGE = Object.fromEntries(
   allTurningPoints.map((tp) => [tp.id, tp.badge]),
 ) as Record<SceneAnchor, string>
 
+/** 新規シーン本文の初期値（Issue #155。4観点のテンプレとして残す。
+ * 章カードは対象外。編集ダイアログの placeholder（本文を空にしたとき）と共用） */
+export const SCENE_CONTENT_TEMPLATE = [
+  '4観点を目安に自由に:',
+  '・シチュエーション（場所・時刻）',
+  '・起きること',
+  '・感情の変化',
+  '・葛藤',
+].join('\n')
+
 /** 感情の強度の表示用テキスト（null=未設定、0=0、それ以外は符号付き数値） */
 export function formatEmotion(value: Emotion | null): string {
   if (value === null) return '未設定'

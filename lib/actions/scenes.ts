@@ -9,6 +9,7 @@ import type { LinkedNote } from '@/lib/actions/projects'
 import {
   findTurningPointOrderViolation,
   normalizeAnchor,
+  SCENE_CONTENT_TEMPLATE,
   toCanonicalOrder,
   turningPointOrderMessage,
   type SceneRecord,
@@ -147,7 +148,8 @@ export async function createScene(
       anchor: null,
       order_index: scenes.length, // 仮値。toCanonicalOrder で確定する
       title: '',
-      content: '',
+      // 小説シーンは4観点テンプレを初期値として残す（Issue #155。章カードは対象外）
+      content: targetPart === CHAPTER_PART ? '' : SCENE_CONTENT_TEMPLATE,
       emotion_start: null,
       emotion_end: null,
       status: 'draft',

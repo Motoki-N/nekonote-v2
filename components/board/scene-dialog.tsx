@@ -11,6 +11,7 @@ import {
   ANCHOR_TO_PART,
   formatEmotion,
   isBoundaryAnchor,
+  SCENE_CONTENT_TEMPLATE,
   type SceneRecord,
 } from "@/lib/board";
 import { BOARD_TEMPLATES } from "@/lib/board-templates";
@@ -41,14 +42,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-
-const CONTENT_PLACEHOLDER = [
-  "4観点を目安に自由に:",
-  "・シチュエーション（場所・時刻）",
-  "・起きること",
-  "・感情の変化",
-  "・葛藤",
-].join("\n");
 
 const selectClass =
   "h-8 w-full rounded-md border border-input bg-transparent px-2.5 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
@@ -260,7 +253,7 @@ export function SceneDialog({
             <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              placeholder={CONTENT_PLACEHOLDER}
+              placeholder={SCENE_CONTENT_TEMPLATE}
               className="max-h-64 min-h-32 text-sm text-foreground"
             />
           </label>
