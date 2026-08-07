@@ -1237,11 +1237,11 @@ export function VerticalEditor({
           >
             <Settings />
           </Button>
-          {/* 青空文庫形式の書き出し（SPEC-aozora-export。開いている章の編集中の内容が対象） */}
+          {/* 投稿サイト用の書き出し（SPEC-aozora-export。開いている章の編集中の内容が対象） */}
           <Button
             size="sm"
             variant="outline"
-            title="青空文庫形式で書き出し（投稿サイト用）"
+            title="投稿サイト用に書き出し（青空文庫・カクヨム・なろう）"
             disabled={!selectedPath || chapterLoading}
             onClick={() => setAozoraSource(contentRef.current)}
           >
