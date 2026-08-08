@@ -83,6 +83,9 @@ export const proofreadRequestSchema = z.object({
     .optional(),
 })
 
+// コミットSHA（履歴パネルのdiff取得。SPEC-manuscript-history §4）
+export const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/, 'コミットSHAが不正です')
+
 // 講評の文字数ガード（SPEC-dashboard-critique-settings §3.3。二段構え）。
 // クライアントの事前確認とサーバーの最終防衛で共用する
 export const CRITIQUE_CONFIRM_CHARS = 150_000 // 超えたら実行前に確認
