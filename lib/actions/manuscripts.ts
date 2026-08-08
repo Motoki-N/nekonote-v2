@@ -6,16 +6,19 @@ import { AppError, toActionError } from '@/lib/errors'
 import type { ActionResult } from '@/lib/errors'
 import { patCredentialProvider } from '@/lib/git/credentials'
 import {
+  getCommitFilePatch,
   getFileContent,
   getLatestCommitSha,
   getManuscriptTree as fetchManuscriptTree,
+  listFileCommits,
   putFileContent,
+  type FileCommitEntry,
 } from '@/lib/git/github'
 import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
 import { applySuggestions, writeBackAsComments } from '@/lib/proofread-apply'
 import { suggestionStatuses } from '@/lib/schemas/enums'
 import type { SuggestionStatus } from '@/lib/schemas/enums'
-import { manuscriptFilePathSchema } from '@/lib/schemas/manuscript'
+import { commitShaSchema, manuscriptFilePathSchema } from '@/lib/schemas/manuscript'
 import { createClient } from '@/lib/supabase/server'
 
 const uuidSchema = z.uuid()
@@ -199,6 +202,64 @@ export async function getSuggestions(
       ok: true,
       data: { suggestions, lastReviewedCommit: link.last_reviewed_commit },
     }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * 履歴系アクションの共通前処理（SPEC-manuscript-history §4）。
+ * RLS越しのリンク取得＝所有確認、DB由来 file_path の再検証、PAT取得をまとめる
+ */
+async function resolveLinkForHistory(manuscriptLinkId: string): Promise<{
+  token: string
+  repo: string
+  filePath: string
+}> {
+  const linkId = uuidSchema.parse(manuscriptLinkId)
+  const supabase = await createClient()
+  const { data: link, error } = await supabase
+    .from('manuscript_links')
+    .select('id, file_path, projects (id, repo)')
+    .eq('id', linkId)
+    .maybeSingle()
+  if (error) throw new AppError('internal', error.message)
+  if (!link || !link.projects) throw new AppError('not_found', '原稿リンクが見つかりません')
+  if (!link.projects.repo) throw new AppError('validation', 'リポジトリが設定されていません')
+  const filePath = manuscriptFilePathSchema.parse(link.file_path)
+
+  const credential = await patCredentialProvider.getCredential(supabase)
+  if (!credential) throw new AppError('validation', 'GitHub PATが未登録です')
+
+  return { token: credential.token, repo: link.projects.repo, filePath }
+}
+
+/** そのファイルのコミット履歴（新しい順・最大30件。SPEC-manuscript-history §4） */
+export async function getManuscriptHistory(
+  manuscriptLinkId: string,
+): Promise<ActionResult<{ commits: FileCommitEntry[] }>> {
+  try {
+    const { token, repo, filePath } = await resolveLinkForHistory(manuscriptLinkId)
+    const commits = await listFileCommits(token, repo, filePath)
+    return { ok: true, data: { commits } }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/**
+ * コミットでのそのファイルの変更（unified diff の patch）を取得する。
+ * patch が無い場合（差分過大・バイナリ扱い）は null（表示側で「差分を表示できません」）
+ */
+export async function getManuscriptCommitDiff(
+  manuscriptLinkId: string,
+  commitSha: string,
+): Promise<ActionResult<{ patch: string | null }>> {
+  try {
+    const sha = commitShaSchema.parse(commitSha)
+    const { token, repo, filePath } = await resolveLinkForHistory(manuscriptLinkId)
+    const patch = await getCommitFilePatch(token, repo, sha, filePath)
+    return { ok: true, data: { patch } }
   } catch (error) {
     return toActionError(error)
   }

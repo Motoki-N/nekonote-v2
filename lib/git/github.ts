@@ -686,3 +686,68 @@ export async function getLatestCommitSha(
   if (!sha) throw new AppError('not_found', `ファイル ${filePath} のコミットが見つかりません`)
   return sha
 }
+
+// ---- コミット履歴・差分（SPEC-manuscript-history）。読み取りのみ・デフォルトブランチ固定 ----
+
+export type FileCommitEntry = {
+  sha: string
+  /** コミットメッセージ全文（表示側で1行目を使う） */
+  message: string
+  /** コミット日時（ISO 8601）。API欠損時は null */
+  date: string | null
+}
+
+/**
+ * そのファイルに触れたコミットの一覧（新しい順・最大30件）。
+ * getLatestCommitSha と同じファイル単位の思想（モノレポで他作品のコミットを混ぜない）
+ */
+export async function listFileCommits(
+  token: string,
+  repo: string,
+  filePath: string,
+): Promise<FileCommitEntry[]> {
+  const res = await githubFetch(
+    token,
+    `/repos/${validRepo(repo)}/commits?path=${encodeURIComponent(filePath)}&per_page=30`,
+  )
+  if (!res.ok) throw toGithubError(res, `ファイル ${filePath} のコミット履歴を取得できません`)
+  const data = (await res.json()) as {
+    sha?: string
+    commit?: { message?: string; committer?: { date?: string }; author?: { date?: string } }
+  }[]
+  return data.flatMap((entry) =>
+    entry.sha
+      ? [
+          {
+            sha: entry.sha,
+            message: entry.commit?.message ?? '',
+            date: entry.commit?.committer?.date ?? entry.commit?.author?.date ?? null,
+          },
+        ]
+      : [],
+  )
+}
+
+/**
+ * コミットでのそのファイルの変更（unified diff の patch）を返す。
+ * patch が無い場合（差分過大・バイナリ扱い）は null。リネームは previous_filename も突き合わせる
+ */
+export async function getCommitFilePatch(
+  token: string,
+  repo: string,
+  commitSha: string,
+  filePath: string,
+): Promise<string | null> {
+  const res = await githubFetch(
+    token,
+    `/repos/${validRepo(repo)}/commits/${encodeURIComponent(commitSha)}`,
+  )
+  if (!res.ok) throw toGithubError(res, `コミット ${commitSha.slice(0, 7)} が見つかりません`)
+  const data = (await res.json()) as {
+    files?: { filename?: string; previous_filename?: string; patch?: string }[]
+  }
+  const file = (data.files ?? []).find(
+    (f) => f.filename === filePath || f.previous_filename === filePath,
+  )
+  return file?.patch ?? null
+}

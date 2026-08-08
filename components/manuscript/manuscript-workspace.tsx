@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, BookOpenText, FileText, Info, Loader2, PenLine, Settings, SpellCheck } from "lucide-react";
+import { ArrowLeft, BookOpenText, FileText, History, Info, Loader2, PenLine, Settings, SpellCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,6 +15,7 @@ import type { SuggestionStatus } from "@/lib/schemas/enums";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { CritiquePanel } from "@/components/manuscript/critique-panel";
+import { HistoryPanel } from "@/components/manuscript/history-panel";
 import { ProofreadPanel } from "@/components/manuscript/proofread-panel";
 
 /**
@@ -45,6 +46,8 @@ export function ManuscriptWorkspace({
   const [panelOpen, setPanelOpen] = useState(false);
   // 講評パネル（作品全体対象。ファイルを開いていなくても使える）。校正パネルと排他表示
   const [critiqueOpen, setCritiqueOpen] = useState(false);
+  // 履歴パネル（SPEC-manuscript-history）。校正・講評と排他表示
+  const [historyOpen, setHistoryOpen] = useState(false);
   // 提案カードクリックによる該当箇所ハイライト。nonce は同じカードの再クリックでも再スクロールさせるため
   const [highlight, setHighlight] = useState<{ text: string; nonce: number } | null>(null);
 
@@ -188,6 +191,7 @@ export function ManuscriptWorkspace({
           disabled={tree.files.length === 0}
           onClick={() => {
             setPanelOpen(false);
+            setHistoryOpen(false);
             setCritiqueOpen(true);
           }}
         >
@@ -256,6 +260,7 @@ export function ManuscriptWorkspace({
                   setSelectedPath(null);
                   setFile(null);
                   setPanelOpen(false);
+                  setHistoryOpen(false);
                 }}
               >
                 <ArrowLeft />
@@ -281,11 +286,26 @@ export function ManuscriptWorkspace({
                     </Link>
                   }
                 />
+                {/* 変更履歴（校正コミット・書き戻しの確認。SPEC-manuscript-history §3） */}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={!file}
+                  onClick={() => {
+                    setCritiqueOpen(false);
+                    setPanelOpen(false);
+                    setHistoryOpen(true);
+                  }}
+                >
+                  <History data-icon="inline-start" />
+                  履歴
+                </Button>
                 <Button
                   size="sm"
                   disabled={!file}
                   onClick={() => {
                     setCritiqueOpen(false);
+                    setHistoryOpen(false);
                     setPanelOpen(true);
                   }}
                 >
@@ -335,6 +355,10 @@ export function ManuscriptWorkspace({
           onCompleted={refreshFile}
           onClose={() => setPanelOpen(false)}
         />
+      )}
+
+      {historyOpen && !panelOpen && !critiqueOpen && file && (
+        <HistoryPanel key={file.linkId} linkId={file.linkId} onClose={() => setHistoryOpen(false)} />
       )}
 
       {critiqueOpen && <CritiquePanel projectId={projectId} onClose={() => setCritiqueOpen(false)} />}
