@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Copy, ExternalLink, MessageSquareText, Minus, Plus, Trash2 } from "lucide-react";
 
 import { getManuscriptTree, type ManuscriptTreeData } from "@/lib/actions/manuscripts";
@@ -102,7 +102,8 @@ function EmotionStepper({
 
 /**
  * シーン編集ダイアログ（SPEC-beat-board §3.3）。
- * 保存ボタンで確定（自動保存はしない）。削除は確認ダイアログを挟んで物理削除
+ * 保存ボタンは置かず、閉じる操作（×・ESC・外側クリック）で変更があれば保存してから閉じる（Issue #169）。
+ * 保存失敗時はダイアログを開いたままにして編集内容を守る。削除は確認ダイアログを挟んで物理削除
  */
 export function SceneDialog({
   scene,
@@ -122,30 +123,41 @@ export function SceneDialog({
   structureTemplate: StructureTemplate;
   /** アンカー付け替えの注意書き表示用（1転換点1シーン） */
   allScenes: SceneRecord[];
-  /** このシーンの紐づけノート（Issue #56。attach/detach は保存ボタンと独立に即時反映） */
+  /** このシーンの紐づけノート（Issue #56。attach/detach はシーン本体の保存と独立に即時反映） */
   linkedNotes: LinkedNote[];
   onAttachNote: (note: LinkedNote) => Promise<void>;
   onDetachNote: (noteId: string) => Promise<void>;
   onSave: (sceneId: string, edit: SceneEdit) => Promise<boolean>;
-  /** 複製（Issue #154）。保存済みの内容を複製する（ダイアログの未保存の編集は含まれない） */
+  /** 複製（Issue #154）。未保存の変更を保存してから複製する（Issue #169） */
   onDuplicate: (sceneId: string) => Promise<boolean>;
   onDelete: (sceneId: string) => Promise<boolean>;
   onReview: (scene: SceneRecord) => void;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const templateLanes = BOARD_TEMPLATES[structureTemplate].lanes;
+  // 現テンプレートのレーンでないパート（章カード等）はビートボードから開かれない防御的フォールバック
+  const initialPart: ScenePart = templateLanes.some((lane) => lane.id === scene.part)
+    ? (scene.part as ScenePart)
+    : templateLanes[0].id;
   const [title, setTitle] = useState(scene.title);
   const [content, setContent] = useState(scene.content);
-  // 現テンプレートのレーンでないパート（章カード等）はビートボードから開かれない防御的フォールバック
-  const [part, setPart] = useState<ScenePart>(
-    templateLanes.some((lane) => lane.id === scene.part)
-      ? (scene.part as ScenePart)
-      : templateLanes[0].id,
-  );
+  const [part, setPart] = useState<ScenePart>(initialPart);
   const [anchor, setAnchor] = useState<SceneAnchor | null>(scene.anchor);
   const [emotionStart, setEmotionStart] = useState<Emotion | null>(scene.emotion_start);
   const [emotionEnd, setEmotionEnd] = useState<Emotion | null>(scene.emotion_end);
   const [manuscriptPath, setManuscriptPath] = useState<string | null>(scene.manuscript_path);
+  // 最後に保存した内容。差分がないときは閉じる・複製・レビュー時に保存しない
+  // （scene prop はダイアログ表示中に更新されないため、保存のたびにここへ写す）
+  const savedRef = useRef<SceneEdit>({
+    title: scene.title,
+    content: scene.content,
+    part: initialPart,
+    anchor: scene.anchor,
+    emotion_start: scene.emotion_start,
+    emotion_end: scene.emotion_end,
+    manuscript_path: scene.manuscript_path,
+  });
   // 原稿ファイルの選択肢（Issue #56）。ダイアログを開いたときに遅延取得。null = 読み込み中
   const [tree, setTree] = useState<ManuscriptTreeData | null>(null);
   const [busy, setBusy] = useState(false);
@@ -184,20 +196,31 @@ export function SceneDialog({
     if (anchor !== null && ANCHOR_TO_PART[anchor] !== nextPart) setAnchor(null);
   }
 
-  async function handleSave() {
+  /** 未保存の変更があれば保存する。差分なし・保存成功で true、失敗で false（失敗トーストは親が出す） */
+  async function flush(): Promise<boolean> {
+    const edit: SceneEdit = {
+      title,
+      content,
+      part,
+      anchor,
+      emotion_start: emotionStart,
+      emotion_end: emotionEnd,
+      manuscript_path: manuscriptPath,
+    };
+    const saved = savedRef.current;
+    const dirty = (Object.keys(edit) as (keyof SceneEdit)[]).some((k) => edit[k] !== saved[k]);
+    if (!dirty) return true;
+    const ok = await onSave(scene.id, edit);
+    if (ok) savedRef.current = edit;
+    return ok;
+  }
+
+  /** 閉じる操作（×・ESC・外側クリック）。変更があれば保存し、失敗時は閉じずに編集内容を守る（Issue #169） */
+  async function handleClose() {
     if (busy) return;
     setBusy(true);
     try {
-      const ok = await onSave(scene.id, {
-        title,
-        content,
-        part,
-        anchor,
-        emotion_start: emotionStart,
-        emotion_end: emotionEnd,
-        manuscript_path: manuscriptPath,
-      });
-      if (ok) onClose();
+      if (await flush()) onClose();
     } finally {
       setBusy(false);
     }
@@ -214,20 +237,44 @@ export function SceneDialog({
     }
   }
 
-  /** 複製（Issue #154）。保存済みの内容を複製する。編集中の内容を失わないようダイアログは閉じない */
+  /** 複製（Issue #154）。編集中の内容も複製されるよう保存してから複製する。ダイアログは閉じない */
   async function handleDuplicate() {
     if (busy) return;
     setBusy(true);
     try {
+      if (!(await flush())) return;
       await onDuplicate(scene.id);
     } finally {
       setBusy(false);
     }
   }
 
+  /** シーンレビュー起動。パネルは保存済みの内容を対象にするため、先に保存する（Issue #169）。
+   * scene prop は開いた時点のスナップショットなので、パネルの見出し等がずれないよう保存後の値を重ねて渡す */
+  async function handleReview() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (await flush()) onReview({ ...scene, ...savedRef.current });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 「エディタで開く」。遷移でダイアログごとアンマウントされるため、未保存の変更を保存してから遷移する（Issue #169） */
+  async function handleOpenEditor(href: string) {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (await flush()) router.push(href);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      {/* 低い画面でも保存ボタンに届くよう、ダイアログ全体を画面内に収めてスクロール（Issue #151） */}
+    <Dialog open onOpenChange={(open) => !open && void handleClose()}>
+      {/* 低い画面でもフッターの操作に届くよう、ダイアログ全体を画面内に収めてスクロール（Issue #151） */}
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>シーンを編集</DialogTitle>
@@ -249,7 +296,7 @@ export function SceneDialog({
 
           <label className="flex flex-col gap-1 text-xs text-muted-foreground">
             本文
-            {/* max-h で自動拡張を止め、以降は入力欄内スクロール（Issue #151: 保存ボタンの見切れ防止） */}
+            {/* max-h で自動拡張を止め、以降は入力欄内スクロール（Issue #151: フッターの見切れ防止） */}
             <Textarea
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -303,7 +350,7 @@ export function SceneDialog({
             {holder && (
               <p>
                 「{ANCHOR_LABEL[anchor as SceneAnchor]}」は「{holder.title || "（無題）"}
-                」に付いています。保存するとこのシーンに付け替えます
+                」に付いています。ダイアログを閉じるとこのシーンに付け替えます
               </p>
             )}
             {anchor !== null && isBoundaryAnchor(anchor) && (
@@ -311,7 +358,7 @@ export function SceneDialog({
             )}
           </div>
 
-          {/* 紐づけ（Issue #56）。ノートは即時反映、原稿ファイルは保存ボタンで確定 */}
+          {/* 紐づけ（Issue #56）。ノートは即時反映、原稿ファイルは閉じるときに保存（Issue #169） */}
           <div className="flex flex-col gap-2 border-t border-border pt-3">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="text-xs text-muted-foreground">紐づけノート:</span>
@@ -351,13 +398,19 @@ export function SceneDialog({
               )}
             </label>
             {manuscriptPath !== null && (
-              <Link
-                href={`/projects/${scene.project_id}/editor?file=${encodeURIComponent(manuscriptPath)}`}
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() =>
+                  void handleOpenEditor(
+                    `/projects/${scene.project_id}/editor?file=${encodeURIComponent(manuscriptPath)}`,
+                  )
+                }
                 className="inline-flex w-fit items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
               >
                 <ExternalLink className="size-3" aria-hidden />
                 エディタで開く
-              </Link>
+              </button>
             )}
           </div>
         </div>
@@ -397,14 +450,11 @@ export function SceneDialog({
               <Copy data-icon="inline-start" />
               複製
             </Button>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => onReview(scene)}>
+            <Button variant="outline" size="sm" disabled={busy} onClick={() => void handleReview()}>
               <MessageSquareText data-icon="inline-start" />
               シーンレビュー
             </Button>
           </div>
-          <Button onClick={() => void handleSave()} disabled={busy}>
-            保存する
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
