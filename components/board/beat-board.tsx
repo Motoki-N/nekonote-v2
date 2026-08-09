@@ -291,7 +291,7 @@ export function BeatBoard({
     }
   }
 
-  /** ノート紐づけ（Issue #56）。ダイアログの保存ボタンとは独立に即時保存する */
+  /** ノート紐づけ（Issue #56）。シーン本体の保存とは独立に即時保存する */
   async function handleAttachNote(sceneId: string, note: LinkedNote) {
     const result = await attachSceneNote(sceneId, note.id);
     if (!result.ok) {
