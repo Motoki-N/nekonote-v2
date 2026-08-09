@@ -296,6 +296,24 @@ export async function POST(req: Request) {
         })
         // draft→in_review 遷移は企画書レビュー専用（キャラクターレビューはステータスに触れない）
         if (phase === 'proposal' && proposal.status === 'draft') proposalIdForStatus = proposal.id
+        // レビュー時点の企画書を必ず版に残す（Issue #64。反復の前後の差分表示が動機）。
+        // 直近の版と同一内容（改稿なしの再レビュー等）は重複させない
+        if (phase === 'proposal') {
+          const { data: latestVersion, error: latestError } = await supabase
+            .from('proposal_versions')
+            .select('content')
+            .eq('proposal_id', proposal.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          if (latestError) throw new AppError('internal', latestError.message)
+          if (latestVersion?.content !== proposal.content) {
+            const { error: snapshotError } = await supabase
+              .from('proposal_versions')
+              .insert({ proposal_id: proposal.id, content: proposal.content, kind: 'review' })
+            if (snapshotError) throw new AppError('internal', snapshotError.message)
+          }
+        }
       }
     } else if (phase === 'structure') {
       // 構成レビュー: target_ref = project id（セッションのプロジェクトと一致していること）

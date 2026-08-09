@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EditorContent, type Editor } from "@tiptap/react";
-import { ClipboardCheck, UsersRound } from "lucide-react";
+import { ClipboardCheck, History, UsersRound } from "lucide-react";
 
 import { updateProposal, type LinkedNote } from "@/lib/actions/projects";
 import { writingGenres, type ProposalStatus, type WritingGenre } from "@/lib/schemas/enums";
@@ -18,6 +18,7 @@ import {
 } from "@/components/editor/use-autosave";
 import { CharacterReviewPanel } from "@/components/projects/character-review-panel";
 import { LinkedNotes } from "@/components/projects/linked-notes";
+import { ProposalHistoryPanel } from "@/components/projects/proposal-history-panel";
 import { ProposalReviewPanel } from "@/components/projects/review-panel";
 import { ProposalStatusBadge } from "@/components/projects/status-badges";
 
@@ -63,8 +64,8 @@ export function ProposalEditor({
   const [genre, setGenre] = useState(proposal.genre ?? "");
   const [targetAudience, setTargetAudience] = useState(proposal.target_audience ?? "");
   const [restorableDraft, setRestorableDraft] = useState<ProposalPayload | null>(null);
-  // レビューパネルは排他表示（企画書レビュー / キャラクターレビューのどちらか一方。SPEC-character-review §3.1）
-  const [openPanel, setOpenPanel] = useState<"proposal" | "character" | null>(null);
+  // パネルは排他表示（企画書レビュー / キャラクターレビュー / バージョン履歴のいずれか一方。SPEC-character-review §3.1）
+  const [openPanel, setOpenPanel] = useState<"proposal" | "character" | "history" | null>(null);
 
   const writingGenreRef = useRef<WritingGenre>(proposal.writing_genre);
   const purposeRef = useRef(proposal.purpose ?? "");
@@ -141,6 +142,21 @@ export function ProposalEditor({
   function discardDraft() {
     clearStoredDraft(draftKey(proposal.id));
     setRestorableDraft(null);
+  }
+
+  async function toggleHistory() {
+    if (openPanel === "history") {
+      setOpenPanel(null);
+      return;
+    }
+    // 未保存分を確定してから履歴を開く（開いた瞬間の一覧と実際の保存状態を揃える）
+    await flush();
+    setOpenPanel("history");
+  }
+
+  /** 復元された版をエディタへ反映する（サーバー側は復元済み） */
+  function applyRestoredVersion(content: string) {
+    editor?.commands.setContent(content, { contentType: "markdown" });
   }
 
   const statusLabel: Record<SaveStatus, string> = {
@@ -261,6 +277,15 @@ export function ProposalEditor({
                 <UsersRound data-icon="inline-start" />
                 キャラクター
               </Button>
+              <Button
+                variant={openPanel === "history" ? "secondary" : "outline"}
+                size="sm"
+                aria-label="バージョン履歴"
+                aria-pressed={openPanel === "history"}
+                onClick={() => void toggleHistory()}
+              >
+                <History />
+              </Button>
             </div>
           </div>
 
@@ -280,6 +305,15 @@ export function ProposalEditor({
             proposalId={proposal.id}
             linkedNotes={linkedNotes}
             flushSave={flush}
+            onClose={() => setOpenPanel(null)}
+          />
+        )}
+        {openPanel === "history" && (
+          <ProposalHistoryPanel
+            proposalId={proposal.id}
+            flushSave={flush}
+            getCurrentContent={() => editorRef.current?.getMarkdown() ?? proposal.content}
+            onRestore={applyRestoredVersion}
             onClose={() => setOpenPanel(null)}
           />
         )}
