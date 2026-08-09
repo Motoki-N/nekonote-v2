@@ -102,12 +102,72 @@ export async function deleteProject(id: string): Promise<ActionResult> {
   }
 }
 
+/** 履歴スナップショットの間引き間隔（前回バージョンからこの時間経過していたら保存。notes.ts と同値） */
+const VERSION_INTERVAL_MS = 10 * 60 * 1000
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
+
+/** 上書き前の企画書本文を proposal_versions へ保存する（Issue #64） */
+async function insertProposalSnapshot(
+  supabase: SupabaseServerClient,
+  proposalId: string,
+  content: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('proposal_versions')
+    .insert({ proposal_id: proposalId, content })
+  if (error) throw new AppError('internal', error.message)
+}
+
+/** 時間ベース間引き: 最新バージョンから一定時間経過していたら上書き前の本文をスナップショットする */
+async function snapshotProposalIfStale(
+  supabase: SupabaseServerClient,
+  proposalId: string,
+  content: string,
+): Promise<void> {
+  const { data: latest, error } = await supabase
+    .from('proposal_versions')
+    .select('content, created_at')
+    .eq('proposal_id', proposalId)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new AppError('internal', error.message)
+  if (latest && Date.now() - Date.parse(latest.created_at) < VERSION_INTERVAL_MS) return
+  // レビュー時版（＝レビュー時点の現在本文）と同一内容の重複を防ぐ
+  // （レビュー後10分超経過してからの編集では「上書き前の本文」＝レビュー時版と同一になるため）
+  if (latest?.content === content) return
+  await insertProposalSnapshot(supabase, proposalId, content)
+}
+
+/** 現在の企画書行（本文とプロジェクトid）を取得する（存在しなければ not_found） */
+async function fetchProposalSnapshot(
+  supabase: SupabaseServerClient,
+  id: string,
+): Promise<{ content: string; project_id: string }> {
+  const { data, error } = await supabase
+    .from('proposals')
+    .select('content, project_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (error) throw new AppError('internal', error.message)
+  if (!data) throw new AppError('not_found', '企画書が見つかりません')
+  return data
+}
+
 /** 企画書の自動保存の受け口（writing_genre / purpose / genre / target_audience / content。status はここでは変えない） */
 export async function updateProposal(id: string, input: ProposalUpdate): Promise<ActionResult> {
   try {
     const proposalId = uuidSchema.parse(id)
     const parsed = proposalUpdateSchema.parse(input)
     const supabase = await createClient()
+    // 本文が変わる保存だけスナップショット対象（版は本文のみ。4項目だけの変更では版を作らない）
+    if (parsed.content !== undefined) {
+      const current = await fetchProposalSnapshot(supabase, proposalId)
+      if (parsed.content !== current.content) {
+        await snapshotProposalIfStale(supabase, proposalId, current.content)
+      }
+    }
     const { data, error } = await supabase
       .from('proposals')
       .update(parsed)
@@ -116,6 +176,73 @@ export async function updateProposal(id: string, input: ProposalUpdate): Promise
     if (error) throw new AppError('internal', error.message)
     if (!data || data.length === 0) throw new AppError('not_found', '企画書が見つかりません')
     revalidatePath(`/projects/${data[0].project_id}`)
+    return { ok: true }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+export type ProposalVersionKind = 'autosave' | 'review'
+
+export type ProposalVersion = {
+  id: string
+  content: string
+  kind: ProposalVersionKind
+  created_at: string
+}
+
+/** バージョン履歴の一覧（新しい順。差分計算用に content も返す） */
+export async function listProposalVersions(
+  proposalId: string,
+): Promise<ActionResult<ProposalVersion[]>> {
+  try {
+    const pid = uuidSchema.parse(proposalId)
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('proposal_versions')
+      .select('id, content, kind, created_at')
+      .eq('proposal_id', pid)
+      .order('created_at', { ascending: false })
+    if (error) throw new AppError('internal', error.message)
+    return { ok: true, data: (data ?? []) as ProposalVersion[] }
+  } catch (error) {
+    return toActionError(error)
+  }
+}
+
+/** 指定バージョンの本文へ復元する。復元自体を取り消せるよう、現在の本文を間引きなしでスナップショットする */
+export async function restoreProposalVersion(
+  proposalId: string,
+  versionId: string,
+): Promise<ActionResult> {
+  try {
+    const pid = uuidSchema.parse(proposalId)
+    const vid = uuidSchema.parse(versionId)
+    const supabase = await createClient()
+    const { data: version, error: versionError } = await supabase
+      .from('proposal_versions')
+      .select('content')
+      .eq('id', vid)
+      .eq('proposal_id', pid)
+      .maybeSingle()
+    if (versionError) throw new AppError('internal', versionError.message)
+    if (!version) throw new AppError('not_found', 'バージョンが見つかりません')
+
+    const current = await fetchProposalSnapshot(supabase, pid)
+    // 現在と同一内容への復元は何もしない（無駄な版を作らない）
+    if (version.content === current.content) {
+      return { ok: true }
+    }
+    await insertProposalSnapshot(supabase, pid, current.content)
+
+    const { data, error } = await supabase
+      .from('proposals')
+      .update({ content: version.content })
+      .eq('id', pid)
+      .select('project_id')
+    if (error) throw new AppError('internal', error.message)
+    if (!data || data.length === 0) throw new AppError('not_found', '企画書が見つかりません')
+    revalidatePath(`/projects/${current.project_id}`)
     return { ok: true }
   } catch (error) {
     return toActionError(error)

@@ -8,8 +8,8 @@ import { parsePatch } from "@/lib/diff";
 // 型のみの import は実行時に消えるため server-only モジュールでも安全
 // （'use server' ファイルは async 関数しか export できず、型の再exportができない）
 import type { FileCommitEntry } from "@/lib/git/github";
-import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { DiffView } from "@/components/diff-view";
 
 /** コミット日時の表示（JST・秒なし）。API欠損時は空表示 */
 const dateFormat = new Intl.DateTimeFormat("ja-JP", {
@@ -159,7 +159,7 @@ export function HistoryPanel({ linkId, onClose }: { linkId: string; onClose: () 
                           差分を表示できません（変更が大きすぎるか、このファイルの変更を含みません）
                         </p>
                       ) : (
-                        <DiffView patch={patches[commit.sha] as string} />
+                        <DiffView rows={parsePatch(patches[commit.sha] as string)} />
                       )}
                     </div>
                   )}
@@ -170,60 +170,5 @@ export function HistoryPanel({ linkId, onClose }: { linkId: string; onClose: () 
         )}
       </div>
     </aside>
-  );
-}
-
-// ---- diff表示（SPEC-manuscript-history §2）。パースは lib/diff.ts（純粋ロジック）に分離
-
-function DiffView({ patch }: { patch: string }) {
-  const rows = parsePatch(patch);
-  return (
-    <div className="flex flex-col overflow-x-auto rounded-md border border-border text-sm leading-6">
-      {rows.map((row, i) => {
-        if (row.kind === "hunk") {
-          return (
-            <div key={i} className="bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
-              {row.text}
-            </div>
-          );
-        }
-        if (row.kind === "context") {
-          return (
-            <div key={i} className="whitespace-pre-wrap break-all px-2 text-muted-foreground">
-              {row.text === "" ? " " : row.text}
-            </div>
-          );
-        }
-        const del = row.kind === "del";
-        return (
-          <div
-            key={i}
-            className={cn(
-              "whitespace-pre-wrap break-all px-2",
-              del ? "bg-destructive/10" : "bg-primary/10",
-            )}
-          >
-            <span className="select-none text-muted-foreground">{del ? "−" : "＋"}</span>
-            {row.segments.map((segment, j) =>
-              segment.changed ? (
-                <mark
-                  key={j}
-                  className={cn(
-                    "rounded-sm bg-transparent text-foreground",
-                    del ? "bg-destructive/25 line-through decoration-destructive/60" : "bg-primary/25",
-                  )}
-                >
-                  {segment.text}
-                </mark>
-              ) : (
-                <span key={j} className="text-foreground">
-                  {segment.text}
-                </span>
-              ),
-            )}
-          </div>
-        );
-      })}
-    </div>
   );
 }
