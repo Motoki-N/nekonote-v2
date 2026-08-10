@@ -346,6 +346,7 @@ export function OutlineBoard({
           title="構成レビュー"
           emptyText="章立ての流れ・前提知識の積み上がりの観点で、編集者が目次全体（章構成と企画書）を見ます。承認が出るまで、指摘 → 改稿 → 再レビューを繰り返します。"
           showVerdict
+          enableCopyToNote
           onClose={() => setReviewOpen(false)}
           renderFooter={({ latestVerdict, busy, sessionId }) => {
             if (latestVerdict === "approved" && !structureApproved && !busy && sessionId !== null) {

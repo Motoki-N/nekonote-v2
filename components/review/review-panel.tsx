@@ -105,7 +105,7 @@ export function ReviewPanel({
   emptyText: string;
   /** 判定バッジの表示（企画書レビューのみ true。構成・シーンは都度フィードバック型） */
   showVerdict: boolean;
-  /** 「ノートに転記」ボタンの表示（企画書レビューのみ true。Issue #99） */
+  /** 「ノートに転記」ボタンの表示（企画書=Issue #99・構成=Issue #173 のみ true） */
   enableCopyToNote?: boolean;
   /** レビュー実行前に編集内容をDBへ確定させる（レビューは保存済みDB値で行う） */
   flushSave?: () => Promise<void>;

@@ -447,6 +447,7 @@ export function BeatBoard({
           title="構成レビュー"
           emptyText={`「${templateDef.label}」の観点で、担当編集がボード全体（シーン構成と企画書）を見ます。承認が出るまで、指摘 → 改稿 → 再レビューを繰り返します。`}
           showVerdict
+          enableCopyToNote
           onClose={() => setReview(null)}
           renderFooter={({ latestVerdict, busy, sessionId }) => {
             if (latestVerdict === "approved" && !structureApproved && !busy && sessionId !== null) {
