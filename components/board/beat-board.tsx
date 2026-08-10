@@ -329,6 +329,17 @@ export function BeatBoard({
     return true;
   }
 
+  /** 前後シーン移動（Issue #171）。クリック時点のボード表示順（章カード除く）で隣のシーンを開く。
+   * ダイアログ側で保存(await)してから呼ばれるが、保存で並びが変わっても「ユーザーが見ていた並び」
+   * での隣に移動するのが自然なため、クリック時レンダーの novelScenes をそのまま使う */
+  function handleNavigate(direction: "prev" | "next") {
+    if (!editing) return;
+    const index = novelScenes.findIndex((s) => s.id === editing.id);
+    if (index === -1) return;
+    const target = novelScenes[direction === "prev" ? index - 1 : index + 1];
+    if (target) setEditing(target);
+  }
+
   async function handleDelete(sceneId: string): Promise<boolean> {
     const result = await deleteScene(sceneId);
     if (!result.ok) {
@@ -341,6 +352,9 @@ export function BeatBoard({
     toast("シーンを削除しました");
     return true;
   }
+
+  // 編集中シーンのボード表示順での位置（前後シーン移動ボタンの活性判定。Issue #171）
+  const editingIndex = editing ? novelScenes.findIndex((s) => s.id === editing.id) : -1;
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -541,6 +555,9 @@ export function BeatBoard({
           onSave={handleSave}
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
+          hasPrev={editingIndex > 0}
+          hasNext={editingIndex !== -1 && editingIndex < novelScenes.length - 1}
+          onNavigate={handleNavigate}
           onReview={(scene) => {
             setEditing(null);
             setReview({ kind: "scene", scene });

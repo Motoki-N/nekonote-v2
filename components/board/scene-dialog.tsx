@@ -2,7 +2,16 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Copy, ExternalLink, MessageSquareText, Minus, Plus, Trash2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  MessageSquareText,
+  Minus,
+  Plus,
+  Trash2,
+} from "lucide-react";
 
 import { getManuscriptTree, type ManuscriptTreeData } from "@/lib/actions/manuscripts";
 import type { LinkedNote } from "@/lib/actions/projects";
@@ -116,6 +125,9 @@ export function SceneDialog({
   onDuplicate,
   onDelete,
   onReview,
+  hasPrev,
+  hasNext,
+  onNavigate,
   onClose,
 }: {
   scene: SceneRecord;
@@ -132,6 +144,10 @@ export function SceneDialog({
   onDuplicate: (sceneId: string) => Promise<boolean>;
   onDelete: (sceneId: string) => Promise<boolean>;
   onReview: (scene: SceneRecord) => void;
+  /** 前後シーンへの移動（Issue #171）。移動可否はボード表示順での位置から親が判定する */
+  hasPrev: boolean;
+  hasNext: boolean;
+  onNavigate: (direction: "prev" | "next") => void;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -256,6 +272,17 @@ export function SceneDialog({
     setBusy(true);
     try {
       if (await flush()) onReview({ ...scene, ...savedRef.current });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** 前後シーンへの移動（Issue #171）。編集中の内容を保存してから移動し、失敗時は移動しない */
+  async function handleNavigate(direction: "prev" | "next") {
+    if (busy) return;
+    setBusy(true);
+    try {
+      if (await flush()) onNavigate(direction);
     } finally {
       setBusy(false);
     }
@@ -415,7 +442,8 @@ export function SceneDialog({
           </div>
         </div>
 
-        <DialogFooter className="sm:justify-between">
+        {/* ボタン5個は max-w-lg に収まらないことがあるため折り返しを許可（Issue #171） */}
+        <DialogFooter className="sm:flex-wrap sm:justify-between">
           <div className="flex gap-2">
             <AlertDialog>
               <AlertDialogTrigger
@@ -453,6 +481,27 @@ export function SceneDialog({
             <Button variant="outline" size="sm" disabled={busy} onClick={() => void handleReview()}>
               <MessageSquareText data-icon="inline-start" />
               シーンレビュー
+            </Button>
+          </div>
+          {/* 前後シーンへの移動（Issue #171）。ボード表示順（章カード除く）で隣のシーンを開く */}
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || !hasPrev}
+              onClick={() => void handleNavigate("prev")}
+            >
+              <ChevronLeft data-icon="inline-start" />
+              前のシーン
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy || !hasNext}
+              onClick={() => void handleNavigate("next")}
+            >
+              次のシーン
+              <ChevronRight data-icon="inline-end" />
             </Button>
           </div>
         </DialogFooter>
