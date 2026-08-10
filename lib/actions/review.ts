@@ -376,9 +376,9 @@ export async function saveFeedbackResponse(
 }
 
 /**
- * フィードバックをノートに転記して保存する（Issue #99）。
+ * フィードバックをノートに転記して保存する（Issue #99・#173）。
  * レビュー指摘の対応状況をノート上でメモしながら追えるようにする。
- * ノートのタイトルに企画書（プロジェクト）タイトルと第何回のレビューかを付記し、
+ * ノートのタイトルにプロジェクトタイトルとプロファイル名・第何回のレビューかを付記し、
  * プロジェクトタイトルの仮タイトルタグを付与して作品単位で束ねる。
  * 本文はDBから読み直す＝クライアント改変の混入を防ぐ（saveChatMessageAsNote と同じ流儀）
  */
@@ -389,7 +389,7 @@ export async function saveFeedbackAsNote(
     const fid = uuidSchema.parse(feedbackId)
     const supabase = await createClient()
 
-    // RLS越しの取得＝所有確認を兼ねる。セッション経由で企画書レビューかどうかとタイトルを引く
+    // RLS越しの取得＝所有確認を兼ねる。セッション経由でレビュー種別とプロジェクトタイトルを引く
     const { data: feedback, error: selectError } = await supabase
       .from('review_feedbacks')
       .select(
@@ -401,8 +401,12 @@ export async function saveFeedbackAsNote(
     if (!feedback) throw new AppError('not_found', 'フィードバックが見つかりません')
 
     const session = feedback.review_sessions
-    if (session?.review_profiles?.target_phase !== 'proposal') {
-      throw new AppError('validation', '企画書レビューのフィードバックのみノートに転記できます')
+    // 転記を許可する種別: 企画書（Issue #99）・構成（Issue #173）
+    if (
+      session?.review_profiles?.target_phase !== 'proposal' &&
+      session?.review_profiles?.target_phase !== 'structure'
+    ) {
+      throw new AppError('validation', '企画書・構成レビューのフィードバックのみノートに転記できます')
     }
     const projectTitle = session.projects?.title
     if (!projectTitle) throw new AppError('internal', 'プロジェクトが見つかりません')
