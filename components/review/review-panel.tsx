@@ -31,6 +31,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 
+// 過去のフィードバックを最新のものと誤認しないよう、各回に実施日時を明示する
+const dateTimeFormat = new Intl.DateTimeFormat("ja-JP", {
+  dateStyle: "medium",
+  timeStyle: "short",
+});
+
 /** /api/review の errorResponse（JSON）からユーザー向けメッセージを取り出す */
 async function toDisplayError(res: Response): Promise<string> {
   try {
@@ -473,7 +479,9 @@ function FeedbackCard({
   return (
     <article className="rounded-lg border border-border bg-card p-3">
       <header className="mb-2 flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">第{round}回</span>
+        <span className="text-xs text-muted-foreground">
+          第{round}回 {dateTimeFormat.format(new Date(feedback.created_at))}
+        </span>
         {showVerdict && <VerdictBadge verdict={feedback.verdict} />}
         {enableCopyToNote && (
           <Button

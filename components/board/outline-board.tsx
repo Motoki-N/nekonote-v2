@@ -251,7 +251,7 @@ export function OutlineBoard({
               onClick={() => setReviewOpen((prev) => !prev)}
             >
               <ClipboardCheck data-icon="inline-start" />
-              構成レビューを受ける
+              構成レビュー
             </Button>
           </div>
         </div>
