@@ -1,9 +1,9 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 
-import { Button } from '@/components/ui/button'
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,14 +11,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 /** 挿絵テンプレートの種別（親SPEC §4.6。テーマCSSのクラスに対応） */
-export type IllustKind = 'inline' | 'full'
+export type IllustKind = "inline" | "full";
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024
-const ALLOWED_EXTENSIONS = /\.(png|jpe?g|webp|gif)$/i
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const ALLOWED_EXTENSIONS = /\.(png|jpe?g|webp|gif)$/i;
 
 /**
  * 画像アップロードの確認ダイアログ（SPEC-vertical-editor-phase3 §6）。
@@ -32,27 +32,27 @@ export function ImageUploadDialog({
   onCancel,
 }: {
   /** アップロード対象（null なら非表示） */
-  file: File | null
-  uploading: boolean
-  onConfirm: (params: { kind: IllustKind; caption: string }) => void
-  onCancel: () => void
+  file: File | null;
+  uploading: boolean;
+  onConfirm: (params: { kind: IllustKind; caption: string }) => void;
+  onCancel: () => void;
 }) {
-  const [kind, setKind] = useState<IllustKind>('inline')
-  const [caption, setCaption] = useState('')
+  const [kind, setKind] = useState<IllustKind>("inline");
+  const [caption, setCaption] = useState("");
 
-  const sizeError = file !== null && file.size > MAX_IMAGE_BYTES
-  const extError = file !== null && !ALLOWED_EXTENSIONS.test(file.name)
+  const sizeError = file !== null && file.size > MAX_IMAGE_BYTES;
+  const extError = file !== null && !ALLOWED_EXTENSIONS.test(file.name);
   const error = sizeError
-    ? '画像が大きすぎます（上限10MB）'
+    ? "画像が大きすぎます（上限10MB）"
     : extError
-      ? '対応していない形式です（png / jpg / jpeg / webp / gif のみ）'
-      : null
+      ? "対応していない形式です（png / jpg / jpeg / webp / gif のみ）"
+      : null;
 
   return (
     <Dialog
       open={file !== null}
       onOpenChange={(open) => {
-        if (!open && !uploading) onCancel()
+        if (!open && !uploading) onCancel();
       }}
     >
       <DialogContent className="sm:max-w-md">
@@ -75,18 +75,20 @@ export function ImageUploadDialog({
             ) : (
               <>
                 <fieldset className="flex flex-col gap-1.5">
-                  <legend className="mb-1 text-sm text-foreground">挿絵の種別</legend>
+                  <legend className="mb-1 text-sm text-foreground">
+                    挿絵の種別
+                  </legend>
                   {(
                     [
                       {
-                        value: 'inline',
-                        label: '本文中カット',
-                        hint: '版面内に収まる小さめの画像＋任意のキャプション',
+                        value: "inline",
+                        label: "本文中カット",
+                        hint: "版面内に収まる小さめの画像＋任意のキャプション",
                       },
                       {
-                        value: 'full',
-                        label: '全面挿絵',
-                        hint: '改ページして単独ページに全面配置（塗り足し込み）',
+                        value: "full",
+                        label: "全面挿絵",
+                        hint: "改ページして単独ページに全面配置（塗り足し込み）",
                       },
                     ] as const
                   ).map((option) => (
@@ -104,12 +106,14 @@ export function ImageUploadDialog({
                       />
                       <span className="flex min-w-0 flex-col">
                         <span className="text-foreground">{option.label}</span>
-                        <span className="text-xs text-muted-foreground">{option.hint}</span>
+                        <span className="text-xs text-muted-foreground">
+                          {option.hint}
+                        </span>
                       </span>
                     </label>
                   ))}
                 </fieldset>
-                {kind === 'inline' && (
+                {kind === "inline" && (
                   <label className="flex flex-col gap-1 text-sm">
                     キャプション（任意）
                     <Input
@@ -124,7 +128,12 @@ export function ImageUploadDialog({
           </div>
         )}
         <DialogFooter>
-          <Button type="button" variant="outline" disabled={uploading} onClick={onCancel}>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={uploading}
+            onClick={onCancel}
+          >
             キャンセル
           </Button>
           <Button
@@ -132,11 +141,13 @@ export function ImageUploadDialog({
             disabled={uploading || error !== null}
             onClick={() => onConfirm({ kind, caption: caption.trim() })}
           >
-            {uploading && <Loader2 data-icon="inline-start" className="animate-spin" />}
+            {uploading && (
+              <Loader2 data-icon="inline-start" className="animate-spin" />
+            )}
             コミットして挿入
           </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
-  )
+  );
 }

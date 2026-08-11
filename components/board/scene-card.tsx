@@ -13,7 +13,10 @@ import { cn } from "@/lib/utils";
 function EmotionIcon({ emotion }: { emotion: Emotion | null }) {
   if (emotion === null) {
     return (
-      <span className="text-[10px] leading-none text-muted-foreground" aria-label="未設定">
+      <span
+        className="text-[10px] leading-none text-muted-foreground"
+        aria-label="未設定"
+      >
         ・
       </span>
     );
@@ -91,7 +94,9 @@ export function SceneCardContent({
       aria-label={`シーンを編集: ${scene.title || "無題"}`}
       className="flex w-full flex-col gap-1 rounded-md border border-border bg-card p-2 text-left shadow-xs transition-colors hover:border-ring/60 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
     >
-      <span className="text-sm font-medium text-card-foreground">{scene.title || "（無題）"}</span>
+      <span className="text-sm font-medium text-card-foreground">
+        {scene.title || "（無題）"}
+      </span>
       {scene.content !== "" && (
         <p className="line-clamp-3 text-xs whitespace-pre-wrap text-muted-foreground">
           {scene.content}
@@ -104,7 +109,9 @@ export function SceneCardContent({
         scene.manuscript_path !== null ||
         noteCount > 0) && (
         <span className="flex flex-wrap gap-1">
-          {scene.anchor !== null && <Badge variant="secondary">{ANCHOR_BADGE[scene.anchor]}</Badge>}
+          {scene.anchor !== null && (
+            <Badge variant="secondary">{ANCHOR_BADGE[scene.anchor]}</Badge>
+          )}
           <EmotionBadge scene={scene} />
           {/* シーンレビューのゲート状態（Issue #57） */}
           {scene.status === "approved" && (
@@ -137,7 +144,14 @@ export function SortableSceneCard({
   noteCount?: number;
   onEdit: (scene: SceneRecord) => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
     id: scene.id,
   });
 
@@ -149,7 +163,11 @@ export function SortableSceneCard({
       {...attributes}
       {...listeners}
     >
-      <SceneCardContent scene={scene} noteCount={noteCount} onClick={() => onEdit(scene)} />
+      <SceneCardContent
+        scene={scene}
+        noteCount={noteCount}
+        onClick={() => onEdit(scene)}
+      />
     </div>
   );
 }

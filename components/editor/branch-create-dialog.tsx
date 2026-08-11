@@ -1,9 +1,9 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 
-import { Button } from '@/components/ui/button'
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,11 +11,11 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 // サーバー側の newBranchNameSchema と同じ形（事前フィードバック用。正はサーバー検証）
-const BRANCH_PATTERN = /^(?!.*\.\.)(?!.*\/\/)[0-9A-Za-z][0-9A-Za-z._/-]{0,99}$/
+const BRANCH_PATTERN = /^(?!.*\.\.)(?!.*\/\/)[0-9A-Za-z][0-9A-Za-z._/-]{0,99}$/;
 
 /**
  * 新規ブランチの作成ダイアログ（SPEC-vertical-editor-phase5 §3.2）。
@@ -29,14 +29,17 @@ export function BranchCreateDialog({
   onCreate,
   onOpenChange,
 }: {
-  open: boolean
-  defaultBranch: string
-  creating: boolean
-  onCreate: (name: string) => void
-  onOpenChange: (open: boolean) => void
+  open: boolean;
+  defaultBranch: string;
+  creating: boolean;
+  onCreate: (name: string) => void;
+  onOpenChange: (open: boolean) => void;
 }) {
   return (
-    <Dialog open={open} onOpenChange={(next) => !creating && onOpenChange(next)}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !creating && onOpenChange(next)}
+    >
       <DialogContent>
         <BranchCreateForm
           defaultBranch={defaultBranch}
@@ -46,7 +49,7 @@ export function BranchCreateDialog({
         />
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function BranchCreateForm({
@@ -55,28 +58,29 @@ function BranchCreateForm({
   onCreate,
   onCancel,
 }: {
-  defaultBranch: string
-  creating: boolean
-  onCreate: (name: string) => void
-  onCancel: () => void
+  defaultBranch: string;
+  creating: boolean;
+  onCreate: (name: string) => void;
+  onCancel: () => void;
 }) {
-  const [name, setName] = useState('')
-  const trimmed = name.trim()
-  const invalid = trimmed !== '' && !BRANCH_PATTERN.test(trimmed)
+  const [name, setName] = useState("");
+  const trimmed = name.trim();
+  const invalid = trimmed !== "" && !BRANCH_PATTERN.test(trimmed);
 
   return (
     <>
       <DialogHeader>
         <DialogTitle>新しいブランチ</DialogTitle>
         <DialogDescription>
-          デフォルトブランチ（{defaultBranch}）の最新から分岐し、作成後はそのブランチへ切り替えます
+          デフォルトブランチ（{defaultBranch}
+          ）の最新から分岐し、作成後はそのブランチへ切り替えます
         </DialogDescription>
       </DialogHeader>
       <form
         id="editor-branch-create-form"
         onSubmit={(event) => {
-          event.preventDefault()
-          if (trimmed.length > 0 && !invalid) onCreate(trimmed)
+          event.preventDefault();
+          if (trimmed.length > 0 && !invalid) onCreate(trimmed);
         }}
       >
         <label className="flex flex-col gap-1.5 text-sm text-foreground">
@@ -97,7 +101,12 @@ function BranchCreateForm({
         )}
       </form>
       <DialogFooter>
-        <Button variant="outline" size="sm" disabled={creating} onClick={onCancel}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={creating}
+          onClick={onCancel}
+        >
           キャンセル
         </Button>
         <Button
@@ -106,10 +115,12 @@ function BranchCreateForm({
           size="sm"
           disabled={creating || trimmed.length === 0 || invalid}
         >
-          {creating && <Loader2 data-icon="inline-start" className="animate-spin" />}
+          {creating && (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          )}
           作成して切り替え
         </Button>
       </DialogFooter>
     </>
-  )
+  );
 }

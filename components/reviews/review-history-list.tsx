@@ -19,7 +19,10 @@ const dateTimeFormat = new Intl.DateTimeFormat("ja-JP", {
 });
 
 // フェーズ表示名（review_profiles.target_phase 由来。null = プロファイル削除済みで導出不能）
-const phaseLabels: Record<NonNullable<ReviewSessionSummary["phase"]>, string> = {
+const phaseLabels: Record<
+  NonNullable<ReviewSessionSummary["phase"]>,
+  string
+> = {
   proposal: "企画書",
   structure: "構成",
   scene: "シーン",
@@ -59,7 +62,11 @@ function VerdictBadge({ verdict }: { verdict: ReviewVerdict | null }) {
  * レビュー履歴の一覧（SPEC-review-history §3.2）。
  * アコーディオン行を開いた時点でフィードバックを遅延取得する読み取り専用ビュー
  */
-export function ReviewHistoryList({ sessions }: { sessions: ReviewSessionSummary[] }) {
+export function ReviewHistoryList({
+  sessions,
+}: {
+  sessions: ReviewSessionSummary[];
+}) {
   // セッション別のフィードバックキャッシュ（undefined=未ロード / null=取得失敗）
   const [feedbacksBySession, setFeedbacksBySession] = useState<
     Record<string, ReviewHistoryFeedback[] | null>
@@ -73,11 +80,18 @@ export function ReviewHistoryList({ sessions }: { sessions: ReviewSessionSummary
       setFeedbacksBySession((prev) => ({ ...prev, [sessionId]: null }));
       return;
     }
-    setFeedbacksBySession((prev) => ({ ...prev, [sessionId]: result.data ?? [] }));
+    setFeedbacksBySession((prev) => ({
+      ...prev,
+      [sessionId]: result.data ?? [],
+    }));
   }
 
   if (sessions.length === 0) {
-    return <p className="p-2 text-sm text-muted-foreground">まだレビュー履歴がありません</p>;
+    return (
+      <p className="p-2 text-sm text-muted-foreground">
+        まだレビュー履歴がありません
+      </p>
+    );
   }
 
   return (
@@ -95,7 +109,9 @@ export function ReviewHistoryList({ sessions }: { sessions: ReviewSessionSummary
           >
             <summary className="flex cursor-pointer flex-wrap items-center gap-x-2 gap-y-1 p-3 text-xs text-muted-foreground [&::-webkit-details-marker]:hidden">
               <Badge variant="outline">
-                {session.phase !== null ? phaseLabels[session.phase] : "レビュー"}
+                {session.phase !== null
+                  ? phaseLabels[session.phase]
+                  : "レビュー"}
               </Badge>
               <span className="font-medium text-card-foreground">
                 {session.profileName ?? "（削除済みプロファイル）"}
@@ -108,7 +124,9 @@ export function ReviewHistoryList({ sessions }: { sessions: ReviewSessionSummary
               <VerdictBadge verdict={session.latestVerdict} />
               <span className="ml-auto flex shrink-0 items-center gap-2">
                 <span>{session.feedbackCount}回</span>
-                <span>{dateTimeFormat.format(new Date(session.createdAt))}</span>
+                <span>
+                  {dateTimeFormat.format(new Date(session.createdAt))}
+                </span>
               </span>
             </summary>
             <div className="flex flex-col gap-3 border-t border-border p-3">
@@ -118,12 +136,20 @@ export function ReviewHistoryList({ sessions }: { sessions: ReviewSessionSummary
                   aria-label="読み込み中"
                 />
               ) : feedbacks === null ? (
-                <p className="text-sm text-destructive">フィードバックの取得に失敗しました</p>
+                <p className="text-sm text-destructive">
+                  フィードバックの取得に失敗しました
+                </p>
               ) : feedbacks.length === 0 ? (
-                <p className="text-sm text-muted-foreground">フィードバックはありません</p>
+                <p className="text-sm text-muted-foreground">
+                  フィードバックはありません
+                </p>
               ) : (
                 feedbacks.map((feedback, index) => (
-                  <FeedbackView key={feedback.id} feedback={feedback} round={index + 1} />
+                  <FeedbackView
+                    key={feedback.id}
+                    feedback={feedback}
+                    round={index + 1}
+                  />
                 ))
               )}
             </div>
@@ -134,7 +160,13 @@ export function ReviewHistoryList({ sessions }: { sessions: ReviewSessionSummary
   );
 }
 
-function FeedbackView({ feedback, round }: { feedback: ReviewHistoryFeedback; round: number }) {
+function FeedbackView({
+  feedback,
+  round,
+}: {
+  feedback: ReviewHistoryFeedback;
+  round: number;
+}) {
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(feedback.content);
@@ -160,11 +192,15 @@ function FeedbackView({ feedback, round }: { feedback: ReviewHistoryFeedback; ro
           コピー
         </Button>
       </header>
-      <div className="text-sm whitespace-pre-wrap text-foreground">{feedback.content}</div>
+      <div className="text-sm whitespace-pre-wrap text-foreground">
+        {feedback.content}
+      </div>
       {feedback.userResponse !== null && (
         <div className="mt-3 flex flex-col gap-1 border-t border-border pt-2">
           <span className="text-xs text-muted-foreground">返答メモ</span>
-          <p className="text-sm whitespace-pre-wrap text-foreground">{feedback.userResponse}</p>
+          <p className="text-sm whitespace-pre-wrap text-foreground">
+            {feedback.userResponse}
+          </p>
         </div>
       )}
     </article>

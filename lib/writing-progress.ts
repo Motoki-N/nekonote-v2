@@ -6,9 +6,9 @@
 
 export type ProgressRow = {
   /** YYYY-MM-DD（JST） */
-  date: string
-  totalChars: number
-}
+  date: string;
+  totalChars: number;
+};
 
 /**
  * 境界日（today - days日）以前の直近の記録を基準にした増分。
@@ -20,14 +20,18 @@ export function deltaSince(
   today: string,
   days: number,
 ): { chars: number; days: number } | null {
-  const latest = rows.at(-1)
-  if (!latest) return null
+  const latest = rows.at(-1);
+  if (!latest) return null;
   // YYYY-MM-DD は Date.parse でUTC深夜として解釈される＝日付演算は端末TZ非依存
-  const boundary = new Date(Date.parse(today) - days * 86_400_000).toISOString().slice(0, 10)
-  const baseline = rows.filter((row) => row.date <= boundary).at(-1)
-  if (!baseline || baseline.date === latest.date) return null
+  const boundary = new Date(Date.parse(today) - days * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const baseline = rows.filter((row) => row.date <= boundary).at(-1);
+  if (!baseline || baseline.date === latest.date) return null;
   return {
     chars: latest.totalChars - baseline.totalChars,
-    days: Math.round((Date.parse(latest.date) - Date.parse(baseline.date)) / 86_400_000),
-  }
+    days: Math.round(
+      (Date.parse(latest.date) - Date.parse(baseline.date)) / 86_400_000,
+    ),
+  };
 }

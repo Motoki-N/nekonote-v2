@@ -214,7 +214,12 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
       active: state.blockquote,
       onClick: () => editor.chain().focus().toggleBlockquote().run(),
     },
-    { label: "リンク", icon: <Link2 />, active: state.link, onClick: toggleLink },
+    {
+      label: "リンク",
+      icon: <Link2 />,
+      active: state.link,
+      onClick: toggleLink,
+    },
     {
       label: "コードブロック",
       icon: <SquareCode />,
@@ -232,7 +237,11 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
       // 表の中に表は作れない（表内では下の操作ボタン群を使う）
       disabled: state.table,
       onClick: () =>
-        editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run(),
+        editor
+          .chain()
+          .focus()
+          .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+          .run(),
     },
   ];
 
@@ -253,11 +262,26 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
 
   /** カーソルが表内にあるときだけ出す操作（アイコンでは判別しにくいためテキストボタン） */
   const tableButtons: { label: string; onClick: () => void }[] = [
-    { label: "行を追加", onClick: () => editor.chain().focus().addRowAfter().run() },
-    { label: "行を削除", onClick: () => editor.chain().focus().deleteRow().run() },
-    { label: "列を追加", onClick: () => editor.chain().focus().addColumnAfter().run() },
-    { label: "列を削除", onClick: () => editor.chain().focus().deleteColumn().run() },
-    { label: "表を削除", onClick: () => editor.chain().focus().deleteTable().run() },
+    {
+      label: "行を追加",
+      onClick: () => editor.chain().focus().addRowAfter().run(),
+    },
+    {
+      label: "行を削除",
+      onClick: () => editor.chain().focus().deleteRow().run(),
+    },
+    {
+      label: "列を追加",
+      onClick: () => editor.chain().focus().addColumnAfter().run(),
+    },
+    {
+      label: "列を削除",
+      onClick: () => editor.chain().focus().deleteColumn().run(),
+    },
+    {
+      label: "表を削除",
+      onClick: () => editor.chain().focus().deleteTable().run(),
+    },
   ];
 
   function renderIconButton(button: (typeof buttons)[number]) {
@@ -299,7 +323,12 @@ export function EditorToolbar({ editor }: { editor: Editor }) {
       {historyButtons.map(renderIconButton)}
       {state.table &&
         tableButtons.map((button) => (
-          <Button key={button.label} variant="ghost" size="xs" onClick={button.onClick}>
+          <Button
+            key={button.label}
+            variant="ghost"
+            size="xs"
+            onClick={button.onClick}
+          >
             {button.label}
           </Button>
         ))}

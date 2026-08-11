@@ -1,13 +1,13 @@
-import 'server-only'
+import "server-only";
 
-import { generateText } from 'ai'
+import { generateText } from "ai";
 
-import { resolveModel } from '@/lib/ai/models'
-import { recordAiUsage } from '@/lib/ai/usage'
-import { chatTitleFrom } from '@/lib/chat-title'
-import type { createClient } from '@/lib/supabase/server'
+import { resolveModel } from "@/lib/ai/models";
+import { recordAiUsage } from "@/lib/ai/usage";
+import { chatTitleFrom } from "@/lib/chat-title";
+import type { createClient } from "@/lib/supabase/server";
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /**
  * ダッシュボード相談スレッドのタイトルをAIで生成する（Issue #44、SPEC-chat-thread-list §2 の
@@ -19,27 +19,27 @@ export async function generateChatThreadTitle(
   supabase: SupabaseServerClient,
   userMessage: string,
 ): Promise<string> {
-  const fallback = chatTitleFrom(userMessage)
+  const fallback = chatTitleFrom(userMessage);
   try {
-    const { model, provider, modelId } = await resolveModel(supabase, 'low')
+    const { model, provider, modelId } = await resolveModel(supabase, "low");
     const { text, usage } = await generateText({
       model,
       system:
-        'あなたは会話の最初の発言から、一覧で見分けやすい短いタイトルを作る係です。' +
-        '日本語で20字以内、記号や引用符・「タイトル:」等の接頭辞なしで、タイトルの本文だけを出力してください。',
+        "あなたは会話の最初の発言から、一覧で見分けやすい短いタイトルを作る係です。" +
+        "日本語で20字以内、記号や引用符・「タイトル:」等の接頭辞なしで、タイトルの本文だけを出力してください。",
       prompt: userMessage.slice(0, 2000),
-    })
+    });
     await recordAiUsage(supabase, {
-      feature: 'chat',
+      feature: "chat",
       provider,
       modelId,
       inputTokens: usage.inputTokens,
       outputTokens: usage.outputTokens,
-    })
-    const title = text.trim().slice(0, 50)
-    return title || fallback
+    });
+    const title = text.trim().slice(0, 50);
+    return title || fallback;
   } catch (error) {
-    console.error('スレッドタイトルのAI生成に失敗:', error)
-    return fallback
+    console.error("スレッドタイトルのAI生成に失敗:", error);
+    return fallback;
   }
 }

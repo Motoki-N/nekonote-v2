@@ -31,7 +31,11 @@ export function AnchorSlot({
         {!scene && "（未設定）"}
       </span>
       {scene && (
-        <SceneCardContent scene={scene} noteCount={noteCount} onClick={() => onEdit(scene)} />
+        <SceneCardContent
+          scene={scene}
+          noteCount={noteCount}
+          onClick={() => onEdit(scene)}
+        />
       )}
     </div>
   );

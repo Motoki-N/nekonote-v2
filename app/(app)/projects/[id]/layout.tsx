@@ -28,46 +28,55 @@ export default async function ProjectLayout({
   const [{ data: project }, { data: proposal }] = await Promise.all([
     supabase
       .from("projects")
-      .select("id, title, status, event_name, deadline, target_pages, repo, base_path")
+      .select(
+        "id, title, status, event_name, deadline, target_pages, repo, base_path",
+      )
       .eq("id", id)
       .maybeSingle(),
     // 構成ボードのタブ文言の出し分けキー（Issue #96・SPEC-outline-board §3.1）
-    supabase.from("proposals").select("writing_genre").eq("project_id", id).maybeSingle(),
+    supabase
+      .from("proposals")
+      .select("writing_genre")
+      .eq("project_id", id)
+      .maybeSingle(),
   ]);
   if (!project) notFound();
-  const boardLabel = (proposal?.writing_genre ?? "novel") === "novel" ? "ビートボード" : "目次";
+  const boardLabel =
+    (proposal?.writing_genre ?? "novel") === "novel" ? "ビートボード" : "目次";
 
   return (
     <div className="flex h-full flex-col">
       {/* 集中モード中は ChromeHeader がヘッダーを隠す */}
       <ChromeHeader>
         <header className="flex flex-wrap items-center gap-x-2 gap-y-1 border-b border-border px-4 py-2 sm:px-6">
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="プロジェクト一覧へ戻る"
-          className="text-muted-foreground"
-          nativeButton={false}
-          render={
-            <Link href="/projects">
-              <ArrowLeft />
-            </Link>
-          }
-        />
-        <h1 className="min-w-0 truncate text-base font-bold text-foreground">{project.title}</h1>
-        <ProjectStatusBadge status={project.status as ProjectStatus} />
-        <EditProjectButton
-          project={{
-            id: project.id,
-            title: project.title,
-            status: project.status as ProjectStatus,
-            event_name: project.event_name,
-            deadline: project.deadline,
-            target_pages: project.target_pages,
-            repo: project.repo,
-            base_path: project.base_path,
-          }}
-        />
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="プロジェクト一覧へ戻る"
+            className="text-muted-foreground"
+            nativeButton={false}
+            render={
+              <Link href="/projects">
+                <ArrowLeft />
+              </Link>
+            }
+          />
+          <h1 className="min-w-0 truncate text-base font-bold text-foreground">
+            {project.title}
+          </h1>
+          <ProjectStatusBadge status={project.status as ProjectStatus} />
+          <EditProjectButton
+            project={{
+              id: project.id,
+              title: project.title,
+              status: project.status as ProjectStatus,
+              event_name: project.event_name,
+              deadline: project.deadline,
+              target_pages: project.target_pages,
+              repo: project.repo,
+              base_path: project.base_path,
+            }}
+          />
           <div className="ml-auto">
             <ProjectTabs projectId={project.id} boardLabel={boardLabel} />
           </div>

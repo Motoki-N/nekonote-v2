@@ -34,7 +34,9 @@ export function ProgressLine({
 }) {
   if (points.length < 2) {
     return (
-      <p className="text-xs text-muted-foreground">記録がたまると推移がここに表示されます</p>
+      <p className="text-xs text-muted-foreground">
+        記録がたまると推移がここに表示されます
+      </p>
     );
   }
 
@@ -43,8 +45,13 @@ export function ProgressLine({
   const max = Math.max(...values, targetChars ?? -Infinity);
   const min = Math.min(...values, targetChars ?? Infinity);
   const y = (chars: number) =>
-    max === min ? (TOP + BOTTOM) / 2 : BOTTOM - ((chars - min) / (max - min)) * (BOTTOM - TOP);
-  const coords = points.map((p, index) => ({ x: LEFT_PAD + index * STEP, y: y(p.totalChars) }));
+    max === min
+      ? (TOP + BOTTOM) / 2
+      : BOTTOM - ((chars - min) / (max - min)) * (BOTTOM - TOP);
+  const coords = points.map((p, index) => ({
+    x: LEFT_PAD + index * STEP,
+    y: y(p.totalChars),
+  }));
   const targetY = targetChars === null ? null : y(targetChars);
 
   return (
@@ -96,10 +103,20 @@ export function ProgressLine({
           strokeLinejoin="round"
         />
         {coords.map((c, index) => (
-          <circle key={points[index].date} cx={c.x} cy={c.y} r={2} fill="currentColor" />
+          <circle
+            key={points[index].date}
+            cx={c.x}
+            cy={c.y}
+            r={2}
+            fill="currentColor"
+          />
         ))}
         {/* 期間の両端の日付ラベル */}
-        <text x={LEFT_PAD} y={HEIGHT - 2} className="fill-muted-foreground text-[10px]">
+        <text
+          x={LEFT_PAD}
+          y={HEIGHT - 2}
+          className="fill-muted-foreground text-[10px]"
+        >
           {dateLabel(points[0].date)}
         </text>
         <text

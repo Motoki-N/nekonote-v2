@@ -18,7 +18,9 @@ import type { ProgressPoint } from "@/components/dashboard/progress-line";
 
 /** JST基準の日付（YYYY-MM-DD。サーバーはUTCで動くため明示する） */
 function jstDate(at: Date): string {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(at);
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
+    at,
+  );
 }
 
 /** ダッシュボード（SPEC-dashboard-critique-settings §3.1）。進捗＋プロジェクト概況の「作業基地」 */
@@ -38,7 +40,10 @@ export default async function Home({
         "id, title, event_name, deadline, target_pages, repo, base_path, schedule, proposals (status)",
       )
       .order("updated_at", { ascending: false }),
-    supabase.from("user_settings").select("github_pat_ciphertext").maybeSingle(),
+    supabase
+      .from("user_settings")
+      .select("github_pat_ciphertext")
+      .maybeSingle(),
   ]);
   const patRegistered = Boolean(settingsRow?.github_pat_ciphertext);
 
@@ -51,7 +56,13 @@ export default async function Home({
           .select("project_id, date, total_chars")
           .in("project_id", projectIds)
           .order("date")
-      : { data: [] as { project_id: string; date: string; total_chars: number }[] };
+      : {
+          data: [] as {
+            project_id: string;
+            date: string;
+            total_chars: number;
+          }[],
+        };
 
   // 相談パネル（アシスタントタブのプロジェクトセレクタ）に渡す最小情報
   const consultProjects: ConsultProject[] = (projects ?? []).map((project) => ({
@@ -68,11 +79,18 @@ export default async function Home({
   // 目標ページ数×repo×PAT が揃うプロジェクトがあるときだけPATを復号する。
   // 復号や取得に失敗しても既定換算（文庫A6）に落ちてダッシュボード自体は表示する
   let token: string | null = null;
-  if (patRegistered && (projects ?? []).some((p) => p.target_pages !== null && p.repo)) {
+  if (
+    patRegistered &&
+    (projects ?? []).some((p) => p.target_pages !== null && p.repo)
+  ) {
     try {
-      token = (await patCredentialProvider.getCredential(supabase))?.token ?? null;
+      token =
+        (await patCredentialProvider.getCredential(supabase))?.token ?? null;
     } catch (credentialError) {
-      console.error("PATの復号に失敗（目標換算は既定値で継続）:", credentialError);
+      console.error(
+        "PATの復号に失敗（目標換算は既定値で継続）:",
+        credentialError,
+      );
     }
   }
   const targetCharsById = new Map<string, number>();
@@ -102,7 +120,8 @@ export default async function Home({
       title: project.title,
       event_name: project.event_name,
       deadline: project.deadline,
-      proposalStatus: (project.proposals?.status ?? null) as ProposalStatus | null,
+      proposalStatus: (project.proposals?.status ??
+        null) as ProposalStatus | null,
       canCollect: Boolean(project.repo) && patRegistered,
       latest: rows.at(-1) ?? null,
       series: rows.filter((row) => row.date >= cutoff),
@@ -116,9 +135,14 @@ export default async function Home({
     <div className="flex flex-1 flex-col">
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="text-base font-semibold text-foreground">プロジェクト概況</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            プロジェクト概況
+          </h2>
           <div className="ml-auto flex items-center gap-2">
-            <ConsultLauncher projects={consultProjects} initialThreadId={consult} />
+            <ConsultLauncher
+              projects={consultProjects}
+              initialThreadId={consult}
+            />
             <Button
               size="sm"
               variant="outline"
@@ -131,13 +155,19 @@ export default async function Home({
               nativeButton={false}
               render={<Link href="/projects">プロジェクト一覧</Link>}
             />
-            <Button size="sm" nativeButton={false} render={<Link href="/notes">ノートをひらく</Link>} />
+            <Button
+              size="sm"
+              nativeButton={false}
+              render={<Link href="/notes">ノートをひらく</Link>}
+            />
           </div>
         </div>
 
         {items.length === 0 ? (
           <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card p-8">
-            <p className="text-sm text-card-foreground">まだプロジェクトがありません。</p>
+            <p className="text-sm text-card-foreground">
+              まだプロジェクトがありません。
+            </p>
             <p className="text-sm text-muted-foreground">
               ネタはノートに書き溜め、本づくりはプロジェクトから始めます。
             </p>
@@ -156,7 +186,11 @@ export default async function Home({
         ) : (
           <ul className="flex flex-col gap-3">
             {items.map((project) => (
-              <ProjectOverviewCard key={project.id} project={project} today={today} />
+              <ProjectOverviewCard
+                key={project.id}
+                project={project}
+                today={today}
+              />
             ))}
           </ul>
         )}

@@ -15,7 +15,9 @@
     "lint": "eslint",
     "postinstall": "node scripts/copy-vivliostyle.mjs",
     "typecheck": "tsc --noEmit",
-    "db:types": "npx supabase gen types typescript --linked > lib/database.types.ts"
+    "db:types": "npx supabase gen types typescript --linked > lib/database.types.ts",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.12",
@@ -70,6 +72,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.10",
+    "prettier": "^3.9.6",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

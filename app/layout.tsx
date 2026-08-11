@@ -17,7 +17,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "ネコノテAI",
-  description: "小説執筆支援アプリ。小説は人間が書き、AIはネタ出し・レビュー・校正で伴走する。",
+  description:
+    "小説執筆支援アプリ。小説は人間が書き、AIはネタ出し・レビュー・校正で伴走する。",
 };
 
 export default function RootLayout({

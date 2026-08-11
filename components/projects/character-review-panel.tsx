@@ -46,7 +46,9 @@ export function CharacterReviewPanel({
             aria-label="レビュー対象"
             className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
             value={noteId ?? ""}
-            onChange={(e) => setNoteId(e.target.value === "" ? null : e.target.value)}
+            onChange={(e) =>
+              setNoteId(e.target.value === "" ? null : e.target.value)
+            }
           >
             <option value="">対象: 全体（企画書＋紐づけノート全部）</option>
             {linkedNotes.map((note) => (

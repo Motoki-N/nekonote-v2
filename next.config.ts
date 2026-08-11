@@ -11,15 +11,15 @@ const nextConfig: NextConfig = {
   // 編集ダイアログは /projects 一覧と /projects/[id] レイアウト配下の全ページにあるため、
   // Server Action の POST 先になり得るルートすべてを対象にする
   outputFileTracingIncludes: {
-    '/projects': ['./docs/templates/manuscript-repo/**'],
-    '/projects/**': ['./docs/templates/manuscript-repo/**'],
+    "/projects": ["./docs/templates/manuscript-repo/**"],
+    "/projects/**": ["./docs/templates/manuscript-repo/**"],
   },
   experimental: {
     serverActions: {
       // 画像アップロード（uploadImage）は base64 で約4/3倍になるため、
       // 10MB画像＋メタ分を通す（既定1MBのままだとスキーマ検証前に落ちる。
       // security-review 2026-07-16 M-1）
-      bodySizeLimit: '15mb',
+      bodySizeLimit: "15mb",
     },
   },
 };

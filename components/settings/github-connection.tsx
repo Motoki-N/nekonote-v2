@@ -49,7 +49,11 @@ export function GithubConnection({
           </span>
           <div className="ml-auto flex items-center gap-1.5">
             {!replacing && (
-              <Button variant="outline" size="xs" onClick={() => setReplacing(true)}>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => setReplacing(true)}
+              >
                 差し替え
               </Button>
             )}
@@ -125,19 +129,30 @@ function PatForm({
         />
       </label>
       <p className="text-xs text-muted-foreground">
-        GitHubの Settings → Developer settings → Fine-grained personal access tokens
-        で発行します。対象を原稿リポジトリのみに限定し、権限は Contents の Read and write
-        を選んでください。
+        GitHubの Settings → Developer settings → Fine-grained personal access
+        tokens で発行します。対象を原稿リポジトリのみに限定し、権限は Contents
+        の Read and write を選んでください。
       </p>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex items-center gap-2 self-end">
         {onCancelReplace && (
-          <Button type="button" variant="ghost" size="sm" onClick={onCancelReplace}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onCancelReplace}
+          >
             キャンセル
           </Button>
         )}
-        <Button type="submit" size="sm" disabled={submitting || token.trim() === ""}>
-          {submitting && <Loader2 data-icon="inline-start" className="animate-spin" />}
+        <Button
+          type="submit"
+          size="sm"
+          disabled={submitting || token.trim() === ""}
+        >
+          {submitting && (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          )}
           {submitting ? "接続を確認中…" : "登録する"}
         </Button>
       </div>
@@ -182,7 +197,10 @@ function DeletePatButton({ onDeleted }: { onDeleted: () => void }) {
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>キャンセル</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={() => void handleDelete()}>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={() => void handleDelete()}
+          >
             削除する
           </AlertDialogAction>
         </AlertDialogFooter>

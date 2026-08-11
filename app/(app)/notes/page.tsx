@@ -13,7 +13,9 @@ import { toSortValue, type SortValue } from "@/components/notes/sort-options";
 
 // ILIKE パターンと PostgREST の or() 構文を壊す文字を除去・エスケープする
 function toSearchPattern(q: string): string {
-  const cleaned = q.replaceAll(/[,()"\\]/g, "").replaceAll(/[%_]/g, (m) => `\\${m}`);
+  const cleaned = q
+    .replaceAll(/[,()"\\]/g, "")
+    .replaceAll(/[%_]/g, (m) => `\\${m}`);
   return `%${cleaned}%`;
 }
 
@@ -48,7 +50,12 @@ function toListItem(row: NoteRow): NoteListItem {
 export default async function NotesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; tags?: string; view?: string; sort?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    tags?: string;
+    view?: string;
+    sort?: string;
+  }>;
 }) {
   const { q, tags: tagsParam, view, sort: sortParam } = await searchParams;
   const sort = toSortValue(sortParam);
@@ -77,24 +84,33 @@ export default async function NotesPage({
       set.add(link.note_id);
       byTag.set(link.tag_id, set);
     }
-    tagFilteredNoteIds = selectedTagIds.reduce<string[] | null>((acc, tagId) => {
-      const ids = [...(byTag.get(tagId) ?? new Set<string>())];
-      if (acc === null) return ids;
-      const set = new Set(ids);
-      return acc.filter((id) => set.has(id));
-    }, null);
+    tagFilteredNoteIds = selectedTagIds.reduce<string[] | null>(
+      (acc, tagId) => {
+        const ids = [...(byTag.get(tagId) ?? new Set<string>())];
+        if (acc === null) return ids;
+        const set = new Set(ids);
+        return acc.filter((id) => set.has(id));
+      },
+      null,
+    );
   }
 
   let notes: NoteListItem[] = [];
   if (tagFilteredNoteIds === null || tagFilteredNoteIds.length > 0) {
     let query = supabase
       .from("notes")
-      .select("id, title, content, updated_at, deleted_at, note_tags(tags(id, name, kind))");
+      .select(
+        "id, title, content, updated_at, deleted_at, note_tags(tags(id, name, kind))",
+      );
     if (isTrash) {
-      query = query.not("deleted_at", "is", null).order("deleted_at", { ascending: false });
+      query = query
+        .not("deleted_at", "is", null)
+        .order("deleted_at", { ascending: false });
     } else {
       const order = SORT_ORDERS[sort];
-      query = query.is("deleted_at", null).order(order.column, { ascending: order.ascending });
+      query = query
+        .is("deleted_at", null)
+        .order(order.column, { ascending: order.ascending });
       if (q) {
         const pattern = toSearchPattern(q);
         query = query.or(`title.ilike.${pattern},content.ilike.${pattern}`);
@@ -167,7 +183,12 @@ export default async function NotesPage({
               </div>
               <SortMenu sort={sort} q={q} tagsParam={tagsParam} />
             </div>
-            <TagFilter tags={allTags ?? []} selectedTagIds={selectedTagIds} q={q} sort={sort} />
+            <TagFilter
+              tags={allTags ?? []}
+              selectedTagIds={selectedTagIds}
+              q={q}
+              sort={sort}
+            />
           </>
         )}
 

@@ -74,7 +74,10 @@ export function ProposalHistoryPanel({
   // 差分は「選択した版 → 1つ新しい版（先頭の版は現在の本文）」
   const diffRows = useMemo(() => {
     if (!versions || selectedIndex < 0) return null;
-    const newer = selectedIndex === 0 ? getCurrentContent() : versions[selectedIndex - 1].content;
+    const newer =
+      selectedIndex === 0
+        ? getCurrentContent()
+        : versions[selectedIndex - 1].content;
     return diffTexts(versions[selectedIndex].content, newer);
   }, [versions, selectedIndex, getCurrentContent]);
 
@@ -117,7 +120,10 @@ export function ProposalHistoryPanel({
         </div>
       ) : versions === null ? (
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="読み込み中" />
+          <Loader2
+            className="size-5 animate-spin text-muted-foreground"
+            aria-label="読み込み中"
+          />
         </div>
       ) : versions.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-4 text-sm text-muted-foreground">
@@ -129,7 +135,10 @@ export function ProposalHistoryPanel({
             {versions.map((version) => {
               const expanded = version.id === selectedId;
               return (
-                <li key={version.id} className="rounded-lg border border-border bg-card">
+                <li
+                  key={version.id}
+                  className="rounded-lg border border-border bg-card"
+                >
                   <button
                     type="button"
                     aria-expanded={expanded}
@@ -153,31 +162,42 @@ export function ProposalHistoryPanel({
                   {expanded && (
                     <div className="flex flex-col gap-2 border-t border-border px-2.5 py-2">
                       <p className="text-xs text-muted-foreground">
-                        この版から{selectedIndex === 0 ? "現在" : "次の版"}への変更
+                        この版から{selectedIndex === 0 ? "現在" : "次の版"}
+                        への変更
                       </p>
                       {diffRows && diffRows.length > 0 ? (
                         <DiffView rows={diffRows} />
                       ) : (
-                        <p className="text-xs text-muted-foreground">変更はありません</p>
+                        <p className="text-xs text-muted-foreground">
+                          変更はありません
+                        </p>
                       )}
                       <AlertDialog>
                         <AlertDialogTrigger
                           render={
-                            <Button size="sm" variant="outline" disabled={restoring}>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={restoring}
+                            >
                               この版に復元
                             </Button>
                           }
                         />
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>この版に復元しますか？</AlertDialogTitle>
+                            <AlertDialogTitle>
+                              この版に復元しますか？
+                            </AlertDialogTitle>
                             <AlertDialogDescription>
                               企画書の本文がこの版の内容に置き換わります。現在の本文は復元前に新しい版として保存されるため、履歴から戻せます。
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
                             <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => void handleRestore(version)}>
+                            <AlertDialogAction
+                              onClick={() => void handleRestore(version)}
+                            >
                               復元する
                             </AlertDialogAction>
                           </AlertDialogFooter>

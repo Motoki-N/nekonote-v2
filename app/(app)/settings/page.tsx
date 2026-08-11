@@ -15,14 +15,15 @@ import { UsageSummary } from "@/components/settings/usage-summary";
 
 /** 設定画面（SPEC-dashboard-critique-settings §3.4）。AIモデル・使用量・ペルソナ・プロファイル・GitHub連携 */
 export default async function SettingsPage() {
-  const [modelSettings, personas, profiles, connection, usage, zennRepo] = await Promise.all([
-    getAiModelSettings(),
-    listPersonas(),
-    listReviewProfiles(),
-    getGithubConnection(),
-    getAiUsageSummary(),
-    getZennRepo(),
-  ]);
+  const [modelSettings, personas, profiles, connection, usage, zennRepo] =
+    await Promise.all([
+      getAiModelSettings(),
+      listPersonas(),
+      listReviewProfiles(),
+      getGithubConnection(),
+      getAiUsageSummary(),
+      getZennRepo(),
+    ]);
 
   return (
     <div className="flex flex-1 flex-col">
@@ -32,7 +33,9 @@ export default async function SettingsPage() {
 
       <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 p-4 sm:p-6">
         <section className="flex flex-col gap-3">
-          <h2 className="text-base font-semibold text-foreground">AIモデル設定</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            AIモデル設定
+          </h2>
           <p className="text-sm text-muted-foreground">
             能力レベルごとに使うAIモデルのマッピングです。モデルの世代交代には、ここの変更だけで追従できます。
           </p>
@@ -40,13 +43,17 @@ export default async function SettingsPage() {
             <ModelSettings data={modelSettings.data} />
           ) : (
             <p className="text-sm text-destructive">
-              {modelSettings.ok ? "読み込みに失敗しました" : modelSettings.error.message}
+              {modelSettings.ok
+                ? "読み込みに失敗しました"
+                : modelSettings.error.message}
             </p>
           )}
         </section>
 
         <section className="flex flex-col gap-3">
-          <h2 className="text-base font-semibold text-foreground">AI使用量（直近30日）</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            AI使用量（直近30日）
+          </h2>
           <p className="text-sm text-muted-foreground">
             AI機能の呼び出し回数とトークン数です。金額はプロバイダ側の管理画面で確認してください。
           </p>
@@ -74,7 +81,9 @@ export default async function SettingsPage() {
         </section>
 
         <section className="flex flex-col gap-3">
-          <h2 className="text-base font-semibold text-foreground">レビュープロファイル</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            レビュープロファイル
+          </h2>
           <p className="text-sm text-muted-foreground">
             レビュー・講評の評価観点（プロンプト）です。標準プロファイルは複製してから編集できます。
           </p>
@@ -88,9 +97,12 @@ export default async function SettingsPage() {
         </section>
 
         <section className="flex flex-col gap-3">
-          <h2 className="text-base font-semibold text-foreground">GitHub連携</h2>
+          <h2 className="text-base font-semibold text-foreground">
+            GitHub連携
+          </h2>
           <p className="text-sm text-muted-foreground">
-            原稿リポジトリの読み込みに使う Personal Access Token（PAT）を登録します。
+            原稿リポジトリの読み込みに使う Personal Access
+            Token（PAT）を登録します。
             トークンは暗号化して保存され、登録後に値が表示されることはありません。
           </p>
           {connection.ok ? (
@@ -99,7 +111,9 @@ export default async function SettingsPage() {
               initialUsername={connection.data?.username ?? null}
             />
           ) : (
-            <p className="text-sm text-destructive">{connection.error.message}</p>
+            <p className="text-sm text-destructive">
+              {connection.error.message}
+            </p>
           )}
         </section>
 

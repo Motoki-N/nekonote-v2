@@ -5,14 +5,20 @@ import type { ProposalStatus, WritingGenre } from "@/lib/schemas/enums";
 import type { LinkedNote } from "@/lib/actions/projects";
 import { ProposalEditor } from "@/components/projects/proposal-editor";
 
-export default async function ProjectPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ProjectPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const supabase = await createClient();
 
   // プロジェクト情報ヘッダーは layout.tsx が描画する。ここでは企画書のみ引く
   const { data: proposal } = await supabase
     .from("proposals")
-    .select("id, project_id, writing_genre, purpose, genre, target_audience, content, status, updated_at")
+    .select(
+      "id, project_id, writing_genre, purpose, genre, target_audience, content, status, updated_at",
+    )
     .eq("project_id", id)
     .maybeSingle();
   if (!proposal) notFound();

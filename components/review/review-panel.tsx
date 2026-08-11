@@ -118,15 +118,21 @@ export function ReviewPanel({
   const router = useRouter();
   const [bootstrap, setBootstrap] = useState<ReviewPanelBootstrap | null>(null);
   const [bootstrapDone, setBootstrapDone] = useState(false);
-  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(null);
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    null,
+  );
   // プロファイル別のセッションキャッシュ（undefined=未ロード / null=runningなし）
   const [sessionByProfile, setSessionByProfile] = useState<
     Record<string, ReviewSessionState | null>
   >({});
   // プロファイル別のユーザー選択（未選択時は default_persona にフォールバック）
-  const [personaChoice, setPersonaChoice] = useState<Record<string, string>>({});
+  const [personaChoice, setPersonaChoice] = useState<Record<string, string>>(
+    {},
+  );
   // このパネルで新規作成したセッションのペルソナ名（作成後は固定表示）
-  const [createdPersonaName, setCreatedPersonaName] = useState<Record<string, string>>({});
+  const [createdPersonaName, setCreatedPersonaName] = useState<
+    Record<string, string>
+  >({});
   const [streamingText, setStreamingText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   // コメントを広く読みたいとき用の中央拡大表示（Issue #81）
@@ -145,7 +151,9 @@ export function ReviewPanel({
         setBootstrap(result.data);
         setSelectedProfileId(result.data.initialProfileId);
       } else {
-        setError(result.ok ? "レビュー設定の取得に失敗しました" : result.error.message);
+        setError(
+          result.ok ? "レビュー設定の取得に失敗しました" : result.error.message,
+        );
       }
       setBootstrapDone(true);
     });
@@ -156,25 +164,33 @@ export function ReviewPanel({
 
   // 選択中プロファイルのセッション状態が未ロードなら読む（キャッシュヒット時は何もしない）
   useEffect(() => {
-    if (selectedProfileId === null || sessionByProfile[selectedProfileId] !== undefined) return;
+    if (
+      selectedProfileId === null ||
+      sessionByProfile[selectedProfileId] !== undefined
+    )
+      return;
     const profileId = selectedProfileId;
     let cancelled = false;
-    void getReviewSessionState(kind, targetId, profileId, noteId).then((result) => {
-      if (cancelled) return;
-      if (!result.ok) setError(result.error.message);
-      setSessionByProfile((prev) => ({
-        ...prev,
-        [profileId]: result.ok ? (result.data ?? null) : null,
-      }));
-    });
+    void getReviewSessionState(kind, targetId, profileId, noteId).then(
+      (result) => {
+        if (cancelled) return;
+        if (!result.ok) setError(result.error.message);
+        setSessionByProfile((prev) => ({
+          ...prev,
+          [profileId]: result.ok ? (result.data ?? null) : null,
+        }));
+      },
+    );
     return () => {
       cancelled = true;
     };
   }, [selectedProfileId, sessionByProfile, kind, targetId, noteId]);
 
   // 表示用の導出値（プロファイル切り替えで自動的に切り替わる）
-  const profile = bootstrap?.profiles.find((p) => p.id === selectedProfileId) ?? null;
-  const sessionState = selectedProfileId !== null ? sessionByProfile[selectedProfileId] : null;
+  const profile =
+    bootstrap?.profiles.find((p) => p.id === selectedProfileId) ?? null;
+  const sessionState =
+    selectedProfileId !== null ? sessionByProfile[selectedProfileId] : null;
   const loaded =
     bootstrapDone && (selectedProfileId === null || sessionState !== undefined);
   const sessionId = sessionState?.sessionId ?? null;
@@ -185,7 +201,9 @@ export function ReviewPanel({
       : null;
   const personaFixedName =
     selectedProfileId !== null
-      ? (createdPersonaName[selectedProfileId] ?? profile?.runningPersonaName ?? null)
+      ? (createdPersonaName[selectedProfileId] ??
+        profile?.runningPersonaName ??
+        null)
       : null;
 
   // ストリーミング中は追記に合わせて最下部へ追従
@@ -195,7 +213,8 @@ export function ReviewPanel({
   }, [sessionState, streamingText]);
 
   const runReview = useCallback(async () => {
-    if (busy || selectedProfileId === null || effectivePersonaId === null) return;
+    if (busy || selectedProfileId === null || effectivePersonaId === null)
+      return;
     const profileId = selectedProfileId;
     setError(null);
 
@@ -210,13 +229,17 @@ export function ReviewPanel({
       noteId,
     );
     if (!session.ok || !session.data) {
-      setError(session.ok ? "セッションの取得に失敗しました" : session.error.message);
+      setError(
+        session.ok ? "セッションの取得に失敗しました" : session.error.message,
+      );
       return;
     }
     const sessionData = session.data;
     setSessionByProfile((prev) => ({ ...prev, [profileId]: sessionData }));
     // セッションが立った時点でペルソナは固定される（途中変更不可）
-    const persona = bootstrap?.personas.find((p) => p.id === effectivePersonaId);
+    const persona = bootstrap?.personas.find(
+      (p) => p.id === effectivePersonaId,
+    );
     if (persona) {
       setCreatedPersonaName((prev) => ({ ...prev, [profileId]: persona.name }));
     }
@@ -244,7 +267,12 @@ export function ReviewPanel({
         setStreamingText((prev) => (prev ?? "") + chunk);
       }
       // 完了: 保存済みフィードバック（verdict込み）を取り直し、status バッジ等も更新する
-      const refreshed = await getReviewSessionState(kind, targetId, profileId, noteId);
+      const refreshed = await getReviewSessionState(
+        kind,
+        targetId,
+        profileId,
+        noteId,
+      );
       if (refreshed.ok) {
         setSessionByProfile((prev) => ({
           ...prev,
@@ -256,17 +284,33 @@ export function ReviewPanel({
       if (err instanceof DOMException && err.name === "AbortError") {
         // stop ボタンによる中断。未完のフィードバックは保存されない
       } else {
-        setError("レビューの実行に失敗しました。時間をおいて再試行してください");
+        setError(
+          "レビューの実行に失敗しました。時間をおいて再試行してください",
+        );
       }
     } finally {
       abortRef.current = null;
       setStreamingText(null);
     }
-  }, [busy, flushSave, kind, targetId, noteId, selectedProfileId, effectivePersonaId, bootstrap, router]);
+  }, [
+    busy,
+    flushSave,
+    kind,
+    targetId,
+    noteId,
+    selectedProfileId,
+    effectivePersonaId,
+    bootstrap,
+    router,
+  ]);
 
   const latest = feedbacks.at(-1);
   const footerExtra =
-    renderFooter?.({ latestVerdict: latest?.verdict ?? null, busy, sessionId }) ?? null;
+    renderFooter?.({
+      latestVerdict: latest?.verdict ?? null,
+      busy,
+      sessionId,
+    }) ?? null;
 
   // 新規セッション（running なし）のときだけペルソナを選べる
   const personaSelectable = loaded && sessionId === null && !busy;
@@ -289,7 +333,9 @@ export function ReviewPanel({
           <ClipboardCheck className="size-4 shrink-0 text-muted-foreground" />
           <span className="text-sm font-medium">{title}</span>
           {subtitle && (
-            <span className="min-w-0 truncate text-xs text-muted-foreground">{subtitle}</span>
+            <span className="min-w-0 truncate text-xs text-muted-foreground">
+              {subtitle}
+            </span>
           )}
           <div className="ml-auto flex items-center gap-0.5">
             <Button
@@ -344,7 +390,9 @@ export function ReviewPanel({
                   setPersonaChoice((prev) => ({ ...prev, [profileId]: value }));
                 }}
               >
-                {effectivePersonaId === null && <option value="">担当を選択…</option>}
+                {effectivePersonaId === null && (
+                  <option value="">担当を選択…</option>
+                )}
                 {bootstrap.personas.map((persona) => (
                   <option key={persona.id} value={persona.id}>
                     {persona.name}
@@ -363,7 +411,10 @@ export function ReviewPanel({
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3">
         {!loaded ? (
           <div className="flex h-full items-center justify-center">
-            <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="読み込み中" />
+            <Loader2
+              className="size-5 animate-spin text-muted-foreground"
+              aria-label="読み込み中"
+            />
           </div>
         ) : (
           <div className="flex flex-col gap-3">
@@ -412,7 +463,11 @@ export function ReviewPanel({
           <Button
             variant={footerExtra ? "outline" : "default"}
             onClick={() => void runReview()}
-            disabled={!loaded || selectedProfileId === null || effectivePersonaId === null}
+            disabled={
+              !loaded ||
+              selectedProfileId === null ||
+              effectivePersonaId === null
+            }
           >
             {feedbacks.length === 0 ? "レビューを受ける" : "再レビューを受ける"}
           </Button>
@@ -437,7 +492,9 @@ function FeedbackCard({
 }) {
   const router = useRouter();
   const [response, setResponse] = useState(feedback.user_response ?? "");
-  const [savedResponse, setSavedResponse] = useState(feedback.user_response ?? "");
+  const [savedResponse, setSavedResponse] = useState(
+    feedback.user_response ?? "",
+  );
   const [saving, setSaving] = useState(false);
   const [copying, setCopying] = useState(false);
 
@@ -448,12 +505,17 @@ function FeedbackCard({
     try {
       const result = await saveFeedbackAsNote(feedback.id);
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? "ノートへの転記に失敗しました" : result.error.message);
+        toast.error(
+          result.ok ? "ノートへの転記に失敗しました" : result.error.message,
+        );
         return;
       }
       const noteId = result.data.noteId;
       toast("レビューをノートに転記しました", {
-        action: { label: "ノートをひらく", onClick: () => router.push(`/notes/${noteId}`) },
+        action: {
+          label: "ノートをひらく",
+          onClick: () => router.push(`/notes/${noteId}`),
+        },
       });
     } finally {
       setCopying(false);
@@ -496,9 +558,14 @@ function FeedbackCard({
           </Button>
         )}
       </header>
-      <div className="text-sm whitespace-pre-wrap text-card-foreground">{feedback.content}</div>
+      <div className="text-sm whitespace-pre-wrap text-card-foreground">
+        {feedback.content}
+      </div>
       <div className="mt-3 flex flex-col gap-1.5 border-t border-border pt-2">
-        <label className="text-xs text-muted-foreground" htmlFor={`response-${feedback.id}`}>
+        <label
+          className="text-xs text-muted-foreground"
+          htmlFor={`response-${feedback.id}`}
+        >
           返答メモ（改稿の意図・反論を次のレビューに伝える）
         </label>
         <Textarea

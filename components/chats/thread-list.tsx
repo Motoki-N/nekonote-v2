@@ -6,7 +6,11 @@ import { useRouter } from "next/navigation";
 import { MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { deleteThread, renameThread, type ConsultThreadListItem } from "@/lib/actions/chat";
+import {
+  deleteThread,
+  renameThread,
+  type ConsultThreadListItem,
+} from "@/lib/actions/chat";
 import { formatDate } from "@/components/notes/note-card";
 import {
   AlertDialog,
@@ -49,7 +53,10 @@ export function ThreadList({ threads }: { threads: ConsultThreadListItem[] }) {
         <p className="text-sm text-muted-foreground">
           相談はダッシュボードの「相談する」から始められます。
         </p>
-        <Button nativeButton={false} render={<Link href="/">ダッシュボードへ</Link>} />
+        <Button
+          nativeButton={false}
+          render={<Link href="/">ダッシュボードへ</Link>}
+        />
       </div>
     );
   }
@@ -82,9 +89,13 @@ function ThreadRow({ thread }: { thread: ConsultThreadListItem }) {
     <li className="group relative rounded-lg border border-border bg-card transition-colors hover:bg-muted/50">
       <Link href={`/?consult=${thread.id}`} className="block p-4">
         <div className="flex flex-col gap-1.5">
-          <span className="pr-8 font-medium text-card-foreground">{displayTitle(thread)}</span>
+          <span className="pr-8 font-medium text-card-foreground">
+            {displayTitle(thread)}
+          </span>
           <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-            <Badge variant="outline">{thread.personaName ?? "（削除済みペルソナ）"}</Badge>
+            <Badge variant="outline">
+              {thread.personaName ?? "（削除済みペルソナ）"}
+            </Badge>
             <span>{formatDate(thread.updatedAt)}</span>
           </span>
         </div>
@@ -109,7 +120,10 @@ function ThreadRow({ thread }: { thread: ConsultThreadListItem }) {
               <Pencil data-icon="inline-start" />
               リネーム
             </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => setDeleteOpen(true)}>
+            <DropdownMenuItem
+              variant="destructive"
+              onClick={() => setDeleteOpen(true)}
+            >
               <Trash2 data-icon="inline-start" />
               削除
             </DropdownMenuItem>
@@ -117,19 +131,28 @@ function ThreadRow({ thread }: { thread: ConsultThreadListItem }) {
         </DropdownMenu>
       </div>
 
-      <RenameDialog thread={thread} open={renameOpen} onOpenChange={setRenameOpen} />
+      <RenameDialog
+        thread={thread}
+        open={renameOpen}
+        onOpenChange={setRenameOpen}
+      />
 
       <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>「{displayTitle(thread)}」を削除しますか？</AlertDialogTitle>
+            <AlertDialogTitle>
+              「{displayTitle(thread)}」を削除しますか？
+            </AlertDialogTitle>
             <AlertDialogDescription>
               この会話の履歴がすべて削除されます。この操作は元に戻せません。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>キャンセル</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={() => void handleDelete()}>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={() => void handleDelete()}
+            >
               削除する
             </AlertDialogAction>
           </AlertDialogFooter>

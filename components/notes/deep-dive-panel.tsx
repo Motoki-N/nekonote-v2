@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { isStaticToolUIPart, type UIMessage } from "ai";
-import { Check, CircleStop, FilePlus2, Loader2, RotateCcw, Send, Sparkles, X } from "lucide-react";
+import {
+  Check,
+  CircleStop,
+  FilePlus2,
+  Loader2,
+  RotateCcw,
+  Send,
+  Sparkles,
+  X,
+} from "lucide-react";
 
 import {
   deleteThread,
@@ -27,7 +36,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 function toUIMessage(record: ChatMessageRecord): UIMessage {
-  return { id: record.id, role: record.role, parts: [{ type: "text", text: record.content }] };
+  return {
+    id: record.id,
+    role: record.role,
+    parts: [{ type: "text", text: record.content }],
+  };
 }
 
 function textOf(message: UIMessage): string {
@@ -40,7 +53,9 @@ function textOf(message: UIMessage): string {
 /** /api/chat の errorResponse（JSON）からユーザー向けメッセージを取り出す */
 function toDisplayError(error: Error): string {
   try {
-    const parsed = JSON.parse(error.message) as { error?: { message?: string } };
+    const parsed = JSON.parse(error.message) as {
+      error?: { message?: string };
+    };
     if (parsed.error?.message) return parsed.error.message;
   } catch {
     // JSON でなければ汎用文言にフォールバック
@@ -139,7 +154,9 @@ export function DeepDivePanel({
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                <AlertDialogAction onClick={handleReset}>リセットする</AlertDialogAction>
+                <AlertDialogAction onClick={handleReset}>
+                  リセットする
+                </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
@@ -172,7 +189,10 @@ export function DeepDivePanel({
         />
       ) : (
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="読み込み中" />
+          <Loader2
+            className="size-5 animate-spin text-muted-foreground"
+            aria-label="読み込み中"
+          />
         </div>
       )}
     </aside>
@@ -191,7 +211,9 @@ function DeepDiveChat({
   onInsert: (markdown: string) => void;
 }) {
   const [input, setInput] = useState("");
-  const [insertedIds, setInsertedIds] = useState<ReadonlySet<string>>(new Set());
+  const [insertedIds, setInsertedIds] = useState<ReadonlySet<string>>(
+    new Set(),
+  );
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // transport は既定（POST /api/chat）。threadId とノートの現在値は送信時に body へ同梱する
@@ -240,7 +262,9 @@ function DeepDiveChat({
               {message.role === "assistant" &&
                 message.parts
                   .filter(isStaticToolUIPart)
-                  .map((part) => <ToolCard key={part.toolCallId} part={part} />)}
+                  .map((part) => (
+                    <ToolCard key={part.toolCallId} part={part} />
+                  ))}
               {(message.role === "user" || textOf(message) !== "") && (
                 <div
                   className={
@@ -282,10 +306,17 @@ function DeepDiveChat({
             aria-label="応答を待っています"
           />
         )}
-        {error && <p className="mt-3 text-sm text-destructive">{toDisplayError(error)}</p>}
+        {error && (
+          <p className="mt-3 text-sm text-destructive">
+            {toDisplayError(error)}
+          </p>
+        )}
       </div>
 
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t border-border p-3">
+      <form
+        onSubmit={handleSubmit}
+        className="flex items-center gap-2 border-t border-border p-3"
+      >
         <Input
           value={input}
           onChange={(e) => setInput(e.target.value)}
@@ -293,11 +324,22 @@ function DeepDiveChat({
           aria-label="メッセージ"
         />
         {busy ? (
-          <Button type="button" variant="outline" size="icon" aria-label="停止" onClick={() => void stop()}>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="停止"
+            onClick={() => void stop()}
+          >
             <CircleStop />
           </Button>
         ) : (
-          <Button type="submit" size="icon" aria-label="送信" disabled={input.trim().length === 0}>
+          <Button
+            type="submit"
+            size="icon"
+            aria-label="送信"
+            disabled={input.trim().length === 0}
+          >
             <Send />
           </Button>
         )}

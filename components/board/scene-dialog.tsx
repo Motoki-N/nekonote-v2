@@ -13,7 +13,10 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { getManuscriptTree, type ManuscriptTreeData } from "@/lib/actions/manuscripts";
+import {
+  getManuscriptTree,
+  type ManuscriptTreeData,
+} from "@/lib/actions/manuscripts";
 import type { LinkedNote } from "@/lib/actions/projects";
 import {
   ANCHOR_LABEL,
@@ -26,7 +29,12 @@ import {
 import { BOARD_TEMPLATES } from "@/lib/board-templates";
 import { LinkedNoteChips } from "@/components/notes/linked-note-chips";
 import { EMOTION_MAX, EMOTION_MIN, sceneAnchors } from "@/lib/schemas/enums";
-import type { Emotion, SceneAnchor, ScenePart, StructureTemplate } from "@/lib/schemas/enums";
+import type {
+  Emotion,
+  SceneAnchor,
+  ScenePart,
+  StructureTemplate,
+} from "@/lib/schemas/enums";
 import type { SceneEdit } from "@/lib/schemas/projects";
 import {
   AlertDialog,
@@ -71,7 +79,11 @@ function EmotionStepper({
   return (
     <fieldset className="flex flex-col gap-1">
       <legend className="text-xs text-muted-foreground">{label}</legend>
-      <div className="flex items-center gap-1.5" role="group" aria-label={label}>
+      <div
+        className="flex items-center gap-1.5"
+        role="group"
+        aria-label={label}
+      >
         <Button
           type="button"
           size="xs"
@@ -153,16 +165,24 @@ export function SceneDialog({
   const router = useRouter();
   const templateLanes = BOARD_TEMPLATES[structureTemplate].lanes;
   // 現テンプレートのレーンでないパート（章カード等）はビートボードから開かれない防御的フォールバック
-  const initialPart: ScenePart = templateLanes.some((lane) => lane.id === scene.part)
+  const initialPart: ScenePart = templateLanes.some(
+    (lane) => lane.id === scene.part,
+  )
     ? (scene.part as ScenePart)
     : templateLanes[0].id;
   const [title, setTitle] = useState(scene.title);
   const [content, setContent] = useState(scene.content);
   const [part, setPart] = useState<ScenePart>(initialPart);
   const [anchor, setAnchor] = useState<SceneAnchor | null>(scene.anchor);
-  const [emotionStart, setEmotionStart] = useState<Emotion | null>(scene.emotion_start);
-  const [emotionEnd, setEmotionEnd] = useState<Emotion | null>(scene.emotion_end);
-  const [manuscriptPath, setManuscriptPath] = useState<string | null>(scene.manuscript_path);
+  const [emotionStart, setEmotionStart] = useState<Emotion | null>(
+    scene.emotion_start,
+  );
+  const [emotionEnd, setEmotionEnd] = useState<Emotion | null>(
+    scene.emotion_end,
+  );
+  const [manuscriptPath, setManuscriptPath] = useState<string | null>(
+    scene.manuscript_path,
+  );
   // 最後に保存した内容。差分がないときは閉じる・複製・レビュー時に保存しない
   // （scene prop はダイアログ表示中に更新されないため、保存のたびにここへ写す）
   const savedRef = useRef<SceneEdit>({
@@ -198,7 +218,9 @@ export function SceneDialog({
     if (tree === null || tree.gate !== "ok") return [];
     const base = tree.basePath.replace(/\/$/, "");
     const prefix = base === "" ? "" : `${base}/`;
-    return tree.files.filter((f) => f.startsWith(`${prefix}manuscripts/`) && f.endsWith(".md"));
+    return tree.files.filter(
+      (f) => f.startsWith(`${prefix}manuscripts/`) && f.endsWith(".md"),
+    );
   })();
   // 付け替えの対象（すでに他のシーンに付いている同アンカー）
   const holder =
@@ -224,7 +246,9 @@ export function SceneDialog({
       manuscript_path: manuscriptPath,
     };
     const saved = savedRef.current;
-    const dirty = (Object.keys(edit) as (keyof SceneEdit)[]).some((k) => edit[k] !== saved[k]);
+    const dirty = (Object.keys(edit) as (keyof SceneEdit)[]).some(
+      (k) => edit[k] !== saved[k],
+    );
     if (!dirty) return true;
     const ok = await onSave(scene.id, edit);
     if (ok) savedRef.current = edit;
@@ -333,8 +357,16 @@ export function SceneDialog({
           </label>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <EmotionStepper label="感情の起点" value={emotionStart} onChange={setEmotionStart} />
-            <EmotionStepper label="感情の終点" value={emotionEnd} onChange={setEmotionEnd} />
+            <EmotionStepper
+              label="感情の起点"
+              value={emotionStart}
+              onChange={setEmotionStart}
+            />
+            <EmotionStepper
+              label="感情の終点"
+              value={emotionEnd}
+              onChange={setEmotionEnd}
+            />
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -355,9 +387,18 @@ export function SceneDialog({
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">
               転換点マーク
               <select
-                className={cn(selectClass, anchorOptions.length === 0 && "opacity-50")}
+                className={cn(
+                  selectClass,
+                  anchorOptions.length === 0 && "opacity-50",
+                )}
                 value={anchor ?? ""}
-                onChange={(e) => setAnchor(e.target.value === "" ? null : (e.target.value as SceneAnchor))}
+                onChange={(e) =>
+                  setAnchor(
+                    e.target.value === ""
+                      ? null
+                      : (e.target.value as SceneAnchor),
+                  )
+                }
                 disabled={anchorOptions.length === 0}
               >
                 <option value="">なし</option>
@@ -376,19 +417,24 @@ export function SceneDialog({
             )}
             {holder && (
               <p>
-                「{ANCHOR_LABEL[anchor as SceneAnchor]}」は「{holder.title || "（無題）"}
+                「{ANCHOR_LABEL[anchor as SceneAnchor]}」は「
+                {holder.title || "（無題）"}
                 」に付いています。ダイアログを閉じるとこのシーンに付け替えます
               </p>
             )}
             {anchor !== null && isBoundaryAnchor(anchor) && (
-              <p>境界の転換点が付いたシーンはレーン末尾の定位置に固定されます</p>
+              <p>
+                境界の転換点が付いたシーンはレーン末尾の定位置に固定されます
+              </p>
             )}
           </div>
 
           {/* 紐づけ（Issue #56）。ノートは即時反映、原稿ファイルは閉じるときに保存（Issue #169） */}
           <div className="flex flex-col gap-2 border-t border-border pt-3">
             <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-xs text-muted-foreground">紐づけノート:</span>
+              <span className="text-xs text-muted-foreground">
+                紐づけノート:
+              </span>
               <LinkedNoteChips
                 notes={linkedNotes}
                 onAttach={onAttachNote}
@@ -409,13 +455,20 @@ export function SceneDialog({
                 <select
                   className={selectClass}
                   value={manuscriptPath ?? ""}
-                  onChange={(e) => setManuscriptPath(e.target.value === "" ? null : e.target.value)}
+                  onChange={(e) =>
+                    setManuscriptPath(
+                      e.target.value === "" ? null : e.target.value,
+                    )
+                  }
                 >
                   <option value="">なし</option>
                   {/* 保存済みパスが章一覧から消えていても（改名・削除）現在値は選択肢に残す */}
-                  {manuscriptPath !== null && !chapterFiles.includes(manuscriptPath) && (
-                    <option value={manuscriptPath}>{manuscriptPath}（見つかりません）</option>
-                  )}
+                  {manuscriptPath !== null &&
+                    !chapterFiles.includes(manuscriptPath) && (
+                      <option value={manuscriptPath}>
+                        {manuscriptPath}（見つかりません）
+                      </option>
+                    )}
                   {chapterFiles.map((file) => (
                     <option key={file} value={file}>
                       {file}
@@ -448,7 +501,12 @@ export function SceneDialog({
             <AlertDialog>
               <AlertDialogTrigger
                 render={
-                  <Button variant="ghost" size="sm" className="text-destructive" disabled={busy}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive"
+                    disabled={busy}
+                  >
                     <Trash2 data-icon="inline-start" />
                     削除
                   </Button>
@@ -456,14 +514,20 @@ export function SceneDialog({
               />
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>このシーンを削除しますか？</AlertDialogTitle>
+                  <AlertDialogTitle>
+                    このシーンを削除しますか？
+                  </AlertDialogTitle>
                   <AlertDialogDescription>
-                    「{scene.title || "（無題）"}」を完全に削除します。このシーンのレビュー履歴も一緒に消えます。元に戻せません
+                    「{scene.title || "（無題）"}
+                    」を完全に削除します。このシーンのレビュー履歴も一緒に消えます。元に戻せません
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                  <AlertDialogAction variant="destructive" onClick={() => void handleDelete()}>
+                  <AlertDialogAction
+                    variant="destructive"
+                    onClick={() => void handleDelete()}
+                  >
                     削除する
                   </AlertDialogAction>
                 </AlertDialogFooter>
@@ -478,7 +542,12 @@ export function SceneDialog({
               <Copy data-icon="inline-start" />
               複製
             </Button>
-            <Button variant="outline" size="sm" disabled={busy} onClick={() => void handleReview()}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={busy}
+              onClick={() => void handleReview()}
+            >
               <MessageSquareText data-icon="inline-start" />
               シーンレビュー
             </Button>

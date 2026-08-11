@@ -12,5 +12,7 @@ export type SortValue = (typeof SORT_OPTIONS)[number]["value"];
 export const DEFAULT_SORT: SortValue = "updated_desc";
 
 export function toSortValue(sort: string | undefined): SortValue {
-  return SORT_OPTIONS.some((o) => o.value === sort) ? (sort as SortValue) : DEFAULT_SORT;
+  return SORT_OPTIONS.some((o) => o.value === sort)
+    ? (sort as SortValue)
+    : DEFAULT_SORT;
 }

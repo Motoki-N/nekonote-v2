@@ -14,7 +14,9 @@ export function SearchForm({
   return (
     <form action="/notes" method="get" role="search">
       {tagsParam && <input type="hidden" name="tags" value={tagsParam} />}
-      {sort && sort !== DEFAULT_SORT && <input type="hidden" name="sort" value={sort} />}
+      {sort && sort !== DEFAULT_SORT && (
+        <input type="hidden" name="sort" value={sort} />
+      )}
       <Input
         type="search"
         name="q"

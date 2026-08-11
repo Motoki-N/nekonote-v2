@@ -1,10 +1,10 @@
-'use server'
+"use server";
 
-import { z } from 'zod'
+import { z } from "zod";
 
-import { AppError, toActionError } from '@/lib/errors'
-import type { ActionResult } from '@/lib/errors'
-import { patCredentialProvider } from '@/lib/git/credentials'
+import { AppError, toActionError } from "@/lib/errors";
+import type { ActionResult } from "@/lib/errors";
+import { patCredentialProvider } from "@/lib/git/credentials";
 import {
   getCommitFilePatch,
   getFileContent,
@@ -13,83 +13,96 @@ import {
   listFileCommits,
   putFileContent,
   type FileCommitEntry,
-} from '@/lib/git/github'
-import { countChars, fetchAllManuscriptContents } from '@/lib/manuscript-content'
-import { applySuggestions, writeBackAsComments } from '@/lib/proofread-apply'
-import { suggestionStatuses } from '@/lib/schemas/enums'
-import type { SuggestionStatus } from '@/lib/schemas/enums'
-import { commitShaSchema, manuscriptFilePathSchema } from '@/lib/schemas/manuscript'
-import { createClient } from '@/lib/supabase/server'
+} from "@/lib/git/github";
+import {
+  countChars,
+  fetchAllManuscriptContents,
+} from "@/lib/manuscript-content";
+import { applySuggestions, writeBackAsComments } from "@/lib/proofread-apply";
+import { suggestionStatuses } from "@/lib/schemas/enums";
+import type { SuggestionStatus } from "@/lib/schemas/enums";
+import {
+  commitShaSchema,
+  manuscriptFilePathSchema,
+} from "@/lib/schemas/manuscript";
+import { createClient } from "@/lib/supabase/server";
 
-const uuidSchema = z.uuid()
+const uuidSchema = z.uuid();
 
 /** 進捗記録の「当日」はJST基準（サーバーはUTCで動く） */
 function todayInJst(): string {
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Tokyo' }).format(new Date())
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
+    new Date(),
+  );
 }
 
 /** 原稿タブの前提チェック結果（誘導表示の出し分け用。SPEC-proofreading §3.2） */
 export type ManuscriptTreeData =
-  | { gate: 'no_repo' }
-  | { gate: 'no_pat' }
-  | { gate: 'ok'; files: string[]; basePath: string }
+  | { gate: "no_repo" }
+  | { gate: "no_pat" }
+  | { gate: "ok"; files: string[]; basePath: string };
 
 /** base_path 配下の原稿ファイル一覧を取得する。前提未達（repo未設定・PAT未登録）は gate で返す */
 export async function getManuscriptTree(
   projectId: string,
 ): Promise<ActionResult<ManuscriptTreeData>> {
   try {
-    const pid = uuidSchema.parse(projectId)
-    const supabase = await createClient()
+    const pid = uuidSchema.parse(projectId);
+    const supabase = await createClient();
 
     // RLS越しの取得＝所有確認を兼ねる
     const { data: project, error } = await supabase
-      .from('projects')
-      .select('id, repo, base_path')
-      .eq('id', pid)
-      .maybeSingle()
-    if (error) throw new AppError('internal', error.message)
-    if (!project) throw new AppError('not_found', 'プロジェクトが見つかりません')
+      .from("projects")
+      .select("id, repo, base_path")
+      .eq("id", pid)
+      .maybeSingle();
+    if (error) throw new AppError("internal", error.message);
+    if (!project)
+      throw new AppError("not_found", "プロジェクトが見つかりません");
 
-    if (!project.repo) return { ok: true, data: { gate: 'no_repo' } }
+    if (!project.repo) return { ok: true, data: { gate: "no_repo" } };
 
-    const credential = await patCredentialProvider.getCredential(supabase)
-    if (!credential) return { ok: true, data: { gate: 'no_pat' } }
+    const credential = await patCredentialProvider.getCredential(supabase);
+    if (!credential) return { ok: true, data: { gate: "no_pat" } };
 
-    const basePath = project.base_path ?? ''
-    const files = await fetchManuscriptTree(credential.token, project.repo, basePath)
+    const basePath = project.base_path ?? "";
+    const files = await fetchManuscriptTree(
+      credential.token,
+      project.repo,
+      basePath,
+    );
     return {
       ok: true,
-      data: { gate: 'ok', files: files.map((f) => f.path), basePath },
-    }
+      data: { gate: "ok", files: files.map((f) => f.path), basePath },
+    };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
 export type SuggestionRecord = {
-  id: string
-  original_text: string
-  suggested_text: string
-  reason: string | null
-  status: SuggestionStatus
-  committed_sha: string | null
-  created_at: string
-}
+  id: string;
+  original_text: string;
+  suggested_text: string;
+  reason: string | null;
+  status: SuggestionStatus;
+  committed_sha: string | null;
+  created_at: string;
+};
 
 const SUGGESTION_COLUMNS =
-  'id, original_text, suggested_text, reason, status, committed_sha, created_at'
+  "id, original_text, suggested_text, reason, status, committed_sha, created_at";
 
 export type ManuscriptFileData = {
-  linkId: string
-  filePath: string
-  content: string
+  linkId: string;
+  filePath: string;
+  content: string;
   /** 空白・改行を除いた文字数 */
-  charCount: number
-  latestSha: string
-  lastReviewedCommit: string | null
-  suggestions: SuggestionRecord[]
-}
+  charCount: number;
+  latestSha: string;
+  lastReviewedCommit: string | null;
+  suggestions: SuggestionRecord[];
+};
 
 /**
  * 原稿ファイルを開く（SPEC-proofreading §3.2）。
@@ -101,54 +114,61 @@ export async function openManuscriptFile(
   filePath: string,
 ): Promise<ActionResult<ManuscriptFileData>> {
   try {
-    const pid = uuidSchema.parse(projectId)
-    const path = manuscriptFilePathSchema.parse(filePath)
-    const supabase = await createClient()
+    const pid = uuidSchema.parse(projectId);
+    const path = manuscriptFilePathSchema.parse(filePath);
+    const supabase = await createClient();
 
     const { data: project, error } = await supabase
-      .from('projects')
-      .select('id, repo, base_path')
-      .eq('id', pid)
-      .maybeSingle()
-    if (error) throw new AppError('internal', error.message)
-    if (!project) throw new AppError('not_found', 'プロジェクトが見つかりません')
-    if (!project.repo) throw new AppError('validation', 'リポジトリが設定されていません')
+      .from("projects")
+      .select("id, repo, base_path")
+      .eq("id", pid)
+      .maybeSingle();
+    if (error) throw new AppError("internal", error.message);
+    if (!project)
+      throw new AppError("not_found", "プロジェクトが見つかりません");
+    if (!project.repo)
+      throw new AppError("validation", "リポジトリが設定されていません");
 
     // base_path 外のパスは拒否（ツリー一覧と同じ範囲に限定する）
-    const basePath = project.base_path ?? ''
-    if (basePath !== '' && !path.startsWith(`${basePath.replace(/\/$/, '')}/`)) {
-      throw new AppError('validation', 'ファイルパスが不正です')
+    const basePath = project.base_path ?? "";
+    if (
+      basePath !== "" &&
+      !path.startsWith(`${basePath.replace(/\/$/, "")}/`)
+    ) {
+      throw new AppError("validation", "ファイルパスが不正です");
     }
 
-    const credential = await patCredentialProvider.getCredential(supabase)
-    if (!credential) throw new AppError('validation', 'GitHub PATが未登録です')
+    const credential = await patCredentialProvider.getCredential(supabase);
+    if (!credential) throw new AppError("validation", "GitHub PATが未登録です");
 
     const [{ content }, latestSha] = await Promise.all([
       getFileContent(credential.token, project.repo, path),
       getLatestCommitSha(credential.token, project.repo, path),
-    ])
+    ]);
 
     // 開いた時点でリンクを自動作成（既存ならそのまま）
     const { error: upsertError } = await supabase
-      .from('manuscript_links')
+      .from("manuscript_links")
       .upsert(
         { project_id: pid, file_path: path },
-        { onConflict: 'project_id,file_path', ignoreDuplicates: true },
-      )
-    if (upsertError) throw new AppError('internal', upsertError.message)
+        { onConflict: "project_id,file_path", ignoreDuplicates: true },
+      );
+    if (upsertError) throw new AppError("internal", upsertError.message);
 
     const { data: link, error: linkError } = await supabase
-      .from('manuscript_links')
-      .select(`id, last_reviewed_commit, revision_suggestions (${SUGGESTION_COLUMNS})`)
-      .eq('project_id', pid)
-      .eq('file_path', path)
-      .maybeSingle()
-    if (linkError) throw new AppError('internal', linkError.message)
-    if (!link) throw new AppError('internal', '原稿リンクの作成に失敗しました')
+      .from("manuscript_links")
+      .select(
+        `id, last_reviewed_commit, revision_suggestions (${SUGGESTION_COLUMNS})`,
+      )
+      .eq("project_id", pid)
+      .eq("file_path", path)
+      .maybeSingle();
+    if (linkError) throw new AppError("internal", linkError.message);
+    if (!link) throw new AppError("internal", "原稿リンクの作成に失敗しました");
 
     const suggestions = (link.revision_suggestions ?? [])
       .map((s) => ({ ...s, status: s.status as SuggestionStatus }))
-      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
 
     // 原稿読み込み時に当日の総文字数を進捗として記録する（SPEC-proofreading §3.4）。
     // 補助機能なので、失敗しても原稿の読み込み自体は成功させる
@@ -159,9 +179,9 @@ export async function openManuscriptFile(
         basePath,
         token: credential.token,
         openedFile: { path, content },
-      })
+      });
     } catch (progressError) {
-      console.error('進捗の記録に失敗:', progressError)
+      console.error("進捗の記録に失敗:", progressError);
     }
 
     return {
@@ -175,35 +195,40 @@ export async function openManuscriptFile(
         lastReviewedCommit: link.last_reviewed_commit,
         suggestions,
       },
-    }
+    };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
 /** 提案一覧の取り直し（校正完了後の再読込用） */
-export async function getSuggestions(
-  manuscriptLinkId: string,
-): Promise<ActionResult<{ suggestions: SuggestionRecord[]; lastReviewedCommit: string | null }>> {
+export async function getSuggestions(manuscriptLinkId: string): Promise<
+  ActionResult<{
+    suggestions: SuggestionRecord[];
+    lastReviewedCommit: string | null;
+  }>
+> {
   try {
-    const linkId = uuidSchema.parse(manuscriptLinkId)
-    const supabase = await createClient()
+    const linkId = uuidSchema.parse(manuscriptLinkId);
+    const supabase = await createClient();
     const { data: link, error } = await supabase
-      .from('manuscript_links')
-      .select(`id, last_reviewed_commit, revision_suggestions (${SUGGESTION_COLUMNS})`)
-      .eq('id', linkId)
-      .maybeSingle()
-    if (error) throw new AppError('internal', error.message)
-    if (!link) throw new AppError('not_found', '原稿リンクが見つかりません')
+      .from("manuscript_links")
+      .select(
+        `id, last_reviewed_commit, revision_suggestions (${SUGGESTION_COLUMNS})`,
+      )
+      .eq("id", linkId)
+      .maybeSingle();
+    if (error) throw new AppError("internal", error.message);
+    if (!link) throw new AppError("not_found", "原稿リンクが見つかりません");
     const suggestions = (link.revision_suggestions ?? [])
       .map((s) => ({ ...s, status: s.status as SuggestionStatus }))
-      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at));
     return {
       ok: true,
       data: { suggestions, lastReviewedCommit: link.last_reviewed_commit },
-    }
+    };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -212,26 +237,28 @@ export async function getSuggestions(
  * RLS越しのリンク取得＝所有確認、DB由来 file_path の再検証、PAT取得をまとめる
  */
 async function resolveLinkForHistory(manuscriptLinkId: string): Promise<{
-  token: string
-  repo: string
-  filePath: string
+  token: string;
+  repo: string;
+  filePath: string;
 }> {
-  const linkId = uuidSchema.parse(manuscriptLinkId)
-  const supabase = await createClient()
+  const linkId = uuidSchema.parse(manuscriptLinkId);
+  const supabase = await createClient();
   const { data: link, error } = await supabase
-    .from('manuscript_links')
-    .select('id, file_path, projects (id, repo)')
-    .eq('id', linkId)
-    .maybeSingle()
-  if (error) throw new AppError('internal', error.message)
-  if (!link || !link.projects) throw new AppError('not_found', '原稿リンクが見つかりません')
-  if (!link.projects.repo) throw new AppError('validation', 'リポジトリが設定されていません')
-  const filePath = manuscriptFilePathSchema.parse(link.file_path)
+    .from("manuscript_links")
+    .select("id, file_path, projects (id, repo)")
+    .eq("id", linkId)
+    .maybeSingle();
+  if (error) throw new AppError("internal", error.message);
+  if (!link || !link.projects)
+    throw new AppError("not_found", "原稿リンクが見つかりません");
+  if (!link.projects.repo)
+    throw new AppError("validation", "リポジトリが設定されていません");
+  const filePath = manuscriptFilePathSchema.parse(link.file_path);
 
-  const credential = await patCredentialProvider.getCredential(supabase)
-  if (!credential) throw new AppError('validation', 'GitHub PATが未登録です')
+  const credential = await patCredentialProvider.getCredential(supabase);
+  if (!credential) throw new AppError("validation", "GitHub PATが未登録です");
 
-  return { token: credential.token, repo: link.projects.repo, filePath }
+  return { token: credential.token, repo: link.projects.repo, filePath };
 }
 
 /** そのファイルのコミット履歴（新しい順・最大30件。SPEC-manuscript-history §4） */
@@ -239,11 +266,12 @@ export async function getManuscriptHistory(
   manuscriptLinkId: string,
 ): Promise<ActionResult<{ commits: FileCommitEntry[] }>> {
   try {
-    const { token, repo, filePath } = await resolveLinkForHistory(manuscriptLinkId)
-    const commits = await listFileCommits(token, repo, filePath)
-    return { ok: true, data: { commits } }
+    const { token, repo, filePath } =
+      await resolveLinkForHistory(manuscriptLinkId);
+    const commits = await listFileCommits(token, repo, filePath);
+    return { ok: true, data: { commits } };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -256,12 +284,13 @@ export async function getManuscriptCommitDiff(
   commitSha: string,
 ): Promise<ActionResult<{ patch: string | null }>> {
   try {
-    const sha = commitShaSchema.parse(commitSha)
-    const { token, repo, filePath } = await resolveLinkForHistory(manuscriptLinkId)
-    const patch = await getCommitFilePatch(token, repo, sha, filePath)
-    return { ok: true, data: { patch } }
+    const sha = commitShaSchema.parse(commitSha);
+    const { token, repo, filePath } =
+      await resolveLinkForHistory(manuscriptLinkId);
+    const patch = await getCommitFilePatch(token, repo, sha, filePath);
+    return { ok: true, data: { patch } };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -273,11 +302,11 @@ export async function getManuscriptCommitDiff(
 async function recordWritingProgress(
   supabase: Awaited<ReturnType<typeof createClient>>,
   params: {
-    projectId: string
-    repo: string
-    basePath: string
-    token: string
-    openedFile?: { path: string; content: string }
+    projectId: string;
+    repo: string;
+    basePath: string;
+    token: string;
+    openedFile?: { path: string; content: string };
   },
 ): Promise<number> {
   const contents = await fetchAllManuscriptContents(
@@ -285,15 +314,22 @@ async function recordWritingProgress(
     params.repo,
     params.basePath,
     params.openedFile,
-  )
-  const totalChars = contents.reduce((sum, file) => sum + countChars(file.content), 0)
+  );
+  const totalChars = contents.reduce(
+    (sum, file) => sum + countChars(file.content),
+    0,
+  );
 
-  const { error } = await supabase.from('writing_progress').upsert(
-    { project_id: params.projectId, date: todayInJst(), total_chars: totalChars },
-    { onConflict: 'project_id,date' },
-  )
-  if (error) throw new AppError('internal', error.message)
-  return totalChars
+  const { error } = await supabase.from("writing_progress").upsert(
+    {
+      project_id: params.projectId,
+      date: todayInJst(),
+      total_chars: totalChars,
+    },
+    { onConflict: "project_id,date" },
+  );
+  if (error) throw new AppError("internal", error.message);
+  return totalChars;
 }
 
 /**
@@ -304,35 +340,37 @@ export async function refreshWritingProgress(
   projectId: string,
 ): Promise<ActionResult<{ totalChars: number }>> {
   try {
-    const pid = uuidSchema.parse(projectId)
-    const supabase = await createClient()
+    const pid = uuidSchema.parse(projectId);
+    const supabase = await createClient();
 
     // RLS越しの取得＝所有確認を兼ねる
     const { data: project, error } = await supabase
-      .from('projects')
-      .select('id, repo, base_path')
-      .eq('id', pid)
-      .maybeSingle()
-    if (error) throw new AppError('internal', error.message)
-    if (!project) throw new AppError('not_found', 'プロジェクトが見つかりません')
-    if (!project.repo) throw new AppError('validation', 'リポジトリが設定されていません')
+      .from("projects")
+      .select("id, repo, base_path")
+      .eq("id", pid)
+      .maybeSingle();
+    if (error) throw new AppError("internal", error.message);
+    if (!project)
+      throw new AppError("not_found", "プロジェクトが見つかりません");
+    if (!project.repo)
+      throw new AppError("validation", "リポジトリが設定されていません");
 
-    const credential = await patCredentialProvider.getCredential(supabase)
-    if (!credential) throw new AppError('validation', 'GitHub PATが未登録です')
+    const credential = await patCredentialProvider.getCredential(supabase);
+    if (!credential) throw new AppError("validation", "GitHub PATが未登録です");
 
     const totalChars = await recordWritingProgress(supabase, {
       projectId: pid,
       repo: project.repo,
-      basePath: project.base_path ?? '',
+      basePath: project.base_path ?? "",
       token: credential.token,
-    })
-    return { ok: true, data: { totalChars } }
+    });
+    return { ok: true, data: { totalChars } };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
-const suggestionStatusSchema = z.enum(suggestionStatuses)
+const suggestionStatusSchema = z.enum(suggestionStatuses);
 
 /**
  * 提案の受入/拒否/保留（と未処理への戻し）。コミット済みの提案は変更できない。
@@ -344,35 +382,35 @@ export async function updateSuggestionStatus(
   status: SuggestionStatus,
 ): Promise<ActionResult> {
   try {
-    const sid = uuidSchema.parse(suggestionId)
-    const nextStatus = suggestionStatusSchema.parse(status)
-    const supabase = await createClient()
+    const sid = uuidSchema.parse(suggestionId);
+    const nextStatus = suggestionStatusSchema.parse(status);
+    const supabase = await createClient();
 
     // RLS越しの更新＝所有確認を兼ねる。「未コミットのみ」を UPDATE の条件に含めて原子化する
     // （SELECT→UPDATE の分割だと、並行するコミットと交錯してコミット済み提案を書き換えうる）
     const { data: updated, error: updateError } = await supabase
-      .from('revision_suggestions')
+      .from("revision_suggestions")
       .update({ status: nextStatus })
-      .eq('id', sid)
-      .is('committed_sha', null)
-      .select('id')
-    if (updateError) throw new AppError('internal', updateError.message)
+      .eq("id", sid)
+      .is("committed_sha", null)
+      .select("id");
+    if (updateError) throw new AppError("internal", updateError.message);
 
     if (!updated || updated.length === 0) {
       // 更新0件 = 行が存在しない（他人の行含む）か、コミット済み。理由を出し分ける
       const { data: existing, error: selectError } = await supabase
-        .from('revision_suggestions')
-        .select('id')
-        .eq('id', sid)
-        .maybeSingle()
-      if (selectError) throw new AppError('internal', selectError.message)
-      if (!existing) throw new AppError('not_found', '提案が見つかりません')
-      throw new AppError('validation', 'コミット済みの提案は変更できません')
+        .from("revision_suggestions")
+        .select("id")
+        .eq("id", sid)
+        .maybeSingle();
+      if (selectError) throw new AppError("internal", selectError.message);
+      if (!existing) throw new AppError("not_found", "提案が見つかりません");
+      throw new AppError("validation", "コミット済みの提案は変更できません");
     }
 
-    return { ok: true }
+    return { ok: true };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -383,97 +421,123 @@ export async function updateSuggestionStatus(
  */
 export async function commitAcceptedSuggestions(
   manuscriptLinkId: string,
-): Promise<ActionResult<{ commitSha: string; appliedCount: number; warning?: string }>> {
+): Promise<
+  ActionResult<{ commitSha: string; appliedCount: number; warning?: string }>
+> {
   try {
-    const linkId = uuidSchema.parse(manuscriptLinkId)
-    const supabase = await createClient()
+    const linkId = uuidSchema.parse(manuscriptLinkId);
+    const supabase = await createClient();
 
     // RLS越しの取得＝所有確認を兼ねる
     const { data: link, error: linkError } = await supabase
-      .from('manuscript_links')
-      .select('id, file_path, projects (id, repo, base_path)')
-      .eq('id', linkId)
-      .maybeSingle()
-    if (linkError) throw new AppError('internal', linkError.message)
-    if (!link || !link.projects) throw new AppError('not_found', '原稿リンクが見つかりません')
-    if (!link.projects.repo) throw new AppError('validation', 'リポジトリが設定されていません')
+      .from("manuscript_links")
+      .select("id, file_path, projects (id, repo, base_path)")
+      .eq("id", linkId)
+      .maybeSingle();
+    if (linkError) throw new AppError("internal", linkError.message);
+    if (!link || !link.projects)
+      throw new AppError("not_found", "原稿リンクが見つかりません");
+    if (!link.projects.repo)
+      throw new AppError("validation", "リポジトリが設定されていません");
     // DB由来の file_path も再検証する（多層防御。/api/proofread と同じ作法）。
     // 書き込み経路なので base_path 配下であることも読み取り側と対称に確認する
-    const filePath = manuscriptFilePathSchema.parse(link.file_path)
-    const basePath = link.projects.base_path ?? ''
-    if (basePath !== '' && !filePath.startsWith(`${basePath.replace(/\/$/, '')}/`)) {
-      throw new AppError('validation', 'ファイルパスが不正です')
+    const filePath = manuscriptFilePathSchema.parse(link.file_path);
+    const basePath = link.projects.base_path ?? "";
+    if (
+      basePath !== "" &&
+      !filePath.startsWith(`${basePath.replace(/\/$/, "")}/`)
+    ) {
+      throw new AppError("validation", "ファイルパスが不正です");
     }
 
-    const credential = await patCredentialProvider.getCredential(supabase)
+    const credential = await patCredentialProvider.getCredential(supabase);
     if (!credential) {
-      throw new AppError('validation', 'GitHub PATが未登録です。設定から登録してください')
+      throw new AppError(
+        "validation",
+        "GitHub PATが未登録です。設定から登録してください",
+      );
     }
 
     const { data: accepted, error: acceptedError } = await supabase
-      .from('revision_suggestions')
-      .select('id, original_text, suggested_text')
-      .eq('manuscript_link_id', linkId)
-      .eq('status', 'accepted')
-      .is('committed_sha', null)
-      .order('created_at', { ascending: true })
-    if (acceptedError) throw new AppError('internal', acceptedError.message)
+      .from("revision_suggestions")
+      .select("id, original_text, suggested_text")
+      .eq("manuscript_link_id", linkId)
+      .eq("status", "accepted")
+      .is("committed_sha", null)
+      .order("created_at", { ascending: true });
+    if (acceptedError) throw new AppError("internal", acceptedError.message);
     if (!accepted || accepted.length === 0) {
-      throw new AppError('validation', '受け入れ済みの提案がありません')
+      throw new AppError("validation", "受け入れ済みの提案がありません");
     }
 
     // 最新原稿を取得して適用（blob SHA 起点の楽観ロック。リモート更新が挟まると PUT が conflict になる）
-    const { content, sha } = await getFileContent(credential.token, link.projects.repo, filePath)
-    const applied = applySuggestions(content, accepted)
+    const { content, sha } = await getFileContent(
+      credential.token,
+      link.projects.repo,
+      filePath,
+    );
+    const applied = applySuggestions(content, accepted);
     if (!applied.ok) {
       const excerpt =
         applied.failedOriginal.length > 20
           ? `${applied.failedOriginal.slice(0, 20)}…`
-          : applied.failedOriginal
+          : applied.failedOriginal;
       throw new AppError(
-        'validation',
+        "validation",
         `適用できない提案があります（「${excerpt}」が現在の原稿に一意に見つかりません）。該当の提案を未処理に戻すか拒否してから、もう一度コミットしてください`,
-      )
+      );
     }
 
-    const fileName = filePath.split('/').pop() ?? filePath
-    const { commitSha } = await putFileContent(credential.token, link.projects.repo, filePath, {
-      content: applied.content,
-      sha,
-      message: `校正: ${fileName} に修正${accepted.length}件を適用（ネコノテAI）`,
-    })
+    const fileName = filePath.split("/").pop() ?? filePath;
+    const { commitSha } = await putFileContent(
+      credential.token,
+      link.projects.repo,
+      filePath,
+      {
+        content: applied.content,
+        sha,
+        message: `校正: ${fileName} に修正${accepted.length}件を適用（ネコノテAI）`,
+      },
+    );
 
     // コミット成立後の記録。ここで失敗してエラーにすると「未コミット扱いのまま再コミット→
     // 二重適用」の事故につながるため、リトライした上で、失敗しても成功（警告つき）として返す
-    let markError: { message: string } | null = null
+    let markError: { message: string } | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       const { error } = await supabase
-        .from('revision_suggestions')
+        .from("revision_suggestions")
         .update({ committed_sha: commitSha })
         .in(
-          'id',
+          "id",
           accepted.map((s) => s.id),
-        )
-      markError = error
-      if (!error) break
+        );
+      markError = error;
+      if (!error) break;
     }
-    let warning: string | undefined
+    let warning: string | undefined;
     if (markError) {
-      console.error('committed_sha の記録に失敗（コミット自体は成立）:', markError.message)
+      console.error(
+        "committed_sha の記録に失敗（コミット自体は成立）:",
+        markError.message,
+      );
       warning =
-        'コミットは完了しましたが、提案への記録に失敗しました。そのまま再コミットすると同じ修正を二重に適用するおそれがあります。ファイルを開き直して提案の状態を確認してください'
+        "コミットは完了しましたが、提案への記録に失敗しました。そのまま再コミットすると同じ修正を二重に適用するおそれがあります。ファイルを開き直して提案の状態を確認してください";
     }
 
     // 自分のコミットで更新バナーを出さないよう、レビュー済みSHAを進める
     const { error: shaError } = await supabase
-      .from('manuscript_links')
+      .from("manuscript_links")
       .update({ last_reviewed_commit: commitSha })
-      .eq('id', linkId)
-    if (shaError) console.error('last_reviewed_commit の更新に失敗:', shaError.message)
+      .eq("id", linkId);
+    if (shaError)
+      console.error("last_reviewed_commit の更新に失敗:", shaError.message);
 
-    return { ok: true, data: { commitSha, appliedCount: accepted.length, warning } }
+    return {
+      ok: true,
+      data: { commitSha, appliedCount: accepted.length, warning },
+    };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -485,95 +549,124 @@ export async function commitAcceptedSuggestions(
  */
 export async function writeBackOnHoldSuggestions(
   manuscriptLinkId: string,
-): Promise<ActionResult<{ commitSha: string; writtenCount: number; warning?: string }>> {
+): Promise<
+  ActionResult<{ commitSha: string; writtenCount: number; warning?: string }>
+> {
   try {
-    const linkId = uuidSchema.parse(manuscriptLinkId)
-    const supabase = await createClient()
+    const linkId = uuidSchema.parse(manuscriptLinkId);
+    const supabase = await createClient();
 
     // RLS越しの取得＝所有確認を兼ねる
     const { data: link, error: linkError } = await supabase
-      .from('manuscript_links')
-      .select('id, file_path, projects (id, repo, base_path)')
-      .eq('id', linkId)
-      .maybeSingle()
-    if (linkError) throw new AppError('internal', linkError.message)
-    if (!link || !link.projects) throw new AppError('not_found', '原稿リンクが見つかりません')
-    if (!link.projects.repo) throw new AppError('validation', 'リポジトリが設定されていません')
+      .from("manuscript_links")
+      .select("id, file_path, projects (id, repo, base_path)")
+      .eq("id", linkId)
+      .maybeSingle();
+    if (linkError) throw new AppError("internal", linkError.message);
+    if (!link || !link.projects)
+      throw new AppError("not_found", "原稿リンクが見つかりません");
+    if (!link.projects.repo)
+      throw new AppError("validation", "リポジトリが設定されていません");
     // DB由来の file_path も再検証する（多層防御。commitAcceptedSuggestions と同じ作法）
-    const filePath = manuscriptFilePathSchema.parse(link.file_path)
-    const basePath = link.projects.base_path ?? ''
-    if (basePath !== '' && !filePath.startsWith(`${basePath.replace(/\/$/, '')}/`)) {
-      throw new AppError('validation', 'ファイルパスが不正です')
+    const filePath = manuscriptFilePathSchema.parse(link.file_path);
+    const basePath = link.projects.base_path ?? "";
+    if (
+      basePath !== "" &&
+      !filePath.startsWith(`${basePath.replace(/\/$/, "")}/`)
+    ) {
+      throw new AppError("validation", "ファイルパスが不正です");
     }
 
-    const credential = await patCredentialProvider.getCredential(supabase)
+    const credential = await patCredentialProvider.getCredential(supabase);
     if (!credential) {
-      throw new AppError('validation', 'GitHub PATが未登録です。設定から登録してください')
+      throw new AppError(
+        "validation",
+        "GitHub PATが未登録です。設定から登録してください",
+      );
     }
 
     const { data: onHold, error: onHoldError } = await supabase
-      .from('revision_suggestions')
-      .select('id, original_text, suggested_text, reason')
-      .eq('manuscript_link_id', linkId)
-      .eq('status', 'on_hold')
-      .is('committed_sha', null)
-      .order('created_at', { ascending: true })
-    if (onHoldError) throw new AppError('internal', onHoldError.message)
+      .from("revision_suggestions")
+      .select("id, original_text, suggested_text, reason")
+      .eq("manuscript_link_id", linkId)
+      .eq("status", "on_hold")
+      .is("committed_sha", null)
+      .order("created_at", { ascending: true });
+    if (onHoldError) throw new AppError("internal", onHoldError.message);
     if (!onHold || onHold.length === 0) {
-      throw new AppError('validation', '書き戻していない保留の提案がありません')
+      throw new AppError(
+        "validation",
+        "書き戻していない保留の提案がありません",
+      );
     }
 
     // 最新原稿を取得して挿入（blob SHA 起点の楽観ロック。リモート更新が挟まると PUT が conflict になる）
-    const { content, sha } = await getFileContent(credential.token, link.projects.repo, filePath)
-    const written = writeBackAsComments(content, onHold)
+    const { content, sha } = await getFileContent(
+      credential.token,
+      link.projects.repo,
+      filePath,
+    );
+    const written = writeBackAsComments(content, onHold);
     if (!written.ok) {
       const excerpt =
         written.failedOriginal.length > 20
           ? `${written.failedOriginal.slice(0, 20)}…`
-          : written.failedOriginal
+          : written.failedOriginal;
       throw new AppError(
-        'validation',
+        "validation",
         `書き戻せない提案があります（「${excerpt}」が現在の原稿に一意に見つかりません）。該当の提案を未処理に戻すか拒否してから、もう一度書き戻してください`,
-      )
+      );
     }
 
-    const fileName = filePath.split('/').pop() ?? filePath
-    const { commitSha } = await putFileContent(credential.token, link.projects.repo, filePath, {
-      content: written.content,
-      sha,
-      message: `校正: ${fileName} に保留${onHold.length}件をコメントで書き戻し（ネコノテAI）`,
-    })
+    const fileName = filePath.split("/").pop() ?? filePath;
+    const { commitSha } = await putFileContent(
+      credential.token,
+      link.projects.repo,
+      filePath,
+      {
+        content: written.content,
+        sha,
+        message: `校正: ${fileName} に保留${onHold.length}件をコメントで書き戻し（ネコノテAI）`,
+      },
+    );
 
     // コミット成立後の記録。失敗のままエラーにすると「未書き戻し扱いで再実行→二重挿入」に
     // つながるため、リトライした上で、失敗しても成功（警告つき）として返す（適用コミットと同じ作法）
-    let markError: { message: string } | null = null
+    let markError: { message: string } | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       const { error } = await supabase
-        .from('revision_suggestions')
+        .from("revision_suggestions")
         .update({ committed_sha: commitSha })
         .in(
-          'id',
+          "id",
           onHold.map((s) => s.id),
-        )
-      markError = error
-      if (!error) break
+        );
+      markError = error;
+      if (!error) break;
     }
-    let warning: string | undefined
+    let warning: string | undefined;
     if (markError) {
-      console.error('committed_sha の記録に失敗（コミット自体は成立）:', markError.message)
+      console.error(
+        "committed_sha の記録に失敗（コミット自体は成立）:",
+        markError.message,
+      );
       warning =
-        'コミットは完了しましたが、提案への記録に失敗しました。そのまま再実行すると同じコメントを二重に挿入するおそれがあります。ファイルを開き直して提案の状態を確認してください'
+        "コミットは完了しましたが、提案への記録に失敗しました。そのまま再実行すると同じコメントを二重に挿入するおそれがあります。ファイルを開き直して提案の状態を確認してください";
     }
 
     // 自分のコミットで更新バナーを出さないよう、レビュー済みSHAを進める
     const { error: shaError } = await supabase
-      .from('manuscript_links')
+      .from("manuscript_links")
       .update({ last_reviewed_commit: commitSha })
-      .eq('id', linkId)
-    if (shaError) console.error('last_reviewed_commit の更新に失敗:', shaError.message)
+      .eq("id", linkId);
+    if (shaError)
+      console.error("last_reviewed_commit の更新に失敗:", shaError.message);
 
-    return { ok: true, data: { commitSha, writtenCount: onHold.length, warning } }
+    return {
+      ok: true,
+      data: { commitSha, writtenCount: onHold.length, warning },
+    };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }

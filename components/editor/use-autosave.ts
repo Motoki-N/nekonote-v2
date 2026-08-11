@@ -14,7 +14,8 @@ export function readStoredDraft<T>(key: string): StoredDraft<T> | null {
     const raw = localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<StoredDraft<T>>;
-    if (parsed.payload === undefined || typeof parsed.savedAt !== "number") return null;
+    if (parsed.payload === undefined || typeof parsed.savedAt !== "number")
+      return null;
     return { payload: parsed.payload, savedAt: parsed.savedAt };
   } catch {
     return null;
@@ -50,7 +51,8 @@ export function useAutosave<T>({
   const doSave = useCallback(async () => {
     const payload = getPayload();
     if (payload === null) return;
-    if (JSON.stringify(payload) === JSON.stringify(lastSavedRef.current)) return;
+    if (JSON.stringify(payload) === JSON.stringify(lastSavedRef.current))
+      return;
     setStatus("saving");
     try {
       const result = await save(payload);

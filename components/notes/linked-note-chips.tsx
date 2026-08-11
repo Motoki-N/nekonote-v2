@@ -9,7 +9,11 @@ import { searchNotesForLink, type LinkedNote } from "@/lib/actions/projects";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 
 /**
  * ノート紐づけチップの共通UI（企画書・シーンカードで共用。Issue #56 で LinkedNotes から抽出）。
@@ -93,14 +97,21 @@ export function LinkedNoteChips({
               aria-label="ノート検索"
               autoFocus
             />
-            <Button type="submit" size="sm" variant="outline" disabled={searching || !query.trim()}>
+            <Button
+              type="submit"
+              size="sm"
+              variant="outline"
+              disabled={searching || !query.trim()}
+            >
               {searching ? <Loader2 className="animate-spin" /> : "検索"}
             </Button>
           </form>
           {results !== null && (
             <ul className="mt-2 flex max-h-48 flex-col gap-0.5 overflow-y-auto">
               {results.length === 0 ? (
-                <li className="p-2 text-xs text-muted-foreground">見つかりませんでした</li>
+                <li className="p-2 text-xs text-muted-foreground">
+                  見つかりませんでした
+                </li>
               ) : (
                 results.map((note) => (
                   <li key={note.id}>
@@ -113,7 +124,9 @@ export function LinkedNoteChips({
                     >
                       {note.title || "無題"}
                       {linkedIds.has(note.id) && (
-                        <span className="ml-auto text-xs text-muted-foreground">紐づけ済み</span>
+                        <span className="ml-auto text-xs text-muted-foreground">
+                          紐づけ済み
+                        </span>
                       )}
                     </Button>
                   </li>

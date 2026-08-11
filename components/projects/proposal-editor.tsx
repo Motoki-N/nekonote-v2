@@ -5,11 +5,18 @@ import { EditorContent, type Editor } from "@tiptap/react";
 import { ClipboardCheck, History, UsersRound } from "lucide-react";
 
 import { updateProposal, type LinkedNote } from "@/lib/actions/projects";
-import { writingGenres, type ProposalStatus, type WritingGenre } from "@/lib/schemas/enums";
+import {
+  writingGenres,
+  type ProposalStatus,
+  type WritingGenre,
+} from "@/lib/schemas/enums";
 import { WRITING_GENRE_LABEL } from "@/lib/constants/proposal-template";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EditorToolbar, useMarkdownEditor } from "@/components/editor/markdown-editor";
+import {
+  EditorToolbar,
+  useMarkdownEditor,
+} from "@/components/editor/markdown-editor";
 import {
   clearStoredDraft,
   readStoredDraft,
@@ -36,7 +43,9 @@ const selectClass =
 
 // localStorage 由来のドラフトは型保証がないため、不正値は 'novel' に落とす
 function toWritingGenre(value: unknown): WritingGenre {
-  return writingGenres.includes(value as WritingGenre) ? (value as WritingGenre) : "novel";
+  return writingGenres.includes(value as WritingGenre)
+    ? (value as WritingGenre)
+    : "novel";
 }
 
 function draftKey(proposalId: string): string {
@@ -59,13 +68,20 @@ export function ProposalEditor({
   };
   linkedNotes: LinkedNote[];
 }) {
-  const [writingGenre, setWritingGenre] = useState<WritingGenre>(proposal.writing_genre);
+  const [writingGenre, setWritingGenre] = useState<WritingGenre>(
+    proposal.writing_genre,
+  );
   const [purpose, setPurpose] = useState(proposal.purpose ?? "");
   const [genre, setGenre] = useState(proposal.genre ?? "");
-  const [targetAudience, setTargetAudience] = useState(proposal.target_audience ?? "");
-  const [restorableDraft, setRestorableDraft] = useState<ProposalPayload | null>(null);
+  const [targetAudience, setTargetAudience] = useState(
+    proposal.target_audience ?? "",
+  );
+  const [restorableDraft, setRestorableDraft] =
+    useState<ProposalPayload | null>(null);
   // パネルは排他表示（企画書レビュー / キャラクターレビュー / バージョン履歴のいずれか一方。SPEC-character-review §3.1）
-  const [openPanel, setOpenPanel] = useState<"proposal" | "character" | "history" | null>(null);
+  const [openPanel, setOpenPanel] = useState<
+    "proposal" | "character" | "history" | null
+  >(null);
 
   const writingGenreRef = useRef<WritingGenre>(proposal.writing_genre);
   const purposeRef = useRef(proposal.purpose ?? "");
@@ -80,7 +96,10 @@ export function ProposalEditor({
       writing_genre: writingGenreRef.current,
       purpose: purposeRef.current.trim() === "" ? null : purposeRef.current,
       genre: genreRef.current.trim() === "" ? null : genreRef.current,
-      target_audience: targetAudienceRef.current.trim() === "" ? null : targetAudienceRef.current,
+      target_audience:
+        targetAudienceRef.current.trim() === ""
+          ? null
+          : targetAudienceRef.current,
       content: currentEditor.getMarkdown(),
     };
   }, []);
@@ -134,7 +153,9 @@ export function ProposalEditor({
     genreRef.current = restorableDraft.genre ?? "";
     setTargetAudience(restorableDraft.target_audience ?? "");
     targetAudienceRef.current = restorableDraft.target_audience ?? "";
-    editor.commands.setContent(restorableDraft.content, { contentType: "markdown" });
+    editor.commands.setContent(restorableDraft.content, {
+      contentType: "markdown",
+    });
     setRestorableDraft(null);
     void flush();
   }
@@ -263,7 +284,9 @@ export function ProposalEditor({
                 variant={openPanel === "proposal" ? "secondary" : "outline"}
                 size="sm"
                 aria-pressed={openPanel === "proposal"}
-                onClick={() => setOpenPanel((v) => (v === "proposal" ? null : "proposal"))}
+                onClick={() =>
+                  setOpenPanel((v) => (v === "proposal" ? null : "proposal"))
+                }
               >
                 <ClipboardCheck data-icon="inline-start" />
                 レビュー
@@ -272,7 +295,9 @@ export function ProposalEditor({
                 variant={openPanel === "character" ? "secondary" : "outline"}
                 size="sm"
                 aria-pressed={openPanel === "character"}
-                onClick={() => setOpenPanel((v) => (v === "character" ? null : "character"))}
+                onClick={() =>
+                  setOpenPanel((v) => (v === "character" ? null : "character"))
+                }
               >
                 <UsersRound data-icon="inline-start" />
                 キャラクター
@@ -312,7 +337,9 @@ export function ProposalEditor({
           <ProposalHistoryPanel
             proposalId={proposal.id}
             flushSave={flush}
-            getCurrentContent={() => editorRef.current?.getMarkdown() ?? proposal.content}
+            getCurrentContent={() =>
+              editorRef.current?.getMarkdown() ?? proposal.content
+            }
             onRestore={applyRestoredVersion}
             onClose={() => setOpenPanel(null)}
           />

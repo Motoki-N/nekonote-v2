@@ -47,13 +47,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { SceneCardContent, SortableSceneCard } from "@/components/board/scene-card";
+import {
+  SceneCardContent,
+  SortableSceneCard,
+} from "@/components/board/scene-card";
 import { OutlineDialog } from "@/components/board/outline-dialog";
 import { ReviewPanel } from "@/components/review/review-panel";
 
 /** 2つの並びが同じか（id・part の列として比較。差がなければ保存しない） */
 function sameOrder(a: SceneRecord[], b: SceneRecord[]): boolean {
-  return a.length === b.length && a.every((s, i) => s.id === b[i].id && s.part === b[i].part);
+  return (
+    a.length === b.length &&
+    a.every((s, i) => s.id === b[i].id && s.part === b[i].part)
+  );
 }
 
 /**
@@ -74,24 +80,35 @@ export function OutlineBoard({
   structureStatus: ApprovalStatus;
 }) {
   const router = useRouter();
-  const [scenes, setScenes] = useState<SceneRecord[]>(() => toCanonicalOrder(initialScenes));
+  const [scenes, setScenes] = useState<SceneRecord[]>(() =>
+    toCanonicalOrder(initialScenes),
+  );
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<SceneRecord | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [adding, setAdding] = useState(false);
-  const [structureApproved, setStructureApproved] = useState(structureStatus === "approved");
+  const [structureApproved, setStructureApproved] = useState(
+    structureStatus === "approved",
+  );
   const [approving, setApproving] = useState(false);
   // ドラッグ開始時点の状態（キャンセル・保存失敗時のロールバック先）
   const snapshotRef = useRef<SceneRecord[] | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   // 目次ボードに描画する章カードのみ（小説シーンは state に保持しつつ非表示）
-  const chapters = useMemo(() => scenes.filter((s) => s.part === "chapter"), [scenes]);
+  const chapters = useMemo(
+    () => scenes.filter((s) => s.part === "chapter"),
+    [scenes],
+  );
   const activeScene = useMemo(
     () => (activeId ? chapters.find((s) => s.id === activeId) : undefined),
     [activeId, chapters],
@@ -113,7 +130,12 @@ export function OutlineBoard({
       const from = scenes.findIndex((s) => s.id === String(active.id));
       const to = scenes.findIndex((s) => s.id === String(over.id));
       // 正準順序では章カードは連続しているため arrayMove が成立（ビートボードの同一レーン内と同型）
-      if (from !== -1 && to !== -1 && scenes[from].part === "chapter" && scenes[to].part === "chapter") {
+      if (
+        from !== -1 &&
+        to !== -1 &&
+        scenes[from].part === "chapter" &&
+        scenes[to].part === "chapter"
+      ) {
         next = toCanonicalOrder(arrayMove(scenes, from, to));
         setScenes(next);
       }
@@ -143,11 +165,15 @@ export function OutlineBoard({
     try {
       const result = await createScene(projectId, "chapter");
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? "章の追加に失敗しました" : result.error.message);
+        toast.error(
+          result.ok ? "章の追加に失敗しました" : result.error.message,
+        );
         return;
       }
       setScenes(result.data.scenes);
-      const created = result.data.scenes.find((s) => s.id === result.data?.createdId);
+      const created = result.data.scenes.find(
+        (s) => s.id === result.data?.createdId,
+      );
       if (created) setEditing(created); // 追加したらすぐ編集ダイアログを開く
     } finally {
       setAdding(false);
@@ -161,7 +187,9 @@ export function OutlineBoard({
     try {
       const result = await applyOutlineTemplate(projectId, key);
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? "テンプレの適用に失敗しました" : result.error.message);
+        toast.error(
+          result.ok ? "テンプレの適用に失敗しました" : result.error.message,
+        );
         return;
       }
       setScenes(result.data.scenes);
@@ -171,7 +199,10 @@ export function OutlineBoard({
     }
   }
 
-  async function handleSave(sceneId: string, edit: SceneEdit): Promise<boolean> {
+  async function handleSave(
+    sceneId: string,
+    edit: SceneEdit,
+  ): Promise<boolean> {
     const result = await updateScene(sceneId, edit);
     if (!result.ok || !result.data) {
       toast.error(result.ok ? "章の保存に失敗しました" : result.error.message);
@@ -214,7 +245,9 @@ export function OutlineBoard({
     <div className="flex min-h-0 flex-1">
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">章 {chapters.length}枚</span>
+          <span className="text-xs text-muted-foreground">
+            章 {chapters.length}枚
+          </span>
           {structureApproved && (
             <Badge variant="secondary">
               <BadgeCheck data-icon="inline-start" />
@@ -233,7 +266,10 @@ export function OutlineBoard({
               />
               <DropdownMenuContent align="end">
                 {outlineTemplateKeys.map((key) => (
-                  <DropdownMenuItem key={key} onClick={() => void handleApplyTemplate(key)}>
+                  <DropdownMenuItem
+                    key={key}
+                    onClick={() => void handleApplyTemplate(key)}
+                  >
                     <span className="flex flex-col">
                       <span>{OUTLINE_TEMPLATE[key].label}</span>
                       <span className="text-xs text-muted-foreground">
@@ -319,7 +355,11 @@ export function OutlineBoard({
                 strategy={verticalListSortingStrategy}
               >
                 {chapters.map((scene) => (
-                  <SortableSceneCard key={scene.id} scene={scene} onEdit={setEditing} />
+                  <SortableSceneCard
+                    key={scene.id}
+                    scene={scene}
+                    onEdit={setEditing}
+                  />
                 ))}
               </SortableContext>
               <Button
@@ -333,7 +373,9 @@ export function OutlineBoard({
                 章を追加
               </Button>
             </div>
-            <DragOverlay>{activeScene ? <SceneCardContent scene={activeScene} /> : null}</DragOverlay>
+            <DragOverlay>
+              {activeScene ? <SceneCardContent scene={activeScene} /> : null}
+            </DragOverlay>
           </DndContext>
         )}
       </main>
@@ -349,9 +391,17 @@ export function OutlineBoard({
           enableCopyToNote
           onClose={() => setReviewOpen(false)}
           renderFooter={({ latestVerdict, busy, sessionId }) => {
-            if (latestVerdict === "approved" && !structureApproved && !busy && sessionId !== null) {
+            if (
+              latestVerdict === "approved" &&
+              !structureApproved &&
+              !busy &&
+              sessionId !== null
+            ) {
               return (
-                <Button onClick={() => void handleApprove(sessionId)} disabled={approving}>
+                <Button
+                  onClick={() => void handleApprove(sessionId)}
+                  disabled={approving}
+                >
                   <BadgeCheck data-icon="inline-start" />
                   構成を通す
                 </Button>

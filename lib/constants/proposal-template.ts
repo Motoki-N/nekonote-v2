@@ -1,13 +1,13 @@
-import type { WritingGenre } from '@/lib/schemas/enums'
+import type { WritingGenre } from "@/lib/schemas/enums";
 
 // 執筆ジャンルの表示ラベル。UI（作成ダイアログ・企画書エディタ）と
 // AIプロンプト（lib/ai/prompts.ts）の両側から import するため、
 // ディレクティブなしの純定数ファイルであるここに置く（SPEC-genre §ラベル）
 export const WRITING_GENRE_LABEL: Record<WritingGenre, string> = {
-  novel: '小説',
-  tech_book: '技術書',
-  other: 'その他',
-}
+  novel: "小説",
+  tech_book: "技術書",
+  other: "その他",
+};
 
 // 企画書の初期本文（執筆ジャンル別。SPEC-proposal-review §3.2 / SPEC-genre §テンプレ）。
 // ノート挿入用途ではないため templates テーブルには入れず、コード内定数で管理する。
@@ -42,5 +42,5 @@ export const PROPOSAL_INITIAL_CONTENT: Record<WritingGenre, string> = {
 
 読み終えた読者が何を得て、何ができるようになるのか。
 `,
-  other: '',
-}
+  other: "",
+};

@@ -33,7 +33,8 @@ export function TagInput({
   const candidates = allTags.filter(
     (tag) =>
       !attachedTagIds.includes(tag.id) &&
-      (trimmed === "" || tag.name.toLowerCase().includes(trimmed.toLowerCase())),
+      (trimmed === "" ||
+        tag.name.toLowerCase().includes(trimmed.toLowerCase())),
   );
   const exactMatch = allTags.some((tag) => tag.name === trimmed);
 
@@ -83,7 +84,9 @@ export function TagInput({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => attach(tag.name, tag.kind as TagKind)}
               >
-                <span>{tag.kind === "working_title" ? `《${tag.name}》` : tag.name}</span>
+                <span>
+                  {tag.kind === "working_title" ? `《${tag.name}》` : tag.name}
+                </span>
                 <span className="ml-auto text-xs text-muted-foreground">
                   {tag.kind === "working_title" ? "仮タイトル" : "カテゴリ"}
                 </span>

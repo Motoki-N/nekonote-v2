@@ -14,6 +14,7 @@ tools: Read, Glob, Grep, Bash
 ## チェック観点
 
 ### RLS・データベース
+
 - ユーザーデータを持つ新規テーブルすべてで RLS が**有効化**されているか（`enable row level security` の漏れは最重大）
 - SELECT / INSERT / UPDATE / DELETE の各操作にポリシーがあるか。`auth.uid() = user_id` の比較が正しいか
 - `user_id` カラムがクライアント入力で上書きできないか（default `auth.uid()`＋INSERTポリシーでの検証）
@@ -21,17 +22,20 @@ tools: Read, Glob, Grep, Bash
 - 許可リストトリガー（auth.users BEFORE INSERT）がバイパスできないか
 
 ### セッション・認証フロー
+
 - middleware の matcher が保護対象を漏らしていないか（API Route・Server Action 含む）
 - サーバー側の認可判断に `getUser()`（検証あり）を使っているか。`getSession()` の結果を信頼していないか
 - `returnTo` などのリダイレクト先パラメータによるオープンリダイレクトの余地
 - PKCE フロー・コールバックの code 交換処理の誤り
 
 ### 秘密情報
+
 - `service_role` キーがクライアントバンドル・`NEXT_PUBLIC_` 環境変数・ログに漏れていないか
 - APIキー・トークンのログ出力、エラーメッセージ経由の漏洩
 - 秘密情報のハードコード
 
 ### 公開リポジトリとしての混入チェック（CLAUDE.md 規約「公開リポジトリ」）
+
 - diff に公開すべきでない情報が含まれていないか: 秘密情報の実値、実メールアドレス、
   私的リポジトリ名、未公開作品の実タイトル・原稿引用、インフラ識別子（Vercelチームスラッグ・デプロイID）
 - これらへの言及が既存の伏せ字表記（「Dシリーズ」「セイレーン」「`<owner>/<manuscripts-repo>`」等）を

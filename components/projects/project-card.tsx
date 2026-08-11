@@ -23,7 +23,10 @@ import {
   EditProjectDialog,
   type ProjectFormValues,
 } from "@/components/projects/project-form-dialog";
-import { ProjectStatusBadge, ProposalStatusBadge } from "@/components/projects/status-badges";
+import {
+  ProjectStatusBadge,
+  ProposalStatusBadge,
+} from "@/components/projects/status-badges";
 
 export type ProjectListItem = ProjectFormValues & {
   status: ProjectStatus;
@@ -50,9 +53,13 @@ export function ProjectCard({ project }: { project: ProjectListItem }) {
       <Link href={`/projects/${project.id}`} className="block p-4">
         <div className="flex flex-col gap-1.5">
           <span className="flex flex-wrap items-center gap-2 pr-16">
-            <span className="font-medium text-card-foreground">{project.title}</span>
+            <span className="font-medium text-card-foreground">
+              {project.title}
+            </span>
             <ProjectStatusBadge status={project.status} />
-            {project.proposalStatus && <ProposalStatusBadge status={project.proposalStatus} />}
+            {project.proposalStatus && (
+              <ProposalStatusBadge status={project.proposalStatus} />
+            )}
           </span>
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             {project.event_name && <span>{project.event_name}</span>}
@@ -100,7 +107,9 @@ export function ProjectCard({ project }: { project: ProjectListItem }) {
           />
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>「{project.title}」を削除しますか？</AlertDialogTitle>
+              <AlertDialogTitle>
+                「{project.title}」を削除しますか？
+              </AlertDialogTitle>
               <AlertDialogDescription>
                 企画書・ノート紐づけ・レビュー履歴もすべて削除されます（紐づけたノート自体は残ります）。この操作は元に戻せません。
               </AlertDialogDescription>

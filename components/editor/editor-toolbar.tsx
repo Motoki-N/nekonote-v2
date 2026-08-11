@@ -1,8 +1,8 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import type { EditorView } from '@codemirror/view'
-import { toast } from 'sonner'
+import { useState } from "react";
+import type { EditorView } from "@codemirror/view";
+import { toast } from "sonner";
 
 import {
   getSelectedText,
@@ -11,8 +11,8 @@ import {
   insertWarichuText,
   toggleVfmComment,
   wrapSelectionWithSpan,
-} from '@/components/editor/codemirror'
-import { Button } from '@/components/ui/button'
+} from "@/components/editor/codemirror";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -20,17 +20,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import type { WritingDirection } from '@/lib/editor/preview'
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import type { WritingDirection } from "@/lib/editor/preview";
 
 // ルビ記法 `{親文字|よみ}` に使えない文字（VFM記法の区切りと衝突する）
-const RUBY_FORBIDDEN = /[{}|\n]/
+const RUBY_FORBIDDEN = /[{}|\n]/;
 
 // 割注は `<span>` の中身になるためHTMLとして解釈される文字を禁止する。
 // `*` `_` `` ` `` `[` はVFMが前半・後半をまたいで強調・コード・リンク対として
 // 解釈しマークアップのネストを壊しうるため併せて禁止する
-const WARICHU_FORBIDDEN = /[<>&*_`[\n]/
+const WARICHU_FORBIDDEN = /[<>&*_`[\n]/;
 
 /**
  * 入力補助ツールバー（SPEC-vertical-editor-phase3 §4、割注・改ページは Issue #23）。
@@ -43,86 +43,90 @@ export function EditorToolbar({
   direction,
   onImageRequest,
 }: {
-  viewRef: React.RefObject<EditorView | null>
+  viewRef: React.RefObject<EditorView | null>;
   /** テーマの書字方向（縦書き専用ボタンの出し分けに使う） */
-  direction: WritingDirection
+  direction: WritingDirection;
   /** 画像挿入（SPEC §6）。未指定ならボタンを出さない */
-  onImageRequest?: () => void
+  onImageRequest?: () => void;
 }) {
-  const [rubyOpen, setRubyOpen] = useState(false)
-  const [rubyBase, setRubyBase] = useState('')
-  const [rubyReading, setRubyReading] = useState('')
-  const [warichuOpen, setWarichuOpen] = useState(false)
-  const [warichuFirst, setWarichuFirst] = useState('')
-  const [warichuSecond, setWarichuSecond] = useState('')
+  const [rubyOpen, setRubyOpen] = useState(false);
+  const [rubyBase, setRubyBase] = useState("");
+  const [rubyReading, setRubyReading] = useState("");
+  const [warichuOpen, setWarichuOpen] = useState(false);
+  const [warichuFirst, setWarichuFirst] = useState("");
+  const [warichuSecond, setWarichuSecond] = useState("");
 
   const openRuby = () => {
-    const view = viewRef.current
-    if (!view) return
-    setRubyBase(getSelectedText(view))
-    setRubyReading('')
-    setRubyOpen(true)
-  }
+    const view = viewRef.current;
+    if (!view) return;
+    setRubyBase(getSelectedText(view));
+    setRubyReading("");
+    setRubyOpen(true);
+  };
 
   const rubyInvalid =
-    rubyBase.trim() === '' ||
-    rubyReading.trim() === '' ||
+    rubyBase.trim() === "" ||
+    rubyReading.trim() === "" ||
     RUBY_FORBIDDEN.test(rubyBase) ||
-    RUBY_FORBIDDEN.test(rubyReading)
+    RUBY_FORBIDDEN.test(rubyReading);
 
   const confirmRuby = () => {
-    const view = viewRef.current
-    if (!view || rubyInvalid) return
-    insertRubyText(view, rubyBase.trim(), rubyReading.trim())
-    setRubyOpen(false)
-  }
+    const view = viewRef.current;
+    if (!view || rubyInvalid) return;
+    insertRubyText(view, rubyBase.trim(), rubyReading.trim());
+    setRubyOpen(false);
+  };
 
   const openWarichu = () => {
-    const view = viewRef.current
-    if (!view) return
+    const view = viewRef.current;
+    if (!view) return;
     // 選択範囲があれば前半・後半へ半分割してプリセット（割注は2行組みが基本形）
-    const selected = getSelectedText(view)
-    const chars = [...selected]
-    const half = Math.ceil(chars.length / 2)
-    setWarichuFirst(chars.slice(0, half).join(''))
-    setWarichuSecond(chars.slice(half).join(''))
-    setWarichuOpen(true)
-  }
+    const selected = getSelectedText(view);
+    const chars = [...selected];
+    const half = Math.ceil(chars.length / 2);
+    setWarichuFirst(chars.slice(0, half).join(""));
+    setWarichuSecond(chars.slice(half).join(""));
+    setWarichuOpen(true);
+  };
 
   const warichuInvalid =
-    warichuFirst.trim() === '' ||
+    warichuFirst.trim() === "" ||
     WARICHU_FORBIDDEN.test(warichuFirst) ||
-    WARICHU_FORBIDDEN.test(warichuSecond)
+    WARICHU_FORBIDDEN.test(warichuSecond);
 
   const confirmWarichu = () => {
-    const view = viewRef.current
-    if (!view || warichuInvalid) return
-    insertWarichuText(view, warichuFirst.trim(), warichuSecond.trim())
-    setWarichuOpen(false)
-  }
+    const view = viewRef.current;
+    if (!view || warichuInvalid) return;
+    insertWarichuText(view, warichuFirst.trim(), warichuSecond.trim());
+    setWarichuOpen(false);
+  };
 
-  const wrapSpan = (className: 'tenten' | 'tcy', label: string) => {
-    const view = viewRef.current
-    if (!view) return
+  const wrapSpan = (className: "tenten" | "tcy", label: string) => {
+    const view = viewRef.current;
+    if (!view) return;
     if (!wrapSelectionWithSpan(view, className)) {
-      toast.info(`${label}を付ける範囲を選択してから押してください`)
+      toast.info(`${label}を付ける範囲を選択してから押してください`);
     }
-  }
+  };
 
   return (
     <div className="flex flex-wrap items-center gap-0.5 border-b border-border px-2 py-1">
-      <ToolbarButton label="ルビ" title="選択範囲にルビを振る（{親文字|よみ}）" onClick={openRuby} />
-      {direction === 'vertical' && (
+      <ToolbarButton
+        label="ルビ"
+        title="選択範囲にルビを振る（{親文字|よみ}）"
+        onClick={openRuby}
+      />
+      {direction === "vertical" && (
         <>
           <ToolbarButton
             label="傍点"
             title="選択範囲に傍点（圏点）を付ける"
-            onClick={() => wrapSpan('tenten', '傍点')}
+            onClick={() => wrapSpan("tenten", "傍点")}
           />
           <ToolbarButton
             label="縦中横"
             title="選択範囲を縦中横にする（2〜3桁の半角英数向け）"
-            onClick={() => wrapSpan('tcy', '縦中横')}
+            onClick={() => wrapSpan("tcy", "縦中横")}
           />
         </>
       )}
@@ -135,20 +139,24 @@ export function EditorToolbar({
         label="改ページ"
         title="カーソル位置で改ページする（シーン転換など）"
         onClick={() => {
-          const view = viewRef.current
-          if (view) insertPageBreak(view)
+          const view = viewRef.current;
+          if (view) insertPageBreak(view);
         }}
       />
       <ToolbarButton
         label="コメント"
         title="コメントの挿入・解除（Cmd/Ctrl+/。プレビュー・PDFには出ません）"
         onClick={() => {
-          const view = viewRef.current
-          if (view) toggleVfmComment(view)
+          const view = viewRef.current;
+          if (view) toggleVfmComment(view);
         }}
       />
       {onImageRequest && (
-        <ToolbarButton label="画像" title="画像を挿入（images/ へコミットされます）" onClick={onImageRequest} />
+        <ToolbarButton
+          label="画像"
+          title="画像を挿入（images/ へコミットされます）"
+          onClick={onImageRequest}
+        />
       )}
 
       <Dialog open={rubyOpen} onOpenChange={setRubyOpen}>
@@ -156,14 +164,14 @@ export function EditorToolbar({
           <DialogHeader>
             <DialogTitle>ルビを振る</DialogTitle>
             <DialogDescription>
-              本文には {'{親文字|よみ}'} の形で挿入されます（VFM標準記法）
+              本文には {"{親文字|よみ}"} の形で挿入されます（VFM標準記法）
             </DialogDescription>
           </DialogHeader>
           <form
             className="flex flex-col gap-3"
             onSubmit={(event) => {
-              event.preventDefault()
-              confirmRuby()
+              event.preventDefault();
+              confirmRuby();
             }}
           >
             <label className="flex flex-col gap-1 text-sm">
@@ -172,7 +180,7 @@ export function EditorToolbar({
                 value={rubyBase}
                 onChange={(event) => setRubyBase(event.target.value)}
                 placeholder="漢字"
-                autoFocus={rubyBase === ''}
+                autoFocus={rubyBase === ""}
               />
             </label>
             <label className="flex flex-col gap-1 text-sm">
@@ -181,11 +189,15 @@ export function EditorToolbar({
                 value={rubyReading}
                 onChange={(event) => setRubyReading(event.target.value)}
                 placeholder="かんじ"
-                autoFocus={rubyBase !== ''}
+                autoFocus={rubyBase !== ""}
               />
             </label>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setRubyOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setRubyOpen(false)}
+              >
                 キャンセル
               </Button>
               <Button type="submit" disabled={rubyInvalid}>
@@ -207,8 +219,8 @@ export function EditorToolbar({
           <form
             className="flex flex-col gap-3"
             onSubmit={(event) => {
-              event.preventDefault()
-              confirmWarichu()
+              event.preventDefault();
+              confirmWarichu();
             }}
           >
             <label className="flex flex-col gap-1 text-sm">
@@ -229,7 +241,11 @@ export function EditorToolbar({
               />
             </label>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setWarichuOpen(false)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setWarichuOpen(false)}
+              >
                 キャンセル
               </Button>
               <Button type="submit" disabled={warichuInvalid}>
@@ -240,7 +256,7 @@ export function EditorToolbar({
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
 
 function ToolbarButton({
@@ -248,9 +264,9 @@ function ToolbarButton({
   title,
   onClick,
 }: {
-  label: string
-  title: string
-  onClick: () => void
+  label: string;
+  title: string;
+  onClick: () => void;
 }) {
   return (
     <Button
@@ -263,5 +279,5 @@ function ToolbarButton({
     >
       {label}
     </Button>
-  )
+  );
 }

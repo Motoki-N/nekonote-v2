@@ -1,6 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import type { ProjectStatus, ProposalStatus } from "@/lib/schemas/enums";
-import { ProjectCard, type ProjectListItem } from "@/components/projects/project-card";
+import {
+  ProjectCard,
+  type ProjectListItem,
+} from "@/components/projects/project-card";
 import { CreateProjectDialog } from "@/components/projects/project-form-dialog";
 
 export default async function ProjectsPage() {
@@ -13,7 +16,11 @@ export default async function ProjectsPage() {
         "id, title, status, event_name, deadline, target_pages, repo, base_path, proposals (status)",
       )
       .order("created_at", { ascending: false }),
-    supabase.from("tags").select("id, name").eq("kind", "working_title").order("name"),
+    supabase
+      .from("tags")
+      .select("id, name")
+      .eq("kind", "working_title")
+      .order("name"),
   ]);
 
   const items: ProjectListItem[] = (projects ?? []).map((p) => ({

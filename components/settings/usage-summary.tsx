@@ -19,7 +19,11 @@ function formatTokens(value: number): string {
 /** 直近30日のAI使用量サマリー（Issue #45。表示のみ・操作なし） */
 export function UsageSummary({ rows }: { rows: AiUsageSummaryRow[] }) {
   if (rows.length === 0) {
-    return <p className="text-sm text-muted-foreground">直近30日の利用記録はまだありません。</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        直近30日の利用記録はまだありません。
+      </p>
+    );
   }
 
   return (
@@ -44,7 +48,8 @@ export function UsageSummary({ rows }: { rows: AiUsageSummaryRow[] }) {
                 {FEATURE_LABEL[row.feature as AiUsageFeature] ?? row.feature}
               </td>
               <td className="px-3 py-2 text-foreground">
-                {PROVIDER_LABEL[row.provider as AiProvider] ?? row.provider} / {row.modelId}
+                {PROVIDER_LABEL[row.provider as AiProvider] ?? row.provider} /{" "}
+                {row.modelId}
               </td>
               <td className="px-3 py-2 text-right tabular-nums text-foreground">
                 {formatTokens(row.callCount)}

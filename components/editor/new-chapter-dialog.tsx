@@ -1,9 +1,9 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 
-import { Button } from '@/components/ui/button'
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,8 +11,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 /**
  * 新規章ファイルの作成ダイアログ（SPEC-vertical-editor-phase2 §3.3）。
@@ -25,13 +25,16 @@ export function NewChapterDialog({
   onCreate,
   onOpenChange,
 }: {
-  open: boolean
-  creating: boolean
-  onCreate: (fileName: string) => void
-  onOpenChange: (open: boolean) => void
+  open: boolean;
+  creating: boolean;
+  onCreate: (fileName: string) => void;
+  onOpenChange: (open: boolean) => void;
 }) {
   return (
-    <Dialog open={open} onOpenChange={(next) => !creating && onOpenChange(next)}>
+    <Dialog
+      open={open}
+      onOpenChange={(next) => !creating && onOpenChange(next)}
+    >
       <DialogContent>
         <NewChapterForm
           creating={creating}
@@ -40,7 +43,7 @@ export function NewChapterDialog({
         />
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function NewChapterForm({
@@ -48,26 +51,28 @@ function NewChapterForm({
   onCreate,
   onCancel,
 }: {
-  creating: boolean
-  onCreate: (fileName: string) => void
-  onCancel: () => void
+  creating: boolean;
+  onCreate: (fileName: string) => void;
+  onCancel: () => void;
 }) {
-  const [fileName, setFileName] = useState('')
+  const [fileName, setFileName] = useState("");
 
   return (
     <>
       <DialogHeader>
         <DialogTitle>新しい章ファイル</DialogTitle>
         <DialogDescription>
-          manuscripts/ 配下に雛形入りで作成し、そのままコミットします。book.config.js の entry
+          manuscripts/
+          配下に雛形入りで作成し、そのままコミットします。book.config.js の
+          entry
           へも自動で追記されます（追記できなかった場合は「entry未登録」として一覧の末尾に表示されます）
         </DialogDescription>
       </DialogHeader>
       <form
         id="editor-new-chapter-form"
         onSubmit={(event) => {
-          event.preventDefault()
-          if (fileName.trim().length > 0) onCreate(fileName.trim())
+          event.preventDefault();
+          if (fileName.trim().length > 0) onCreate(fileName.trim());
         }}
       >
         <label className="flex flex-col gap-1.5 text-sm text-foreground">
@@ -83,7 +88,12 @@ function NewChapterForm({
         </label>
       </form>
       <DialogFooter>
-        <Button variant="outline" size="sm" disabled={creating} onClick={onCancel}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={creating}
+          onClick={onCancel}
+        >
           キャンセル
         </Button>
         <Button
@@ -92,10 +102,12 @@ function NewChapterForm({
           size="sm"
           disabled={creating || fileName.trim().length === 0}
         >
-          {creating && <Loader2 data-icon="inline-start" className="animate-spin" />}
+          {creating && (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          )}
           作成してコミット
         </Button>
       </DialogFooter>
     </>
-  )
+  );
 }

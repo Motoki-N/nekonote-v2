@@ -24,7 +24,11 @@ import { Input } from "@/components/ui/input";
  * 未登録=リポジトリ入力フォーム、登録済み=リポジトリ名＋差し替え＋削除
  * （github-connection.tsx と同型のUI。登録時にサーバーで形式検証＋疎通検証）
  */
-export function ZennRepoSettings({ initialRepo }: { initialRepo: string | null }) {
+export function ZennRepoSettings({
+  initialRepo,
+}: {
+  initialRepo: string | null;
+}) {
   const [repo, setRepo] = useState(initialRepo);
   const [replacing, setReplacing] = useState(false);
 
@@ -42,7 +46,11 @@ export function ZennRepoSettings({ initialRepo }: { initialRepo: string | null }
           </span>
           <div className="ml-auto flex items-center gap-1.5">
             {!replacing && (
-              <Button variant="outline" size="xs" onClick={() => setReplacing(true)}>
+              <Button
+                variant="outline"
+                size="xs"
+                onClick={() => setReplacing(true)}
+              >
                 差し替え
               </Button>
             )}
@@ -58,7 +66,9 @@ export function ZennRepoSettings({ initialRepo }: { initialRepo: string | null }
       {showForm && (
         <ZennRepoForm
           replacing={repo !== null}
-          onCancelReplace={repo !== null ? () => setReplacing(false) : undefined}
+          onCancelReplace={
+            repo !== null ? () => setReplacing(false) : undefined
+          }
           onRegistered={(registered) => {
             setRepo(registered);
             setReplacing(false);
@@ -104,7 +114,9 @@ function ZennRepoForm({
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-2">
       <label className="flex flex-col gap-1 text-sm" htmlFor="zenn-repo">
-        {replacing ? "新しいリポジトリに差し替える" : "Zenn連携リポジトリ（owner/repo）"}
+        {replacing
+          ? "新しいリポジトリに差し替える"
+          : "Zenn連携リポジトリ（owner/repo）"}
         <Input
           id="zenn-repo"
           autoComplete="off"
@@ -116,18 +128,30 @@ function ZennRepoForm({
       </label>
       <p className="text-xs text-muted-foreground">
         ZennのGitHub連携に設定しているリポジトリを owner/repo 形式で入力します。
-        GitHub PAT の対象リポジトリにこのリポジトリを含めておいてください（Contents の Read
+        GitHub PAT
+        の対象リポジトリにこのリポジトリを含めておいてください（Contents の Read
         and write 権限）。
       </p>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <div className="flex items-center gap-2 self-end">
         {onCancelReplace && (
-          <Button type="button" variant="ghost" size="sm" onClick={onCancelReplace}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onCancelReplace}
+          >
             キャンセル
           </Button>
         )}
-        <Button type="submit" size="sm" disabled={submitting || value.trim() === ""}>
-          {submitting && <Loader2 data-icon="inline-start" className="animate-spin" />}
+        <Button
+          type="submit"
+          size="sm"
+          disabled={submitting || value.trim() === ""}
+        >
+          {submitting && (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          )}
           {submitting ? "接続を確認中…" : "登録する"}
         </Button>
       </div>
@@ -165,14 +189,20 @@ function DeleteZennRepoButton({ onDeleted }: { onDeleted: () => void }) {
       />
       <AlertDialogContent>
         <AlertDialogHeader>
-          <AlertDialogTitle>Zenn連携リポジトリを削除しますか？</AlertDialogTitle>
+          <AlertDialogTitle>
+            Zenn連携リポジトリを削除しますか？
+          </AlertDialogTitle>
           <AlertDialogDescription>
-            Zennへの投稿ができなくなります。再登録すれば元に戻ります（GitHub PATには影響しません）。
+            Zennへの投稿ができなくなります。再登録すれば元に戻ります（GitHub
+            PATには影響しません）。
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel>キャンセル</AlertDialogCancel>
-          <AlertDialogAction variant="destructive" onClick={() => void handleDelete()}>
+          <AlertDialogAction
+            variant="destructive"
+            onClick={() => void handleDelete()}
+          >
             削除する
           </AlertDialogAction>
         </AlertDialogFooter>

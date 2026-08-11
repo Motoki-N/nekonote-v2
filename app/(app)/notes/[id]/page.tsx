@@ -13,7 +13,9 @@ export default async function NoteEditorPage({
 
   const { data: note } = await supabase
     .from("notes")
-    .select("id, title, content, updated_at, deleted_at, note_tags(tags(id, name, kind))")
+    .select(
+      "id, title, content, updated_at, deleted_at, note_tags(tags(id, name, kind))",
+    )
     .eq("id", id)
     .maybeSingle();
 

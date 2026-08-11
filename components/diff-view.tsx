@@ -14,14 +14,20 @@ export function DiffView({ rows }: { rows: DiffRow[] }) {
       {rows.map((row, i) => {
         if (row.kind === "hunk") {
           return (
-            <div key={i} className="bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground">
+            <div
+              key={i}
+              className="bg-muted px-2 py-0.5 font-mono text-xs text-muted-foreground"
+            >
               {row.text}
             </div>
           );
         }
         if (row.kind === "context") {
           return (
-            <div key={i} className="whitespace-pre-wrap break-all px-2 text-muted-foreground">
+            <div
+              key={i}
+              className="whitespace-pre-wrap break-all px-2 text-muted-foreground"
+            >
               {row.text === "" ? " " : row.text}
             </div>
           );
@@ -35,14 +41,18 @@ export function DiffView({ rows }: { rows: DiffRow[] }) {
               del ? "bg-destructive/10" : "bg-primary/10",
             )}
           >
-            <span className="select-none text-muted-foreground">{del ? "−" : "＋"}</span>
+            <span className="select-none text-muted-foreground">
+              {del ? "−" : "＋"}
+            </span>
             {row.segments.map((segment, j) =>
               segment.changed ? (
                 <mark
                   key={j}
                   className={cn(
                     "rounded-sm bg-transparent text-foreground",
-                    del ? "bg-destructive/25 line-through decoration-destructive/60" : "bg-primary/25",
+                    del
+                      ? "bg-destructive/25 line-through decoration-destructive/60"
+                      : "bg-primary/25",
                   )}
                 >
                   {segment.text}

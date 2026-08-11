@@ -83,7 +83,9 @@ export function AtelierWorkspace({
 
   const handleDeleted = useCallback((id: string) => {
     setLoaded((prev) =>
-      prev ? { ...prev, items: prev.items.filter((item) => item.id !== id) } : prev,
+      prev
+        ? { ...prev, items: prev.items.filter((item) => item.id !== id) }
+        : prev,
     );
     setReference((prev) => (prev?.id === id ? null : prev));
     setLastDeletedId(id);
@@ -94,7 +96,9 @@ export function AtelierWorkspace({
       prev
         ? {
             ...prev,
-            items: prev.items.map((item) => (item.id === id ? { ...item, title } : item)),
+            items: prev.items.map((item) =>
+              item.id === id ? { ...item, title } : item,
+            ),
           }
         : prev,
     );
@@ -103,11 +107,16 @@ export function AtelierWorkspace({
   if (projects.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card p-8">
-        <p className="text-sm text-card-foreground">まだプロジェクトがありません。</p>
+        <p className="text-sm text-card-foreground">
+          まだプロジェクトがありません。
+        </p>
         <p className="text-sm text-muted-foreground">
           イラストの依頼はプロジェクト単位で行います。まずはプロジェクトをつくってください。
         </p>
-        <Button nativeButton={false} render={<Link href="/projects">プロジェクトをつくる</Link>} />
+        <Button
+          nativeButton={false}
+          render={<Link href="/projects">プロジェクトをつくる</Link>}
+        />
       </div>
     );
   }
@@ -115,7 +124,10 @@ export function AtelierWorkspace({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <label htmlFor="atelier-project" className="text-sm font-medium text-foreground">
+        <label
+          htmlFor="atelier-project"
+          className="text-sm font-medium text-foreground"
+        >
           プロジェクト
         </label>
         <select

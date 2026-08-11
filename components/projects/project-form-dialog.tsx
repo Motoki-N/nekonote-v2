@@ -4,8 +4,18 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import { createProject, getNotesByTag, updateProject, type LinkedNote } from "@/lib/actions/projects";
-import { projectStatuses, writingGenres, type ProjectStatus, type WritingGenre } from "@/lib/schemas/enums";
+import {
+  createProject,
+  getNotesByTag,
+  updateProject,
+  type LinkedNote,
+} from "@/lib/actions/projects";
+import {
+  projectStatuses,
+  writingGenres,
+  type ProjectStatus,
+  type WritingGenre,
+} from "@/lib/schemas/enums";
 import { WRITING_GENRE_LABEL } from "@/lib/constants/proposal-template";
 import { Button } from "@/components/ui/button";
 import {
@@ -43,7 +53,11 @@ function toNullable(value: string): string | null {
 }
 
 /** 新規プロジェクト作成ダイアログ（仮タイトルタグからの一括紐づけ付き。SPEC-proposal-review §3.1） */
-export function CreateProjectDialog({ workingTitleTags }: { workingTitleTags: WorkingTitleTag[] }) {
+export function CreateProjectDialog({
+  workingTitleTags,
+}: {
+  workingTitleTags: WorkingTitleTag[];
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
@@ -111,7 +125,9 @@ export function CreateProjectDialog({ workingTitleTags }: { workingTitleTags: Wo
         writingGenre,
       );
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? "プロジェクトの作成に失敗しました" : result.error.message);
+        toast.error(
+          result.ok ? "プロジェクトの作成に失敗しました" : result.error.message,
+        );
         return;
       }
       setOpen(false);
@@ -141,7 +157,11 @@ export function CreateProjectDialog({ workingTitleTags }: { workingTitleTags: Wo
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             タイトル（必須）
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             執筆ジャンル（企画書のテンプレが変わります）
@@ -159,12 +179,19 @@ export function CreateProjectDialog({ workingTitleTags }: { workingTitleTags: Wo
           </label>
           <label className="flex flex-col gap-1 text-sm">
             イベント名
-            <Input value={eventName} onChange={(e) => setEventName(e.target.value)} />
+            <Input
+              value={eventName}
+              onChange={(e) => setEventName(e.target.value)}
+            />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1 text-sm">
               締切
-              <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+              <Input
+                type="date"
+                value={deadline}
+                onChange={(e) => setDeadline(e.target.value)}
+              />
             </label>
             <label className="flex flex-col gap-1 text-sm">
               目標ページ数
@@ -193,12 +220,19 @@ export function CreateProjectDialog({ workingTitleTags }: { workingTitleTags: Wo
           </label>
           {tagId && (
             <fieldset className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-md border border-border p-2">
-              <legend className="px-1 text-xs text-muted-foreground">紐づけるノート</legend>
+              <legend className="px-1 text-xs text-muted-foreground">
+                紐づけるノート
+              </legend>
               {candidates.length === 0 ? (
-                <p className="text-xs text-muted-foreground">このタグの付いたノートはありません</p>
+                <p className="text-xs text-muted-foreground">
+                  このタグの付いたノートはありません
+                </p>
               ) : (
                 candidates.map((note) => (
-                  <label key={note.id} className="flex items-center gap-2 text-sm">
+                  <label
+                    key={note.id}
+                    className="flex items-center gap-2 text-sm"
+                  >
                     <input
                       type="checkbox"
                       className="accent-primary"
@@ -278,84 +312,98 @@ export function EditProjectDialog({
 
   return (
     <>
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger render={trigger} />
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>プロジェクトを編集</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <label className="flex flex-col gap-1 text-sm">
-            タイトル（必須）
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            ステータス
-            <select
-              className={selectClass}
-              value={status}
-              onChange={(e) => setStatus(e.target.value as ProjectStatus)}
-            >
-              {projectStatuses.map((s) => (
-                <option key={s} value={s}>
-                  {PROJECT_STATUS_LABEL[s]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            イベント名
-            <Input value={eventName} onChange={(e) => setEventName(e.target.value)} />
-          </label>
-          <div className="grid grid-cols-2 gap-3">
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger render={trigger} />
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>プロジェクトを編集</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1 text-sm">
-              締切
-              <Input type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              目標ページ数
+              タイトル（必須）
               <Input
-                type="number"
-                min={1}
-                value={targetPages}
-                onChange={(e) => setTargetPages(e.target.value)}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
               />
             </label>
-          </div>
-          <label className="flex flex-col gap-1 text-sm">
-            原稿リポジトリ（owner/repo）
-            <Input
-              value={repo}
-              onChange={(e) => setRepo(e.target.value)}
-              placeholder="例: yourname/manuscripts"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            原稿フォルダ（リポジトリ内のパス。空ならルート）
-            <Input
-              value={basePath}
-              onChange={(e) => setBasePath(e.target.value)}
-              placeholder="例: novel-title"
-            />
-          </label>
-          <DialogFooter>
-            <Button type="submit" disabled={submitting || title.trim() === ""}>
-              保存する
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-    {/* 開くたびに再マウントして初期値（タイトル・slug）を確定させる */}
-    {setupOpen && (
-      <RepoSetupDialog
-        open
-        onOpenChange={setSetupOpen}
-        projectId={project.id}
-        defaultTitle={title.trim() || project.title}
-        repoName={setupRepo.split("/")[1] ?? ""}
-      />
-    )}
+            <label className="flex flex-col gap-1 text-sm">
+              ステータス
+              <select
+                className={selectClass}
+                value={status}
+                onChange={(e) => setStatus(e.target.value as ProjectStatus)}
+              >
+                {projectStatuses.map((s) => (
+                  <option key={s} value={s}>
+                    {PROJECT_STATUS_LABEL[s]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              イベント名
+              <Input
+                value={eventName}
+                onChange={(e) => setEventName(e.target.value)}
+              />
+            </label>
+            <div className="grid grid-cols-2 gap-3">
+              <label className="flex flex-col gap-1 text-sm">
+                締切
+                <Input
+                  type="date"
+                  value={deadline}
+                  onChange={(e) => setDeadline(e.target.value)}
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-sm">
+                目標ページ数
+                <Input
+                  type="number"
+                  min={1}
+                  value={targetPages}
+                  onChange={(e) => setTargetPages(e.target.value)}
+                />
+              </label>
+            </div>
+            <label className="flex flex-col gap-1 text-sm">
+              原稿リポジトリ（owner/repo）
+              <Input
+                value={repo}
+                onChange={(e) => setRepo(e.target.value)}
+                placeholder="例: yourname/manuscripts"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              原稿フォルダ（リポジトリ内のパス。空ならルート）
+              <Input
+                value={basePath}
+                onChange={(e) => setBasePath(e.target.value)}
+                placeholder="例: novel-title"
+              />
+            </label>
+            <DialogFooter>
+              <Button
+                type="submit"
+                disabled={submitting || title.trim() === ""}
+              >
+                保存する
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+      {/* 開くたびに再マウントして初期値（タイトル・slug）を確定させる */}
+      {setupOpen && (
+        <RepoSetupDialog
+          open
+          onOpenChange={setSetupOpen}
+          projectId={project.id}
+          defaultTitle={title.trim() || project.title}
+          repoName={setupRepo.split("/")[1] ?? ""}
+        />
+      )}
     </>
   );
 }

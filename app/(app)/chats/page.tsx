@@ -17,7 +17,9 @@ export default async function ChatsPage() {
 
       <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4 p-4 sm:p-6">
         {!result.ok ? (
-          <p className="py-12 text-center text-sm text-destructive">{result.error.message}</p>
+          <p className="py-12 text-center text-sm text-destructive">
+            {result.error.message}
+          </p>
         ) : (
           <ThreadList threads={threads} />
         )}

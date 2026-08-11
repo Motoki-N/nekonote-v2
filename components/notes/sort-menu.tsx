@@ -11,9 +11,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-import { DEFAULT_SORT, SORT_OPTIONS, type SortValue } from "@/components/notes/sort-options";
+import {
+  DEFAULT_SORT,
+  SORT_OPTIONS,
+  type SortValue,
+} from "@/components/notes/sort-options";
 
-function buildHref(q: string | undefined, tagsParam: string | undefined, sort: SortValue): string {
+function buildHref(
+  q: string | undefined,
+  tagsParam: string | undefined,
+  sort: SortValue,
+): string {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (tagsParam) params.set("tags", tagsParam);
@@ -48,7 +56,11 @@ export function SortMenu({
         {SORT_OPTIONS.map((option) => (
           <DropdownMenuItem
             key={option.value}
-            render={<Link href={buildHref(q, tagsParam, option.value)}>{option.label}</Link>}
+            render={
+              <Link href={buildHref(q, tagsParam, option.value)}>
+                {option.label}
+              </Link>
+            }
           />
         ))}
       </DropdownMenuContent>

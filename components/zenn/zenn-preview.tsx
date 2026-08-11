@@ -1,18 +1,18 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState } from "react";
 
-import 'zenn-content-css'
+import "zenn-content-css";
 
 // zenn-markdown-html はバンドルが重いため動的importで遅延ロードする。
 // v0.5系の markdownToHtml は async（Promise<string>）
-type MarkdownToHtml = (text: string) => Promise<string>
-let markdownToHtmlPromise: Promise<MarkdownToHtml> | null = null
+type MarkdownToHtml = (text: string) => Promise<string>;
+let markdownToHtmlPromise: Promise<MarkdownToHtml> | null = null;
 function loadMarkdownToHtml(): Promise<MarkdownToHtml> {
-  markdownToHtmlPromise ??= import('zenn-markdown-html').then(
+  markdownToHtmlPromise ??= import("zenn-markdown-html").then(
     (mod) => mod.default as MarkdownToHtml,
-  )
-  return markdownToHtmlPromise
+  );
+  return markdownToHtmlPromise;
 }
 
 /**
@@ -27,50 +27,50 @@ export function ZennPreview({
   body,
   imageUrls = {},
 }: {
-  body: string
+  body: string;
   /** この画面でアップロードした画像の `/images/...` パス → Blob URL（SPEC §11） */
-  imageUrls?: Record<string, string>
+  imageUrls?: Record<string, string>;
 }) {
-  const [html, setHtml] = useState('')
+  const [html, setHtml] = useState("");
 
   useEffect(() => {
-    let cancelled = false
+    let cancelled = false;
     const timer = setTimeout(() => {
       void (async () => {
         try {
-          const markdownToHtml = await loadMarkdownToHtml()
-          let rendered = await markdownToHtml(body)
+          const markdownToHtml = await loadMarkdownToHtml();
+          let rendered = await markdownToHtml(body);
           // アップロード済み画像の参照パスをブラウザ内のBlob URLへ差し替える
           // （パスは [a-z0-9_./-] のみ＝HTML属性値として安全。SPEC §11）
           for (const [path, url] of Object.entries(imageUrls)) {
-            rendered = rendered.split(`src="${path}"`).join(`src="${url}"`)
+            rendered = rendered.split(`src="${path}"`).join(`src="${url}"`);
           }
-          if (!cancelled) setHtml(rendered)
+          if (!cancelled) setHtml(rendered);
         } catch {
-          if (!cancelled) setHtml('<p>プレビューの変換に失敗しました</p>')
+          if (!cancelled) setHtml("<p>プレビューの変換に失敗しました</p>");
         }
-      })()
-    }, 300)
+      })();
+    }, 300);
     return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [body, imageUrls])
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [body, imageUrls]);
 
   return (
     <div
       className="h-full overflow-y-auto p-4"
       // ライト背景固定はテーマ例外（SPEC-zenn-integration §3.4）
-      style={{ backgroundColor: '#ffffff', color: '#000000' }}
+      style={{ backgroundColor: "#ffffff", color: "#000000" }}
       aria-label="Zennプレビュー"
     >
-      {body.trim() === '' ? (
-        <p className="text-sm" style={{ color: '#65717b' }}>
+      {body.trim() === "" ? (
+        <p className="text-sm" style={{ color: "#65717b" }}>
           本文を入力するとZennと同じ見た目のプレビューが表示されます
         </p>
       ) : (
         <div className="znc" dangerouslySetInnerHTML={{ __html: html }} />
       )}
     </div>
-  )
+  );
 }

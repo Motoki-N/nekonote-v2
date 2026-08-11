@@ -19,7 +19,9 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string; returnTo?: string }>;
 }) {
   const { error, returnTo } = await searchParams;
-  const errorMessage = error ? (ERROR_MESSAGES[error] ?? ERROR_MESSAGES.signin_failed) : null;
+  const errorMessage = error
+    ? (ERROR_MESSAGES[error] ?? ERROR_MESSAGES.signin_failed)
+    : null;
 
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8">

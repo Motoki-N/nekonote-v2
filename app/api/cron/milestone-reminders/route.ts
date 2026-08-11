@@ -3,14 +3,20 @@ import { timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 
 import { sendMilestoneReminderEmail } from "@/lib/email";
-import { isMilestoneAchieved, scheduleSchema, type Schedule } from "@/lib/schemas/schedule";
+import {
+  isMilestoneAchieved,
+  scheduleSchema,
+  type Schedule,
+} from "@/lib/schemas/schedule";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
 /** JST基準の今日（YYYY-MM-DD。cron はUTCで動くため明示する） */
 function jstDate(at: Date): string {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(at);
+  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
+    at,
+  );
 }
 
 /** 日付文字列（YYYY-MM-DD）同士の差（日数） */
@@ -41,7 +47,11 @@ function safeEqual(a: string, b: string): boolean {
 export async function GET(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
   const authHeader = request.headers.get("authorization");
-  if (!cronSecret || !authHeader || !safeEqual(authHeader, `Bearer ${cronSecret}`)) {
+  if (
+    !cronSecret ||
+    !authHeader ||
+    !safeEqual(authHeader, `Bearer ${cronSecret}`)
+  ) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
@@ -65,7 +75,13 @@ export async function GET(request: NextRequest) {
           .select("project_id, date, total_chars")
           .in("project_id", projectIds)
           .order("date", { ascending: false })
-      : { data: [] as { project_id: string; date: string; total_chars: number }[] };
+      : {
+          data: [] as {
+            project_id: string;
+            date: string;
+            total_chars: number;
+          }[],
+        };
   // 降順で走査するため、project_id ごとに最初に見つかった行が最新
   const latestCharsByProject = new Map<string, number>();
   for (const row of progressRows ?? []) {
@@ -91,11 +107,14 @@ export async function GET(request: NextRequest) {
     if (targets.length === 0) continue;
 
     if (!emailByUser.has(project.user_id)) {
-      const { data: userData, error: userError } = await supabase.auth.admin.getUserById(
-        project.user_id,
-      );
+      const { data: userData, error: userError } =
+        await supabase.auth.admin.getUserById(project.user_id);
       if (userError) {
-        console.error("milestone-reminders: ユーザー取得失敗", project.user_id, userError);
+        console.error(
+          "milestone-reminders: ユーザー取得失敗",
+          project.user_id,
+          userError,
+        );
       }
       emailByUser.set(project.user_id, userData?.user?.email ?? null);
     }
@@ -115,7 +134,11 @@ export async function GET(request: NextRequest) {
       emailsSent += 1;
       remindersSent += targets.length;
     } catch (sendError) {
-      console.error("milestone-reminders: メール送信失敗", project.id, sendError);
+      console.error(
+        "milestone-reminders: メール送信失敗",
+        project.id,
+        sendError,
+      );
       continue;
     }
 
@@ -123,18 +146,24 @@ export async function GET(request: NextRequest) {
     const schedule: Schedule = {
       ...parsed.data,
       milestones: parsed.data.milestones.map((milestone) =>
-        remindedIds.has(milestone.id) ? { ...milestone, remindedAt: today } : milestone,
+        remindedIds.has(milestone.id)
+          ? { ...milestone, remindedAt: today }
+          : milestone,
       ),
       // toggleMilestone と同じ楽観ロック流儀（更新の事実を savedAt に刻む）
       savedAt: new Date().toISOString(),
-    }
+    };
     const { error: updateError } = await supabase
       .from("projects")
       .update({ schedule })
       .eq("id", project.id)
       .eq("schedule->>savedAt", parsed.data.savedAt);
     if (updateError) {
-      console.error("milestone-reminders: remindedAt更新失敗", project.id, updateError);
+      console.error(
+        "milestone-reminders: remindedAt更新失敗",
+        project.id,
+        updateError,
+      );
     }
   }
 
