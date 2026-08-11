@@ -40,7 +40,7 @@ export type RepoSetupResult = {
  * 原稿リポジトリの初期セットアップ（SPEC-repo-setup §4）。
  * テンプレート（docs/templates/manuscript-repo/）を作品情報に置換して展開し、
  * 既存ファイルは全件 backup-<日時>/ へ退避。全変更を Git Data API の1コミットで反映し、
- * 成功後に base_path を manuscripts へ自動設定する
+ * 成功後に base_path を空（リポジトリルート）へ自動設定する
  */
 export async function setupManuscriptRepo(
   projectId: string,
@@ -127,10 +127,13 @@ export async function setupManuscriptRepo(
     })
     await updateBranchRef(token, repo, branch, commitSha)
 
-    // テンプレートは原稿を manuscripts/ 配下に置く構成のため base_path を自動設定（SPEC §4.1）
+    // base_path はプロジェクトルート（book.config.js のある階層）を指す規約
+    // （SPEC-vertical-editor-phase2 §7）。テンプレートはリポジトリルートに展開する
+    // ため空（ルート）を設定する。'manuscripts' を設定するとエディタが章を
+    // `manuscripts/manuscripts/` に探して章一覧が空になる（Issue #176）
     const { error: updateError } = await supabase
       .from('projects')
-      .update({ base_path: 'manuscripts' })
+      .update({ base_path: '' })
       .eq('id', pid)
     if (updateError) throw new AppError('internal', updateError.message)
 

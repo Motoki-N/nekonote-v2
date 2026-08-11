@@ -110,7 +110,7 @@ export function RepoSetupDialog({
           </label>
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
             <li>リポジトリに既にファイルがある場合、全ファイルを backup-日時/ へ退避してから展開します</li>
-            <li>完了時に原稿フォルダ（base_path）は manuscripts に設定されます</li>
+            <li>完了時に原稿フォルダ（base_path）は空（リポジトリルート）に設定されます</li>
             <li>PATに Contents と Workflows の Read and write 権限が必要です</li>
           </ul>
           <DialogFooter>
