@@ -4,10 +4,10 @@ import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
 import type { ThemeAssets } from "@/lib/editor/preview";
 import { resolveThemeAssets } from "@/lib/editor/theme";
-import { patCredentialProvider } from "@/lib/git/credentials";
 import { getBranchHeadSha, getDefaultBranch } from "@/lib/git/github";
+import { loadProjectGitOrGate } from "@/lib/git/project-context";
 import { createClient } from "@/lib/supabase/server";
-import { uuidSchema, parseBranch, listChapters } from "./context";
+import { parseBranch, listChapters } from "./context";
 import type { EditorContext, EditorChapter } from "./context";
 
 export type EditorWorkspaceData =
@@ -36,7 +36,6 @@ export async function getEditorWorkspace(
   branch?: string,
 ): Promise<ActionResult<EditorWorkspaceData>> {
   try {
-    const pid = uuidSchema.parse(projectId);
     const supabase = await createClient();
 
     // middleware・RLSに加えた明示チェック（SPEC-auth §3.3 の多層防御）
@@ -45,23 +44,14 @@ export async function getEditorWorkspace(
     } = await supabase.auth.getUser();
     if (!user) throw new AppError("unauthorized", "ログインが必要です");
 
-    const { data: project, error } = await supabase
-      .from("projects")
-      .select("id, repo, base_path")
-      .eq("id", pid)
-      .maybeSingle();
-    if (error) throw new AppError("internal", error.message);
-    if (!project)
-      throw new AppError("not_found", "プロジェクトが見つかりません");
-    if (!project.repo) return { ok: true, data: { gate: "no_repo" } };
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) return { ok: true, data: { gate: "no_pat" } };
+    const gitCtx = await loadProjectGitOrGate(supabase, projectId);
+    if (gitCtx.gate !== "ok") return { ok: true, data: { gate: gitCtx.gate } };
 
     const ctx: EditorContext = {
       userId: user.id,
-      repo: project.repo,
-      basePath: (project.base_path ?? "").replace(/\/$/, ""),
-      token: credential.token,
+      repo: gitCtx.repo,
+      basePath: gitCtx.basePath,
+      token: gitCtx.token,
     };
     // ブランチ解決（SPEC-phase5 §3.1）。存在しない・不正なブランチはデフォルトへ
     // フォールバックする（URL直打ちでエディタ全体をエラーにしない）

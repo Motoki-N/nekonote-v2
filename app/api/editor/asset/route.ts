@@ -3,7 +3,10 @@ import { z } from "zod";
 
 import { joinRepoPath } from "@/lib/editor/book-config";
 import { AppError, errorResponse } from "@/lib/errors";
-import { patCredentialProvider } from "@/lib/git/credentials";
+import {
+  fetchProjectGitFields,
+  resolveRepoGit,
+} from "@/lib/git/project-context";
 import { getRawFileBytes } from "@/lib/git/github";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { gitBranchNameSchema } from "@/lib/schemas/manuscript";
@@ -63,30 +66,13 @@ export async function GET(request: NextRequest) {
     enforceRateLimit(user.id, "editor-asset", { perMinute: 120, perDay: 3000 });
 
     // RLS越しの取得＝所有確認を兼ねる
-    const { data: project, error } = await supabase
-      .from("projects")
-      .select("id, repo, base_path")
-      .eq("id", projectId)
-      .maybeSingle();
-    if (error) throw new AppError("internal", error.message);
-    if (!project)
-      throw new AppError("not_found", "プロジェクトが見つかりません");
-    if (!project.repo)
-      throw new AppError("validation", "リポジトリが設定されていません");
+    const project = await fetchProjectGitFields(supabase, projectId);
+    const { repo, basePath, token } = await resolveRepoGit(supabase, project);
 
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) throw new AppError("validation", "GitHub PATが未登録です");
-
-    const basePath = (project.base_path ?? "").replace(/\/$/, "");
     const fullPath = joinRepoPath(basePath, assetPath);
     if (!fullPath) throw new AppError("validation", "パスが不正です");
 
-    const bytes = await getRawFileBytes(
-      credential.token,
-      project.repo,
-      fullPath,
-      branch,
-    );
+    const bytes = await getRawFileBytes(token, repo, fullPath, branch);
     return new Response(bytes, {
       headers: {
         "Content-Type": contentType,

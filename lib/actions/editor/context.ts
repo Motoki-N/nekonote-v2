@@ -7,13 +7,12 @@ import {
   extractThemePath,
   joinRepoPath,
 } from "@/lib/editor/book-config";
-import { patCredentialProvider } from "@/lib/git/credentials";
 import { getFileContent, getManuscriptTree } from "@/lib/git/github";
+import { loadProjectGitContext } from "@/lib/git/project-context";
 import {
   gitBranchNameSchema,
   manuscriptFilePathSchema,
 } from "@/lib/schemas/manuscript";
-import { createClient } from "@/lib/supabase/server";
 
 // 縦書きエディタの Server Actions（SPEC-vertical-editor-phase2）。
 // 原稿の実体は常にGitHub（読み書きとも Contents API 経由・DBには置かない）
@@ -83,37 +82,11 @@ export type EditorContext = {
 export async function loadEditorContext(
   projectId: string,
 ): Promise<EditorContext> {
-  const pid = uuidSchema.parse(projectId);
-  const supabase = await createClient();
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new AppError("unauthorized", "ログインが必要です");
-
-  const { data: project, error } = await supabase
-    .from("projects")
-    .select("id, repo, base_path")
-    .eq("id", pid)
-    .maybeSingle();
-  if (error) throw new AppError("internal", error.message);
-  if (!project) throw new AppError("not_found", "プロジェクトが見つかりません");
-  if (!project.repo)
-    throw new AppError("validation", "リポジトリが設定されていません");
-
-  const credential = await patCredentialProvider.getCredential(supabase);
-  if (!credential)
-    throw new AppError(
-      "validation",
-      "GitHub PATが未登録です。設定から登録してください",
-    );
-
-  return {
-    userId: user.id,
-    repo: project.repo,
-    basePath: (project.base_path ?? "").replace(/\/$/, ""),
-    token: credential.token,
-  };
+  const { userId, repo, basePath, token } = await loadProjectGitContext(
+    projectId,
+    { patMessage: "GitHub PATが未登録です。設定から登録してください" },
+  );
+  return { userId, repo, basePath, token };
 }
 
 /** 章ファイルパスの検証（base_path 配下の manuscripts/*.md のみ許可） */
