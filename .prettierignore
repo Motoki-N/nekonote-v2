@@ -1,0 +1,8 @@
+# ビルド成果物・生成物
+.next/
+node_modules/
+lib/database.types.ts
+# ベンダリング済み（Vivliostyle Viewer・テーマ。上流の形式を保つ）
+public/vivliostyle/
+# ドキュメント（手書き追記運用の dev-log 等・CJK表の整形が非冪等なため対象外）
+docs/

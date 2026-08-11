@@ -45,7 +45,9 @@ export function TrashCard({ note }: { note: NoteListItem }) {
   return (
     <li className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex min-w-0 flex-col gap-1.5">
-        <span className="font-medium text-card-foreground">{note.title || "無題"}</span>
+        <span className="font-medium text-card-foreground">
+          {note.title || "無題"}
+        </span>
         {note.content && (
           <span className="line-clamp-1 text-sm text-muted-foreground">
             {excerpt(note.content)}
@@ -76,12 +78,15 @@ export function TrashCard({ note }: { note: NoteListItem }) {
             <AlertDialogHeader>
               <AlertDialogTitle>ノートを完全に削除しますか？</AlertDialogTitle>
               <AlertDialogDescription>
-                「{note.title || "無題"}」を完全に削除します。この操作は元に戻せません（タグ自体は残ります）。
+                「{note.title || "無題"}
+                」を完全に削除します。この操作は元に戻せません（タグ自体は残ります）。
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>キャンセル</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete}>完全に削除する</AlertDialogAction>
+              <AlertDialogAction onClick={handleDelete}>
+                完全に削除する
+              </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

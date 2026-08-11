@@ -1,11 +1,11 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { ExternalLink, Loader2 } from 'lucide-react'
-import { toast } from 'sonner'
+import { useState } from "react";
+import { ExternalLink, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 
-import { createEditorPullRequest } from '@/lib/actions/editor'
-import { Button } from '@/components/ui/button'
+import { createEditorPullRequest } from "@/lib/actions/editor";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -13,9 +13,9 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Textarea } from '@/components/ui/textarea'
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 
 /**
  * Pull Request 作成ダイアログ（SPEC-vertical-editor-phase5 §3.3）。
@@ -29,11 +29,11 @@ export function PrCreateDialog({
   open,
   onOpenChange,
 }: {
-  projectId: string
-  branch: string
-  defaultBranch: string
-  open: boolean
-  onOpenChange: (open: boolean) => void
+  projectId: string;
+  branch: string;
+  defaultBranch: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -46,7 +46,7 @@ export function PrCreateDialog({
         />
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function PrCreateForm({
@@ -55,41 +55,49 @@ function PrCreateForm({
   defaultBranch,
   onClose,
 }: {
-  projectId: string
-  branch: string
-  defaultBranch: string
-  onClose: () => void
+  projectId: string;
+  branch: string;
+  defaultBranch: string;
+  onClose: () => void;
 }) {
-  const [title, setTitle] = useState(`原稿: ${branch} の変更`)
-  const [body, setBody] = useState('')
-  const [creating, setCreating] = useState(false)
-  const [created, setCreated] = useState<{ number: number; url: string } | null>(null)
+  const [title, setTitle] = useState(`原稿: ${branch} の変更`);
+  const [body, setBody] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [created, setCreated] = useState<{
+    number: number;
+    url: string;
+  } | null>(null);
 
   const submit = async () => {
-    setCreating(true)
+    setCreating(true);
     try {
       const result = await createEditorPullRequest(projectId, {
         branch,
         title: title.trim(),
         body,
-      })
+      });
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? 'Pull Request の作成に失敗しました' : result.error.message)
-        return
+        toast.error(
+          result.ok
+            ? "Pull Request の作成に失敗しました"
+            : result.error.message,
+        );
+        return;
       }
-      setCreated(result.data)
-      toast.success(`Pull Request #${result.data.number} を作成しました`)
+      setCreated(result.data);
+      toast.success(`Pull Request #${result.data.number} を作成しました`);
     } finally {
-      setCreating(false)
+      setCreating(false);
     }
-  }
+  };
 
   return (
     <>
       <DialogHeader>
         <DialogTitle>Pull Request を作成</DialogTitle>
         <DialogDescription>
-          {branch} → {defaultBranch} のPRを作成します。マージはGitHub側で行ってください
+          {branch} → {defaultBranch}{" "}
+          のPRを作成します。マージはGitHub側で行ってください
         </DialogDescription>
       </DialogHeader>
 
@@ -98,8 +106,8 @@ function PrCreateForm({
           id="editor-pr-create-form"
           className="flex flex-col gap-3"
           onSubmit={(event) => {
-            event.preventDefault()
-            if (title.trim().length > 0) void submit()
+            event.preventDefault();
+            if (title.trim().length > 0) void submit();
           }}
         >
           <label className="flex flex-col gap-1.5 text-sm text-foreground">
@@ -125,7 +133,9 @@ function PrCreateForm({
         </form>
       ) : (
         <div className="flex flex-col gap-2">
-          <p className="text-sm text-foreground">Pull Request #{created.number} を作成しました。</p>
+          <p className="text-sm text-foreground">
+            Pull Request #{created.number} を作成しました。
+          </p>
           <a
             href={created.url}
             target="_blank"
@@ -141,7 +151,12 @@ function PrCreateForm({
       <DialogFooter>
         {created === null ? (
           <>
-            <Button variant="outline" size="sm" disabled={creating} onClick={onClose}>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={creating}
+              onClick={onClose}
+            >
               キャンセル
             </Button>
             <Button
@@ -150,7 +165,9 @@ function PrCreateForm({
               size="sm"
               disabled={creating || title.trim().length === 0}
             >
-              {creating && <Loader2 data-icon="inline-start" className="animate-spin" />}
+              {creating && (
+                <Loader2 data-icon="inline-start" className="animate-spin" />
+              )}
               作成
             </Button>
           </>
@@ -161,5 +178,5 @@ function PrCreateForm({
         )}
       </DialogFooter>
     </>
-  )
+  );
 }

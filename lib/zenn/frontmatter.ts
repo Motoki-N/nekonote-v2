@@ -1,6 +1,6 @@
-import 'server-only'
+import "server-only";
 
-import type { ZennArticle } from '@/lib/schemas/zenn'
+import type { ZennArticle } from "@/lib/schemas/zenn";
 
 /**
  * Zenn記事ファイル（frontmatter＋本文）の合成（SPEC-zenn-integration §5）。
@@ -10,14 +10,14 @@ import type { ZennArticle } from '@/lib/schemas/zenn'
  */
 export function buildZennArticleFile(article: ZennArticle): string {
   return [
-    '---',
+    "---",
     `title: ${JSON.stringify(article.title)}`,
     `emoji: ${JSON.stringify(article.emoji)}`,
     `type: ${JSON.stringify(article.type)}`,
     `topics: ${JSON.stringify(article.topics)}`,
     `published: ${article.published}`,
-    '---',
-    '',
+    "---",
+    "",
     article.body,
-  ].join('\n')
+  ].join("\n");
 }

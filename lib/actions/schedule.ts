@@ -1,20 +1,20 @@
-'use server'
+"use server";
 
-import { revalidatePath } from 'next/cache'
-import { z } from 'zod'
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
-import { AppError, toActionError } from '@/lib/errors'
-import type { ActionResult } from '@/lib/errors'
-import { scheduleSchema } from '@/lib/schemas/schedule'
-import { createClient } from '@/lib/supabase/server'
+import { AppError, toActionError } from "@/lib/errors";
+import type { ActionResult } from "@/lib/errors";
+import { scheduleSchema } from "@/lib/schemas/schedule";
+import { createClient } from "@/lib/supabase/server";
 
-const uuidSchema = z.uuid()
+const uuidSchema = z.uuid();
 
 /** 不正なidは validation として返す（parse の throw だと internal に化けるため） */
 function parseUuid(value: string, label: string): string {
-  const parsed = uuidSchema.safeParse(value)
-  if (!parsed.success) throw new AppError('validation', `${label}が不正です`)
-  return parsed.data
+  const parsed = uuidSchema.safeParse(value);
+  if (!parsed.success) throw new AppError("validation", `${label}が不正です`);
+  return parsed.data;
 }
 
 /**
@@ -27,51 +27,60 @@ export async function toggleMilestone(
   done: boolean,
 ): Promise<ActionResult> {
   try {
-    const id = parseUuid(projectId, 'プロジェクトid')
-    const targetId = parseUuid(milestoneId, 'マイルストーンid')
-    const supabase = await createClient()
+    const id = parseUuid(projectId, "プロジェクトid");
+    const targetId = parseUuid(milestoneId, "マイルストーンid");
+    const supabase = await createClient();
 
     const { data: project, error: selectError } = await supabase
-      .from('projects')
-      .select('schedule')
-      .eq('id', id)
-      .maybeSingle()
-    if (selectError) throw new AppError('internal', selectError.message)
-    if (!project) throw new AppError('not_found', 'プロジェクトが見つかりません')
+      .from("projects")
+      .select("schedule")
+      .eq("id", id)
+      .maybeSingle();
+    if (selectError) throw new AppError("internal", selectError.message);
+    if (!project)
+      throw new AppError("not_found", "プロジェクトが見つかりません");
 
     // jsonb は器のみ＝読み出し時に必ずスキーマを通す（不正データは validation）
-    const parsed = scheduleSchema.safeParse(project.schedule)
-    if (!parsed.success) throw new AppError('validation', 'スケジュールが保存されていません')
-    if (!parsed.data.milestones.some((milestone) => milestone.id === targetId)) {
-      throw new AppError('not_found', 'マイルストーンが見つかりません')
+    const parsed = scheduleSchema.safeParse(project.schedule);
+    if (!parsed.success)
+      throw new AppError("validation", "スケジュールが保存されていません");
+    if (
+      !parsed.data.milestones.some((milestone) => milestone.id === targetId)
+    ) {
+      throw new AppError("not_found", "マイルストーンが見つかりません");
     }
 
     const schedule = {
       ...parsed.data,
       milestones: parsed.data.milestones.map((milestone) =>
-        milestone.id === targetId ? { ...milestone, done: Boolean(done) } : milestone,
+        milestone.id === targetId
+          ? { ...milestone, done: Boolean(done) }
+          : milestone,
       ),
       // savedAt は「最終書き込み日時」＝楽観ロックのリビジョンを兼ねるため、トグルでも進める
       savedAt: new Date().toISOString(),
-    }
+    };
     // savedAt の楽観比較: select→update の間に別の書き込み（チャット確定の丸ごと上書き、
     // 別タブ・別デバイスでのトグル）が走った場合に古い schedule で巻き戻さない
     // （0件更新 = 別の書き込みが先行 → conflict）。全書き込み経路が savedAt を更新する前提
     const { data: updated, error: updateError } = await supabase
-      .from('projects')
+      .from("projects")
       .update({ schedule })
-      .eq('id', id)
-      .eq('schedule->>savedAt', parsed.data.savedAt)
-      .select('id')
-    if (updateError) throw new AppError('internal', updateError.message)
+      .eq("id", id)
+      .eq("schedule->>savedAt", parsed.data.savedAt)
+      .select("id");
+    if (updateError) throw new AppError("internal", updateError.message);
     if (!updated || updated.length === 0) {
-      throw new AppError('conflict', 'スケジュールが更新されています。画面を再読み込みしてください')
+      throw new AppError(
+        "conflict",
+        "スケジュールが更新されています。画面を再読み込みしてください",
+      );
     }
 
-    revalidatePath('/')
-    return { ok: true }
+    revalidatePath("/");
+    return { ok: true };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -84,22 +93,22 @@ export async function toggleMilestone(
  */
 export async function deleteSchedule(projectId: string): Promise<ActionResult> {
   try {
-    const id = parseUuid(projectId, 'プロジェクトid')
-    const supabase = await createClient()
+    const id = parseUuid(projectId, "プロジェクトid");
+    const supabase = await createClient();
 
     const { data: updated, error } = await supabase
-      .from('projects')
+      .from("projects")
       .update({ schedule: null })
-      .eq('id', id)
-      .select('id')
-    if (error) throw new AppError('internal', error.message)
+      .eq("id", id)
+      .select("id");
+    if (error) throw new AppError("internal", error.message);
     if (!updated || updated.length === 0) {
-      throw new AppError('not_found', 'プロジェクトが見つかりません')
+      throw new AppError("not_found", "プロジェクトが見つかりません");
     }
 
-    revalidatePath('/')
-    return { ok: true }
+    revalidatePath("/");
+    return { ok: true };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }

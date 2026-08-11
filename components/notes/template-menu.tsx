@@ -39,7 +39,10 @@ export function TemplateMenu({
       />
       <DropdownMenuContent align="end">
         {templates.map((template) => (
-          <DropdownMenuItem key={template.id} onClick={() => onInsert(template)}>
+          <DropdownMenuItem
+            key={template.id}
+            onClick={() => onInsert(template)}
+          >
             {template.name}
           </DropdownMenuItem>
         ))}

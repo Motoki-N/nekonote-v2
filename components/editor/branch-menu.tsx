@@ -1,10 +1,10 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Check, GitBranch, GitPullRequest, Loader2, Plus } from 'lucide-react'
+import { useState } from "react";
+import { Check, GitBranch, GitPullRequest, Loader2, Plus } from "lucide-react";
 
-import { listEditorBranches } from '@/lib/actions/editor'
-import { Button } from '@/components/ui/button'
+import { listEditorBranches } from "@/lib/actions/editor";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +13,7 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
+} from "@/components/ui/dropdown-menu";
 
 /**
  * ブランチセレクタ（SPEC-vertical-editor-phase5 §3.1）。章一覧サイドバー上部に置き、
@@ -28,29 +28,31 @@ export function BranchMenu({
   onCreateRequest,
   onPrRequest,
 }: {
-  projectId: string
-  branch: string
-  defaultBranch: string
+  projectId: string;
+  branch: string;
+  defaultBranch: string;
   /** 切替中はトリガーを無効化する */
-  switching: boolean
-  onSwitch: (branch: string) => void
-  onCreateRequest: () => void
-  onPrRequest: () => void
+  switching: boolean;
+  onSwitch: (branch: string) => void;
+  onCreateRequest: () => void;
+  onPrRequest: () => void;
 }) {
-  const [branches, setBranches] = useState<string[] | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const [branches, setBranches] = useState<string[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const loadBranches = () => {
-    setBranches(null)
-    setLoadError(null)
+    setBranches(null);
+    setLoadError(null);
     void listEditorBranches(projectId).then((result) => {
       if (!result.ok || !result.data) {
-        setLoadError(result.ok ? 'ブランチ一覧の取得に失敗しました' : result.error.message)
-        return
+        setLoadError(
+          result.ok ? "ブランチ一覧の取得に失敗しました" : result.error.message,
+        );
+        return;
       }
-      setBranches(result.data.branches)
-    })
-  }
+      setBranches(result.data.branches);
+    });
+  };
 
   return (
     <DropdownMenu onOpenChange={(open) => open && loadBranches()}>
@@ -87,10 +89,19 @@ export function BranchMenu({
           <p className="px-2 py-1.5 text-sm text-destructive">{loadError}</p>
         )}
         {branches?.map((name) => (
-          <DropdownMenuItem key={name} onClick={() => name !== branch && onSwitch(name)}>
+          <DropdownMenuItem
+            key={name}
+            onClick={() => name !== branch && onSwitch(name)}
+          >
             <span className="flex w-full min-w-0 items-center gap-2">
               {/* 現在ブランチの印（幅は常に確保して名前の頭を揃える） */}
-              <Check className={name === branch ? 'size-4 shrink-0' : 'size-4 shrink-0 opacity-0'} />
+              <Check
+                className={
+                  name === branch
+                    ? "size-4 shrink-0"
+                    : "size-4 shrink-0 opacity-0"
+                }
+              />
               <span className="min-w-0 truncate">{name}</span>
               {name === defaultBranch && (
                 <span className="ml-auto shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
@@ -108,7 +119,10 @@ export function BranchMenu({
           </span>
         </DropdownMenuItem>
         {/* PRの base はデフォルトブランチ固定のため、デフォルトを開いている間は無効 */}
-        <DropdownMenuItem disabled={branch === defaultBranch} onClick={onPrRequest}>
+        <DropdownMenuItem
+          disabled={branch === defaultBranch}
+          onClick={onPrRequest}
+        >
           <span className="flex items-center gap-2">
             <GitPullRequest className="size-4 shrink-0" />
             Pull Request を作成…
@@ -116,5 +130,5 @@ export function BranchMenu({
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
-  )
+  );
 }

@@ -18,7 +18,11 @@ import { toast } from "sonner";
 import { refreshWritingProgress } from "@/lib/actions/manuscripts";
 import { deleteSchedule, toggleMilestone } from "@/lib/actions/schedule";
 import type { ProposalStatus } from "@/lib/schemas/enums";
-import { isMilestoneAchieved, type Milestone, type Schedule } from "@/lib/schemas/schedule";
+import {
+  isMilestoneAchieved,
+  type Milestone,
+  type Schedule,
+} from "@/lib/schemas/schedule";
 import { deltaSince } from "@/lib/writing-progress";
 import {
   AlertDialog,
@@ -33,7 +37,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { ProposalStatusBadge } from "@/components/projects/status-badges";
-import { ProgressLine, type ProgressPoint } from "@/components/dashboard/progress-line";
+import {
+  ProgressLine,
+  type ProgressPoint,
+} from "@/components/dashboard/progress-line";
 
 export type DashboardProject = {
   id: string;
@@ -56,14 +63,23 @@ export type DashboardProject = {
 
 // YYYY-MM-DD は new Date() でUTC深夜になるため、UTCのまま整形して端末TZの影響を受けない
 // （日数判定 daysUntil の文字列比較とも整合。UTCより西のTZで1日前に表示される問題の回避）
-const dateFormat = new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeZone: "UTC" });
+const dateFormat = new Intl.DateTimeFormat("ja-JP", {
+  dateStyle: "medium",
+  timeZone: "UTC",
+});
 
 /** 日付文字列（YYYY-MM-DD）同士の差（日数）。時刻・タイムゾーンの影響を受けない */
 function daysUntil(deadline: string, today: string): number {
   return Math.round((Date.parse(deadline) - Date.parse(today)) / 86_400_000);
 }
 
-function DeadlineCountdown({ deadline, today }: { deadline: string; today: string }) {
+function DeadlineCountdown({
+  deadline,
+  today,
+}: {
+  deadline: string;
+  today: string;
+}) {
   const days = daysUntil(deadline, today);
   const overdue = days < 0;
   return (
@@ -72,7 +88,8 @@ function DeadlineCountdown({ deadline, today }: { deadline: string; today: strin
     >
       <CalendarDays className="size-3" />
       {dateFormat.format(new Date(deadline))}（
-      {overdue ? `${-days}日超過` : days === 0 ? "今日が締切" : `あと${days}日`}）
+      {overdue ? `${-days}日超過` : days === 0 ? "今日が締切" : `あと${days}日`}
+      ）
     </span>
   );
 }
@@ -121,7 +138,11 @@ function ScheduleBlock({
     if (busy) return;
     setBusy(true);
     try {
-      const result = await toggleMilestone(projectId, milestone.id, !milestone.done);
+      const result = await toggleMilestone(
+        projectId,
+        milestone.id,
+        !milestone.done,
+      );
       if (!result.ok) {
         toast.error(result.error.message);
         return;
@@ -152,7 +173,9 @@ function ScheduleBlock({
     <div className="flex flex-col gap-2 rounded-md border border-border bg-background p-3">
       <div className="flex items-center gap-1.5">
         <CalendarCheck className="size-3.5 text-muted-foreground" />
-        <span className="text-xs font-medium text-card-foreground">執筆スケジュール</span>
+        <span className="text-xs font-medium text-card-foreground">
+          執筆スケジュール
+        </span>
         <AlertDialog>
           <AlertDialogTrigger
             render={
@@ -169,14 +192,19 @@ function ScheduleBlock({
           />
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>執筆スケジュールを削除しますか？</AlertDialogTitle>
+              <AlertDialogTitle>
+                執筆スケジュールを削除しますか？
+              </AlertDialogTitle>
               <AlertDialogDescription>
                 マイルストーンと日次目標がこのプロジェクトから消えます。この操作は元に戻せません（アシスタントに相談すれば新しく作り直せます）。
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>キャンセル</AlertDialogCancel>
-              <AlertDialogAction variant="destructive" onClick={() => void handleDelete()}>
+              <AlertDialogAction
+                variant="destructive"
+                onClick={() => void handleDelete()}
+              >
                 削除する
               </AlertDialogAction>
             </AlertDialogFooter>
@@ -187,7 +215,8 @@ function ScheduleBlock({
       {schedule.dailyTargetChars !== null && (
         <p className="text-xs text-muted-foreground">
           1日あたり目標 {schedule.dailyTargetChars.toLocaleString("ja-JP")}字
-          {pace !== null && `（直近7日の実ペース 約${pace.toLocaleString("ja-JP")}字/日）`}
+          {pace !== null &&
+            `（直近7日の実ペース 約${pace.toLocaleString("ja-JP")}字/日）`}
         </p>
       )}
 
@@ -197,7 +226,10 @@ function ScheduleBlock({
             const achieved = isMilestoneAchieved(milestone, latestTotal);
             const overdue = daysUntil(milestone.dueDate, today) < 0;
             return (
-              <li key={milestone.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
+              <li
+                key={milestone.id}
+                className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs"
+              >
                 <input
                   type="checkbox"
                   className="size-3.5 shrink-0 accent-primary"
@@ -208,13 +240,19 @@ function ScheduleBlock({
                 />
                 <span
                   className={
-                    achieved ? "text-muted-foreground line-through" : "text-card-foreground"
+                    achieved
+                      ? "text-muted-foreground line-through"
+                      : "text-card-foreground"
                   }
                 >
                   {milestone.label}
                 </span>
                 <span className="ml-auto flex shrink-0 items-center gap-2 text-muted-foreground">
-                  <span className={overdue && !achieved ? "font-medium text-destructive" : ""}>
+                  <span
+                    className={
+                      overdue && !achieved ? "font-medium text-destructive" : ""
+                    }
+                  >
                     {dueLabel(milestone.dueDate, today)}
                   </span>
                   {milestone.targetChars !== null &&
@@ -264,7 +302,9 @@ export function ProjectOverviewCard({
         toast.error(result.ok ? "集計に失敗しました" : result.error.message);
         return;
       }
-      toast(`約${result.data.totalChars.toLocaleString("ja-JP")}字を記録しました`);
+      toast(
+        `約${result.data.totalChars.toLocaleString("ja-JP")}字を記録しました`,
+      );
       router.refresh();
     } finally {
       setCollecting(false);
@@ -274,8 +314,12 @@ export function ProjectOverviewCard({
   return (
     <li className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-medium text-card-foreground">{project.title}</span>
-        {project.proposalStatus && <ProposalStatusBadge status={project.proposalStatus} />}
+        <span className="font-medium text-card-foreground">
+          {project.title}
+        </span>
+        {project.proposalStatus && (
+          <ProposalStatusBadge status={project.proposalStatus} />
+        )}
         {project.canCollect && (
           <Button
             size="xs"
@@ -296,7 +340,9 @@ export function ProjectOverviewCard({
 
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
         {project.event_name && <span>{project.event_name}</span>}
-        {project.deadline && <DeadlineCountdown deadline={project.deadline} today={today} />}
+        {project.deadline && (
+          <DeadlineCountdown deadline={project.deadline} today={today} />
+        )}
         {project.latest && (
           <span>
             {project.latest.totalChars.toLocaleString("ja-JP")}字（
@@ -306,7 +352,8 @@ export function ProjectOverviewCard({
         {project.targetChars !== null && (
           <span>
             目標 約{project.targetChars.toLocaleString("ja-JP")}字
-            {project.targetPages !== null && `（${project.targetPages}ページ換算）`}
+            {project.targetPages !== null &&
+              `（${project.targetPages}ページ換算）`}
           </span>
         )}
       </div>

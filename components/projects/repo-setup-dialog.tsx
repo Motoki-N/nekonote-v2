@@ -60,7 +60,9 @@ export function RepoSetupDialog({
         slug: slug.trim(),
       });
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? "セットアップに失敗しました" : result.error.message);
+        toast.error(
+          result.ok ? "セットアップに失敗しました" : result.error.message,
+        );
         return;
       }
       toast.success(
@@ -87,7 +89,11 @@ export function RepoSetupDialog({
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             作品タイトル（必須）
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} required />
+            <Input
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              required
+            />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             著者名（必須）
@@ -109,9 +115,16 @@ export function RepoSetupDialog({
             />
           </label>
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
-            <li>リポジトリに既にファイルがある場合、全ファイルを backup-日時/ へ退避してから展開します</li>
-            <li>完了時に原稿フォルダ（base_path）は空（リポジトリルート）に設定されます</li>
-            <li>PATに Contents と Workflows の Read and write 権限が必要です</li>
+            <li>
+              リポジトリに既にファイルがある場合、全ファイルを backup-日時/
+              へ退避してから展開します
+            </li>
+            <li>
+              完了時に原稿フォルダ（base_path）は空（リポジトリルート）に設定されます
+            </li>
+            <li>
+              PATに Contents と Workflows の Read and write 権限が必要です
+            </li>
           </ul>
           <DialogFooter>
             <Button

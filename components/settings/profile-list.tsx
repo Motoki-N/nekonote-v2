@@ -13,7 +13,12 @@ import {
   type PersonaRecord,
   type ReviewProfileRecord,
 } from "@/lib/actions/settings";
-import { targetPhases, writingGenres, type TargetPhase, type WritingGenre } from "@/lib/schemas/enums";
+import {
+  targetPhases,
+  writingGenres,
+  type TargetPhase,
+  type WritingGenre,
+} from "@/lib/schemas/enums";
 import { WRITING_GENRE_LABEL } from "@/lib/constants/proposal-template";
 import {
   AlertDialog,
@@ -38,7 +43,11 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { TARGET_PHASE_LABEL, genreScopeLabel, selectClass } from "@/components/settings/labels";
+import {
+  TARGET_PHASE_LABEL,
+  genreScopeLabel,
+  selectClass,
+} from "@/components/settings/labels";
 
 /**
  * レビュープロファイル管理（SPEC-dashboard-critique-settings §3.4）。
@@ -98,13 +107,18 @@ export function ProfileList({
           >
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <span className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-card-foreground">{profile.name}</span>
+                <span className="text-sm font-medium text-card-foreground">
+                  {profile.name}
+                </span>
                 {profile.is_default && <Badge variant="secondary">標準</Badge>}
               </span>
               <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                 <span>対象: {TARGET_PHASE_LABEL[profile.target_phase]}</span>
                 <span>ジャンル: {genreScopeLabel(profile.writing_genre)}</span>
-                <span>担当: {personaName(profile.default_persona_id) ?? "（既定なし）"}</span>
+                <span>
+                  担当:{" "}
+                  {personaName(profile.default_persona_id) ?? "（既定なし）"}
+                </span>
               </span>
             </div>
             <div className="flex items-center gap-0.5">
@@ -149,7 +163,9 @@ export function ProfileList({
                     />
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>「{profile.name}」を削除しますか？</AlertDialogTitle>
+                        <AlertDialogTitle>
+                          「{profile.name}」を削除しますか？
+                        </AlertDialogTitle>
                         <AlertDialogDescription>
                           このプロファイルで実行したレビュー履歴は削除されずに残ります。この操作は元に戻せません。
                         </AlertDialogDescription>
@@ -188,16 +204,24 @@ function ProfileDialog({
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(profile?.name ?? "");
-  const [targetPhase, setTargetPhase] = useState<TargetPhase>(profile?.target_phase ?? "proposal");
-  const [promptTemplate, setPromptTemplate] = useState(profile?.prompt_template ?? "");
-  const [defaultPersonaId, setDefaultPersonaId] = useState(profile?.default_persona_id ?? "");
+  const [targetPhase, setTargetPhase] = useState<TargetPhase>(
+    profile?.target_phase ?? "proposal",
+  );
+  const [promptTemplate, setPromptTemplate] = useState(
+    profile?.prompt_template ?? "",
+  );
+  const [defaultPersonaId, setDefaultPersonaId] = useState(
+    profile?.default_persona_id ?? "",
+  );
   // "" = 全ジャンル共通（writing_genre null。SPEC-genre-profiles）
   const [writingGenre, setWritingGenre] = useState<WritingGenre | "">(
     profile?.writing_genre ?? "",
   );
   const [submitting, setSubmitting] = useState(false);
 
-  const reviewerPersonas = personas.filter((p) => p.persona_type === "reviewer");
+  const reviewerPersonas = personas.filter(
+    (p) => p.persona_type === "reviewer",
+  );
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -219,7 +243,9 @@ function ProfileDialog({
         return;
       }
       setOpen(false);
-      toast(profile ? "プロファイルを更新しました" : "プロファイルを作成しました");
+      toast(
+        profile ? "プロファイルを更新しました" : "プロファイルを作成しました",
+      );
       router.refresh();
     } finally {
       setSubmitting(false);
@@ -231,12 +257,18 @@ function ProfileDialog({
       <DialogTrigger render={trigger} />
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>{profile ? "プロファイルを編集" : "新規プロファイル"}</DialogTitle>
+          <DialogTitle>
+            {profile ? "プロファイルを編集" : "新規プロファイル"}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             名前（必須）
-            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
           </label>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex flex-col gap-1 text-sm">
@@ -273,7 +305,9 @@ function ProfileDialog({
               <select
                 className={selectClass}
                 value={writingGenre}
-                onChange={(e) => setWritingGenre(e.target.value as WritingGenre | "")}
+                onChange={(e) =>
+                  setWritingGenre(e.target.value as WritingGenre | "")
+                }
               >
                 <option value="">共通（全ジャンル）</option>
                 {writingGenres.map((g) => (
@@ -296,7 +330,9 @@ function ProfileDialog({
           <DialogFooter>
             <Button
               type="submit"
-              disabled={submitting || name.trim() === "" || promptTemplate.trim() === ""}
+              disabled={
+                submitting || name.trim() === "" || promptTemplate.trim() === ""
+              }
             >
               {profile ? "保存する" : "作成する"}
             </Button>

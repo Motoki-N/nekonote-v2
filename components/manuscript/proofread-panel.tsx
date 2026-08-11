@@ -2,7 +2,15 @@
 
 import { useState } from "react";
 import { useObject } from "@ai-sdk/react";
-import { CircleStop, GitCommitHorizontal, Loader2, MessageSquareText, SpellCheck, TextSelect, X } from "lucide-react";
+import {
+  CircleStop,
+  GitCommitHorizontal,
+  Loader2,
+  MessageSquareText,
+  SpellCheck,
+  TextSelect,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -36,7 +44,9 @@ const suggestionsSchema = z.array(proofreadSuggestionSchema);
 /** /api/proofread の errorResponse（JSON）からユーザー向けメッセージを取り出す */
 function toDisplayError(error: Error): string {
   try {
-    const parsed = JSON.parse(error.message) as { error?: { message?: string } };
+    const parsed = JSON.parse(error.message) as {
+      error?: { message?: string };
+    };
     if (parsed.error?.message) return parsed.error.message;
   } catch {
     // JSON でなければ汎用文言にフォールバック
@@ -51,7 +61,10 @@ const STATUS_LABEL: Record<SuggestionStatus, string> = {
   rejected: "拒否",
 };
 
-const STATUS_VARIANT: Record<SuggestionStatus, "default" | "secondary" | "outline" | "destructive"> = {
+const STATUS_VARIANT: Record<
+  SuggestionStatus,
+  "default" | "secondary" | "outline" | "destructive"
+> = {
   pending: "secondary",
   on_hold: "outline",
   accepted: "default",
@@ -105,7 +118,9 @@ export function ProofreadPanel({
     onFinish: ({ object: finished, error: finishError }) => {
       // ストリームは正常終了したが最終検証に失敗（プロバイダエラー等で空のまま終了）
       if (!finished && finishError) {
-        setStreamError("校正の実行に失敗しました。時間をおいて再試行してください");
+        setStreamError(
+          "校正の実行に失敗しました。時間をおいて再試行してください",
+        );
       }
       // 保存済みの提案（statusつき）と最新原稿を取り直す。
       // サーバー側の保存（onFinish）はストリーム終了後に完了するため、
@@ -118,7 +133,8 @@ export function ProofreadPanel({
     },
   });
 
-  const busy = isLoading || refreshing || committing || writingBack || updatingId !== null;
+  const busy =
+    isLoading || refreshing || committing || writingBack || updatingId !== null;
   const streaming = isLoading ? (object ?? []) : null;
   const pendingCount = suggestions.filter((s) => s.status === "pending").length;
   const acceptedUncommitted = suggestions.filter(
@@ -151,7 +167,9 @@ export function ProofreadPanel({
     try {
       const result = await commitAcceptedSuggestions(linkId);
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? "コミットに失敗しました" : result.error.message);
+        toast.error(
+          result.ok ? "コミットに失敗しました" : result.error.message,
+        );
         return;
       }
       if (result.data.warning) {
@@ -170,13 +188,17 @@ export function ProofreadPanel({
     try {
       const result = await writeBackOnHoldSuggestions(linkId);
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? "書き戻しに失敗しました" : result.error.message);
+        toast.error(
+          result.ok ? "書き戻しに失敗しました" : result.error.message,
+        );
         return;
       }
       if (result.data.warning) {
         toast.warning(result.data.warning);
       } else {
-        toast(`保留${result.data.writtenCount}件をコメントとして書き戻しました`);
+        toast(
+          `保留${result.data.writtenCount}件をコメントとして書き戻しました`,
+        );
       }
       await onCompleted();
     } finally {
@@ -213,9 +235,15 @@ export function ProofreadPanel({
               「校正を受ける」で、校正さんが誤字脱字・表記揺れ・文法をチェックします
             </p>
           )}
-          {hasRun && !busy && pendingCount === 0 && streaming === null && !displayError && (
-            <p className="p-2 text-sm text-muted-foreground">指摘事項はありません</p>
-          )}
+          {hasRun &&
+            !busy &&
+            pendingCount === 0 &&
+            streaming === null &&
+            !displayError && (
+              <p className="p-2 text-sm text-muted-foreground">
+                指摘事項はありません
+              </p>
+            )}
           {streaming === null &&
             suggestions.map((s) => (
               <SavedSuggestionCard
@@ -224,7 +252,9 @@ export function ProofreadPanel({
                 applicable={isApplicable(content, s.original_text)}
                 disabled={busy}
                 updating={updatingId === s.id}
-                onUpdateStatus={(status) => void handleUpdateStatus(s.id, status)}
+                onUpdateStatus={(status) =>
+                  void handleUpdateStatus(s.id, status)
+                }
                 onLocate={() => onLocate(s.original_text)}
               />
             ))}
@@ -237,7 +267,11 @@ export function ProofreadPanel({
                   originalText={s?.original_text ?? ""}
                   suggestedText={s?.suggested_text ?? ""}
                   reason={s?.reason ?? null}
-                  header={<span className="text-xs text-muted-foreground">提案 {i + 1}</span>}
+                  header={
+                    <span className="text-xs text-muted-foreground">
+                      提案 {i + 1}
+                    </span>
+                  }
                   onLocate={() => onLocate(s?.original_text ?? "")}
                 />
               ))}
@@ -247,13 +281,19 @@ export function ProofreadPanel({
               </div>
             </>
           )}
-          {displayError && <p className="text-sm text-destructive">{displayError}</p>}
+          {displayError && (
+            <p className="text-sm text-destructive">{displayError}</p>
+          )}
         </div>
       </div>
 
       <footer className="flex flex-col gap-2 border-t border-border p-3">
         {isLoading ? (
-          <Button variant="outline" onClick={() => stop()} aria-label="校正を停止">
+          <Button
+            variant="outline"
+            onClick={() => stop()}
+            aria-label="校正を停止"
+          >
             <CircleStop data-icon="inline-start" />
             停止
           </Button>
@@ -275,7 +315,10 @@ export function ProofreadPanel({
                         disabled={busy || inapplicableAcceptedCount > 0}
                       >
                         {committing ? (
-                          <Loader2 data-icon="inline-start" className="animate-spin" />
+                          <Loader2
+                            data-icon="inline-start"
+                            className="animate-spin"
+                          />
                         ) : (
                           <GitCommitHorizontal data-icon="inline-start" />
                         )}
@@ -285,7 +328,9 @@ export function ProofreadPanel({
                   />
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>修正をリポジトリに書き戻しますか？</AlertDialogTitle>
+                      <AlertDialogTitle>
+                        修正をリポジトリに書き戻しますか？
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
                         受け入れた{acceptedUncommitted.length}
                         件の修正をまとめて適用し、1コミットとしてGitHubへ書き戻します。
@@ -318,7 +363,10 @@ export function ProofreadPanel({
                         disabled={busy || inapplicableOnHoldCount > 0}
                       >
                         {writingBack ? (
-                          <Loader2 data-icon="inline-start" className="animate-spin" />
+                          <Loader2
+                            data-icon="inline-start"
+                            className="animate-spin"
+                          />
                         ) : (
                           <MessageSquareText data-icon="inline-start" />
                         )}
@@ -332,7 +380,8 @@ export function ProofreadPanel({
                         保留提案をコメントとして原稿に書き戻しますか？
                       </AlertDialogTitle>
                       <AlertDialogDescription>
-                        保留中の{onHoldUnwritten.length}件を、該当箇所の直前に {"<!-- -->"}{" "}
+                        保留中の{onHoldUnwritten.length}件を、該当箇所の直前に{" "}
+                        {"<!-- -->"}{" "}
                         コメントとして挿入し、1コミットとしてGitHubへ書き戻します。
                         コメントはプレビュー・PDFには現れず、縦書きエディタのコメント一覧から確認できます。
                       </AlertDialogDescription>
@@ -347,20 +396,21 @@ export function ProofreadPanel({
                 </AlertDialog>
               </>
             )}
-            {selection !== undefined && selection.length >= PROOFREAD_SELECTION_MIN_CHARS && (
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() => {
-                  setHasRun(true);
-                  setStreamError(null);
-                  submit({ manuscriptLinkId: linkId, selection });
-                }}
-              >
-                <TextSelect data-icon="inline-start" />
-                選択範囲を校正（{selection.length}字）
-              </Button>
-            )}
+            {selection !== undefined &&
+              selection.length >= PROOFREAD_SELECTION_MIN_CHARS && (
+                <Button
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setHasRun(true);
+                    setStreamError(null);
+                    submit({ manuscriptLinkId: linkId, selection });
+                  }}
+                >
+                  <TextSelect data-icon="inline-start" />
+                  選択範囲を校正（{selection.length}字）
+                </Button>
+              )}
             <Button
               disabled={busy}
               onClick={() => {
@@ -369,7 +419,9 @@ export function ProofreadPanel({
                 submit({ manuscriptLinkId: linkId });
               }}
             >
-              {suggestions.length === 0 && !hasRun ? "校正を受ける" : "再校正を受ける"}
+              {suggestions.length === 0 && !hasRun
+                ? "校正を受ける"
+                : "再校正を受ける"}
             </Button>
           </>
         )}
@@ -402,7 +454,9 @@ function SavedSuggestionCard({
   const writtenBack = committed && status === "on_hold";
   // 適用不能の表示は「これから適用しうる」状態（未処理・保留・未コミットの受入）に限る
   const showInapplicable =
-    !applicable && !committed && (status === "pending" || status === "on_hold" || status === "accepted");
+    !applicable &&
+    !committed &&
+    (status === "pending" || status === "on_hold" || status === "accepted");
 
   return (
     <SuggestionCardBody
@@ -414,16 +468,23 @@ function SavedSuggestionCard({
         <>
           <Badge variant={STATUS_VARIANT[status]}>{STATUS_LABEL[status]}</Badge>
           {committed && (
-            <Badge variant="outline">{writtenBack ? "コメント書き戻し済み" : "コミット済み"}</Badge>
+            <Badge variant="outline">
+              {writtenBack ? "コメント書き戻し済み" : "コミット済み"}
+            </Badge>
           )}
           {showInapplicable && <Badge variant="destructive">適用不能</Badge>}
-          {updating && <Loader2 className="size-3 animate-spin text-muted-foreground" />}
+          {updating && (
+            <Loader2 className="size-3 animate-spin text-muted-foreground" />
+          )}
         </>
       }
       footer={
         committed ? null : (
           // 操作ボタンのクリックをカードクリック（該当箇所ジャンプ）に伝播させない
-          <div className="mt-2 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+          <div
+            className="mt-2 flex items-center gap-1"
+            onClick={(e) => e.stopPropagation()}
+          >
             {(status === "pending" || status === "on_hold") && (
               <>
                 <Button
@@ -496,7 +557,10 @@ function SuggestionCardBody({
       aria-label="原稿の該当箇所を表示"
       onClick={onLocate}
       onKeyDown={(e) => {
-        if (e.target === e.currentTarget && (e.key === "Enter" || e.key === " ")) {
+        if (
+          e.target === e.currentTarget &&
+          (e.key === "Enter" || e.key === " ")
+        ) {
           e.preventDefault();
           onLocate?.();
         }
@@ -512,7 +576,9 @@ function SuggestionCardBody({
         </div>
         <div>
           <dt className="text-xs text-muted-foreground">修正案</dt>
-          <dd className="whitespace-pre-wrap font-medium text-card-foreground">{suggestedText}</dd>
+          <dd className="whitespace-pre-wrap font-medium text-card-foreground">
+            {suggestedText}
+          </dd>
         </div>
         {reason && (
           <div>

@@ -1,7 +1,10 @@
 "use client";
 
 import { useDroppable } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
 
 import {
@@ -49,11 +52,18 @@ export function Lane({
       className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-2"
     >
       <header className="px-1">
-        <h2 className="text-sm font-semibold text-foreground">{PART_LABEL[part]}</h2>
-        <p className="text-xs text-muted-foreground">{PART_DESCRIPTION[part]}</p>
+        <h2 className="text-sm font-semibold text-foreground">
+          {PART_LABEL[part]}
+        </h2>
+        <p className="text-xs text-muted-foreground">
+          {PART_DESCRIPTION[part]}
+        </p>
       </header>
 
-      <SortableContext items={scenes.map((s) => s.id)} strategy={verticalListSortingStrategy}>
+      <SortableContext
+        items={scenes.map((s) => s.id)}
+        strategy={verticalListSortingStrategy}
+      >
         <div ref={setNodeRef} className="flex min-h-10 flex-1 flex-col gap-2">
           {scenes.map((scene) => (
             <SortableSceneCard

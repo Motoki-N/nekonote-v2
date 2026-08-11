@@ -18,7 +18,9 @@ export default async function ReviewHistoryPage({
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto w-full max-w-3xl p-4 sm:p-6">
-        <h2 className="mb-3 text-sm font-medium text-muted-foreground">レビュー履歴</h2>
+        <h2 className="mb-3 text-sm font-medium text-muted-foreground">
+          レビュー履歴
+        </h2>
         {result.ok ? (
           <ReviewHistoryList sessions={result.data ?? []} />
         ) : (

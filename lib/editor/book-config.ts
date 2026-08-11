@@ -4,19 +4,19 @@
 
 /** entry 配列から章ファイルパス（.md の文字列リテラル）を出現順に抽出する */
 export function extractEntryPaths(source: string): string[] {
-  const arrayMatch = source.match(/\bentry\s*:\s*\[([\s\S]*?)\]/)
-  if (!arrayMatch) return []
-  const paths: string[] = []
+  const arrayMatch = source.match(/\bentry\s*:\s*\[([\s\S]*?)\]/);
+  if (!arrayMatch) return [];
+  const paths: string[] = [];
   for (const literal of arrayMatch[1].matchAll(/['"`]([^'"`\n]+\.md)['"`]/g)) {
-    paths.push(literal[1])
+    paths.push(literal[1]);
   }
-  return paths
+  return paths;
 }
 
 /** theme のCSSパス（文字列リテラル）を抽出する。見つからなければ null */
 export function extractThemePath(source: string): string | null {
-  const match = source.match(/\btheme\s*:\s*['"`]([^'"`\n]+)['"`]/)
-  return match ? match[1] : null
+  const match = source.match(/\btheme\s*:\s*['"`]([^'"`\n]+)['"`]/);
+  return match ? match[1] : null;
 }
 
 /**
@@ -26,12 +26,16 @@ export function extractThemePath(source: string): string | null {
  * まま組版され、ページ分割されない）。寸法ペアと用紙名（A6 等）のみ許可
  */
 export function extractPageSizeCss(source: string): string | null {
-  const match = source.match(/\bsize\s*:\s*['"`]([^'"`\n]+)['"`]/)
-  if (!match) return null
-  const value = match[1].trim()
-  const pair = value.match(/^(\d+(?:\.\d+)?(?:mm|cm|pt|in|px))\s*,\s*(\d+(?:\.\d+)?(?:mm|cm|pt|in|px))$/)
-  if (pair) return `${pair[1]} ${pair[2]}`
-  return /^[A-Za-z]\d?(?:\s+(?:portrait|landscape))?$/.test(value) ? value : null
+  const match = source.match(/\bsize\s*:\s*['"`]([^'"`\n]+)['"`]/);
+  if (!match) return null;
+  const value = match[1].trim();
+  const pair = value.match(
+    /^(\d+(?:\.\d+)?(?:mm|cm|pt|in|px))\s*,\s*(\d+(?:\.\d+)?(?:mm|cm|pt|in|px))$/,
+  );
+  if (pair) return `${pair[1]} ${pair[2]}`;
+  return /^[A-Za-z]\d?(?:\s+(?:portrait|landscape))?$/.test(value)
+    ? value
+    : null;
 }
 
 // ---- 設定フォーム用の読み書き（SPEC-vertical-editor-phase3 §7）。
@@ -39,129 +43,153 @@ export function extractPageSizeCss(source: string): string | null {
 // 呼び出し側は置換後に抽出関数を再実行して期待値が読めることを検証してからコミットする
 
 /** 書誌情報のキー（値が単純な文字列リテラルのもののみ対象） */
-export type BiblioKey = 'title' | 'author'
+export type BiblioKey = "title" | "author";
 
 /** `key: '値'` の文字列リテラル値を抽出する。見つからなければ null */
-export function extractStringValue(source: string, key: BiblioKey): string | null {
-  const match = source.match(new RegExp(`\\b${key}\\s*:\\s*(['"\`])([^'"\`\\n]*)\\1`))
-  return match ? match[2] : null
+export function extractStringValue(
+  source: string,
+  key: BiblioKey,
+): string | null {
+  const match = source.match(
+    new RegExp(`\\b${key}\\s*:\\s*(['"\`])([^'"\`\\n]*)\\1`),
+  );
+  return match ? match[2] : null;
 }
 
 /**
  * `key: '値'` の値を置換する（引用符のスタイルは元のまま）。
  * キーが見つからない・値に引用符や改行が入る場合は null（フェイルソフト）
  */
-export function replaceStringValue(source: string, key: BiblioKey, value: string): string | null {
-  if (/['"`\n\\]/.test(value)) return null
-  const regex = new RegExp(`(\\b${key}\\s*:\\s*)(['"\`])[^'"\`\\n]*\\2`)
-  if (!regex.test(source)) return null
+export function replaceStringValue(
+  source: string,
+  key: BiblioKey,
+  value: string,
+): string | null {
+  if (/['"`\n\\]/.test(value)) return null;
+  const regex = new RegExp(`(\\b${key}\\s*:\\s*)(['"\`])[^'"\`\\n]*\\2`);
+  if (!regex.test(source)) return null;
   // 置換は関数形式にする（値に `$&` 等が含まれても置換テンプレート展開されない。
   // security-review 2026-07-16 L-1）
-  return source.replace(regex, (_whole, prefix: string, quote: string) => `${prefix}${quote}${value}${quote}`)
+  return source.replace(
+    regex,
+    (_whole, prefix: string, quote: string) =>
+      `${prefix}${quote}${value}${quote}`,
+  );
 }
 
 /** entry 配列の1要素（文字列リテラル＝章、その他＝目次差し込み等の表示専用要素） */
 export type EntryItem = {
   /** 元テキスト（トリム済み。書き戻しにそのまま使う） */
-  raw: string
+  raw: string;
   /** 章ファイルパス（文字列リテラルの場合のみ。それ以外は null） */
-  path: string | null
-}
+  path: string | null;
+};
 
 /**
  * entry 配列をトップレベルのカンマで分割して要素ごとに返す。
  * 配列が見つからない・ネストが壊れている場合は null（フォームは読み取り専用にする）
  */
 export function parseEntryItems(source: string): EntryItem[] | null {
-  const arrayMatch = source.match(/\bentry\s*:\s*\[([\s\S]*?)\]/)
-  if (!arrayMatch) return null
-  const inner = arrayMatch[1]
-  const items: EntryItem[] = []
-  let depth = 0
-  let current = ''
+  const arrayMatch = source.match(/\bentry\s*:\s*\[([\s\S]*?)\]/);
+  if (!arrayMatch) return null;
+  const inner = arrayMatch[1];
+  const items: EntryItem[] = [];
+  let depth = 0;
+  let current = "";
   for (const char of inner) {
-    if (char === '{' || char === '[' || char === '(') depth++
-    if (char === '}' || char === ']' || char === ')') depth--
-    if (depth < 0) return null
-    if (char === ',' && depth === 0) {
-      pushEntryItem(items, current)
-      current = ''
-      continue
+    if (char === "{" || char === "[" || char === "(") depth++;
+    if (char === "}" || char === "]" || char === ")") depth--;
+    if (depth < 0) return null;
+    if (char === "," && depth === 0) {
+      pushEntryItem(items, current);
+      current = "";
+      continue;
     }
-    current += char
+    current += char;
   }
-  if (depth !== 0) return null
-  pushEntryItem(items, current)
-  return items
+  if (depth !== 0) return null;
+  pushEntryItem(items, current);
+  return items;
 }
 
 function pushEntryItem(items: EntryItem[], text: string): void {
   // 行コメントは要素に含めない（`// 目次（自動生成）...` 等の注記行）
   const raw = text
-    .split('\n')
-    .map((line) => line.replace(/\/\/.*$/, '').trim())
-    .filter((line) => line !== '')
-    .join(' ')
-  if (raw === '') return
-  const literal = raw.match(/^['"`]([^'"`\n]+\.md)['"`]$/)
-  items.push({ raw, path: literal ? literal[1] : null })
+    .split("\n")
+    .map((line) => line.replace(/\/\/.*$/, "").trim())
+    .filter((line) => line !== "")
+    .join(" ");
+  if (raw === "") return;
+  const literal = raw.match(/^['"`]([^'"`\n]+\.md)['"`]$/);
+  items.push({ raw, path: literal ? literal[1] : null });
 }
 
 /**
  * entry 配列の中身を newItems（各要素の raw テキスト）で書き換える。
  * インデントは既存の最初の要素行に合わせる（なければスペース4つ）
  */
-export function replaceEntryItems(source: string, newItems: string[]): string | null {
-  const arrayMatch = source.match(/(\bentry\s*:\s*\[)([\s\S]*?)(\])/)
-  if (!arrayMatch) return null
-  const indentMatch = arrayMatch[2].match(/\n([ \t]+)\S/)
-  const indent = indentMatch ? indentMatch[1] : '    '
-  const closeIndent = indent.length >= 2 ? indent.slice(0, indent.length - 2) : ''
-  const body = newItems.map((item) => `${indent}${item},`).join('\n')
+export function replaceEntryItems(
+  source: string,
+  newItems: string[],
+): string | null {
+  const arrayMatch = source.match(/(\bentry\s*:\s*\[)([\s\S]*?)(\])/);
+  if (!arrayMatch) return null;
+  const indentMatch = arrayMatch[2].match(/\n([ \t]+)\S/);
+  const indent = indentMatch ? indentMatch[1] : "    ";
+  const closeIndent =
+    indent.length >= 2 ? indent.slice(0, indent.length - 2) : "";
+  const body = newItems.map((item) => `${indent}${item},`).join("\n");
   // 関数形式で `$` 系の置換テンプレート展開を防ぐ（security-review 2026-07-16 L-1）
   return source.replace(
     /\bentry\s*:\s*\[[\s\S]*?\]/,
     () => `entry: [\n${body}\n${closeIndent}]`,
-  )
+  );
 }
 
 /** テーマCSSの組み設定変数（SPEC-phase3 §7-3。値は文字列のまま扱い、数値検証は呼び出し側） */
 export const KUMI_VAR_NAMES = [
-  '--vs-font-size-on-print',
-  '--vs-line-height',
-  '--vs-theme--num-of-line',
-  '--vs-theme--num-of-character',
-] as const
-export type KumiVarName = (typeof KUMI_VAR_NAMES)[number]
+  "--vs-font-size-on-print",
+  "--vs-line-height",
+  "--vs-theme--num-of-line",
+  "--vs-theme--num-of-character",
+] as const;
+export type KumiVarName = (typeof KUMI_VAR_NAMES)[number];
 
 /** テーマCSSから組み設定変数の値を抽出する（`%` などの単位付きはそのまま返す） */
 export function extractCssVar(css: string, name: KumiVarName): string | null {
-  const match = css.match(new RegExp(`${name}\\s*:\\s*([^;\\n]+);`))
-  return match ? match[1].trim() : null
+  const match = css.match(new RegExp(`${name}\\s*:\\s*([^;\\n]+);`));
+  return match ? match[1].trim() : null;
 }
 
 /** テーマCSSの変数値を置換する。変数が見つからなければ null */
-export function replaceCssVar(css: string, name: KumiVarName, value: string): string | null {
-  if (/[;{}\n]/.test(value)) return null
-  const regex = new RegExp(`(${name}\\s*:\\s*)[^;\\n]+(;)`)
-  if (!regex.test(css)) return null
+export function replaceCssVar(
+  css: string,
+  name: KumiVarName,
+  value: string,
+): string | null {
+  if (/[;{}\n]/.test(value)) return null;
+  const regex = new RegExp(`(${name}\\s*:\\s*)[^;\\n]+(;)`);
+  if (!regex.test(css)) return null;
   // 関数形式で `$` 系の置換テンプレート展開を防ぐ（security-review 2026-07-16 L-1）
-  return css.replace(regex, (_whole, prefix: string, semi: string) => `${prefix}${value}${semi}`)
+  return css.replace(
+    regex,
+    (_whole, prefix: string, semi: string) => `${prefix}${value}${semi}`,
+  );
 }
 
 /** リポジトリルート基準でパスを結合する（`.`/`..`/空セグメントを正規化。ルート外は null） */
 export function joinRepoPath(...segments: string[]): string | null {
-  const resolved: string[] = []
+  const resolved: string[] = [];
   for (const segment of segments) {
-    for (const part of segment.split('/')) {
-      if (part === '' || part === '.') continue
-      if (part === '..') {
-        if (resolved.length === 0) return null
-        resolved.pop()
-        continue
+    for (const part of segment.split("/")) {
+      if (part === "" || part === ".") continue;
+      if (part === "..") {
+        if (resolved.length === 0) return null;
+        resolved.pop();
+        continue;
       }
-      resolved.push(part)
+      resolved.push(part);
     }
   }
-  return resolved.join('/')
+  return resolved.join("/");
 }

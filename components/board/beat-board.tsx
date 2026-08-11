@@ -41,7 +41,11 @@ import {
   type SceneRecord,
 } from "@/lib/board";
 import { BOARD_TEMPLATES, boardTemplateList } from "@/lib/board-templates";
-import type { ApprovalStatus, ScenePart, StructureTemplate } from "@/lib/schemas/enums";
+import type {
+  ApprovalStatus,
+  ScenePart,
+  StructureTemplate,
+} from "@/lib/schemas/enums";
 import type { SceneEdit } from "@/lib/schemas/projects";
 import {
   AlertDialog,
@@ -61,12 +65,14 @@ import { SceneCardContent } from "@/components/board/scene-card";
 import { SceneDialog } from "@/components/board/scene-dialog";
 import { ReviewPanel } from "@/components/review/review-panel";
 
-type ReviewTarget = { kind: "structure" } | { kind: "scene"; scene: SceneRecord };
+type ReviewTarget =
+  { kind: "structure" } | { kind: "scene"; scene: SceneRecord };
 
 /** 2つの並びが同じか（id・part の列として比較。差がなければ保存しない） */
 function sameOrder(a: SceneRecord[], b: SceneRecord[]): boolean {
   return (
-    a.length === b.length && a.every((s, i) => s.id === b[i].id && s.part === b[i].part)
+    a.length === b.length &&
+    a.every((s, i) => s.id === b[i].id && s.part === b[i].part)
   );
 }
 
@@ -92,28 +98,39 @@ export function BeatBoard({
   structureTemplate: StructureTemplate;
 }) {
   const router = useRouter();
-  const [scenes, setScenes] = useState<SceneRecord[]>(() => toCanonicalOrder(initialScenes));
+  const [scenes, setScenes] = useState<SceneRecord[]>(() =>
+    toCanonicalOrder(initialScenes),
+  );
   // 切替確定の楽観的反映（structureApproved と同じ理由で props と別に持つ）
-  const [template, setTemplate] = useState<StructureTemplate>(structureTemplate);
+  const [template, setTemplate] =
+    useState<StructureTemplate>(structureTemplate);
   // セレクトで選ばれた切替先（確認ダイアログ表示中。null = ダイアログ非表示）
-  const [pendingTemplate, setPendingTemplate] = useState<StructureTemplate | null>(null);
+  const [pendingTemplate, setPendingTemplate] =
+    useState<StructureTemplate | null>(null);
   const [switching, setSwitching] = useState(false);
   const templateDef = BOARD_TEMPLATES[template];
-  const [notesMap, setNotesMap] = useState<Record<string, LinkedNote[]>>(initialLinkedNotes);
+  const [notesMap, setNotesMap] =
+    useState<Record<string, LinkedNote[]>>(initialLinkedNotes);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [editing, setEditing] = useState<SceneRecord | null>(null);
   const [review, setReview] = useState<ReviewTarget | null>(null);
   const [adding, setAdding] = useState(false);
   // 「通す」確定の楽観的反映（サーバー確定後に setState。router.refresh は props に効かないため）
-  const [structureApproved, setStructureApproved] = useState(structureStatus === "approved");
+  const [structureApproved, setStructureApproved] = useState(
+    structureStatus === "approved",
+  );
   const [approving, setApproving] = useState(false);
   // ドラッグ開始時点の状態（キャンセル・保存失敗時のロールバック先）
   const snapshotRef = useRef<SceneRecord[] | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+    useSensor(TouchSensor, {
+      activationConstraint: { delay: 250, tolerance: 8 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
   );
 
   const activeScene = useMemo(
@@ -123,18 +140,27 @@ export function BeatBoard({
 
   // ビートボードに描画する小説シーンのみ（chapter=目次ボードの章カードは枚数・感情線に含めない。
   // state には全件を保持し、並べ替え保存の全件送信で章カードを保全する。SPEC-outline-board §4）
-  const novelScenes = useMemo(() => scenes.filter((s) => s.part !== "chapter"), [scenes]);
+  const novelScenes = useMemo(
+    () => scenes.filter((s) => s.part !== "chapter"),
+    [scenes],
+  );
 
   const noteCounts = useMemo(
     () =>
-      Object.fromEntries(Object.entries(notesMap).map(([sceneId, notes]) => [sceneId, notes.length])),
+      Object.fromEntries(
+        Object.entries(notesMap).map(([sceneId, notes]) => [
+          sceneId,
+          notes.length,
+        ]),
+      ),
     [notesMap],
   );
 
   /** over 先のレーンを解決する（レーン id か、レーン内カードの id）。
    * chapter カード（目次ボード）はビートボードに描画されないため実際には到達しない */
   function resolveLane(overId: string): ScenePart | null {
-    if (templateDef.lanes.some((lane) => lane.id === overId)) return overId as ScenePart;
+    if (templateDef.lanes.some((lane) => lane.id === overId))
+      return overId as ScenePart;
     const part = scenes.find((s) => s.id === overId)?.part;
     return part && part !== "chapter" ? part : null;
   }
@@ -223,21 +249,30 @@ export function BeatBoard({
     try {
       const result = await createScene(projectId, part);
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? "シーンの追加に失敗しました" : result.error.message);
+        toast.error(
+          result.ok ? "シーンの追加に失敗しました" : result.error.message,
+        );
         return;
       }
       setScenes(result.data.scenes);
-      const created = result.data.scenes.find((s) => s.id === result.data?.createdId);
+      const created = result.data.scenes.find(
+        (s) => s.id === result.data?.createdId,
+      );
       if (created) setEditing(created); // 追加したらすぐ編集ダイアログを開く
     } finally {
       setAdding(false);
     }
   }
 
-  async function handleSave(sceneId: string, edit: SceneEdit): Promise<boolean> {
+  async function handleSave(
+    sceneId: string,
+    edit: SceneEdit,
+  ): Promise<boolean> {
     const result = await updateScene(sceneId, edit);
     if (!result.ok || !result.data) {
-      toast.error(result.ok ? "シーンの保存に失敗しました" : result.error.message);
+      toast.error(
+        result.ok ? "シーンの保存に失敗しました" : result.error.message,
+      );
       return false;
     }
     setScenes(result.data.scenes);
@@ -251,7 +286,9 @@ export function BeatBoard({
     try {
       const result = await switchStructureTemplate(projectId, next);
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? "テンプレートの切替に失敗しました" : result.error.message);
+        toast.error(
+          result.ok ? "テンプレートの切替に失敗しました" : result.error.message,
+        );
         return;
       }
       setScenes(result.data.scenes);
@@ -259,7 +296,9 @@ export function BeatBoard({
       // 構成が丸ごと変わるため承認はサーバー側で draft に戻している（ローカルも同期）
       setStructureApproved(false);
       setPendingTemplate(null);
-      toast(`構成テンプレートを「${BOARD_TEMPLATES[next].label}」に切り替えました`);
+      toast(
+        `構成テンプレートを「${BOARD_TEMPLATES[next].label}」に切り替えました`,
+      );
       router.refresh();
     } finally {
       setSwitching(false);
@@ -281,7 +320,9 @@ export function BeatBoard({
         toast("構成が通りました！シーンの執筆に進みましょう");
       } else {
         setScenes((prev) =>
-          prev.map((s) => (s.id === target.scene.id ? { ...s, status: "approved" } : s)),
+          prev.map((s) =>
+            s.id === target.scene.id ? { ...s, status: "approved" } : s,
+          ),
         );
         toast("シーンが通りました！");
       }
@@ -321,7 +362,9 @@ export function BeatBoard({
   async function handleDuplicate(sceneId: string): Promise<boolean> {
     const result = await duplicateScene(sceneId);
     if (!result.ok || !result.data) {
-      toast.error(result.ok ? "シーンの複製に失敗しました" : result.error.message);
+      toast.error(
+        result.ok ? "シーンの複製に失敗しました" : result.error.message,
+      );
       return false;
     }
     setScenes(result.data.scenes);
@@ -348,13 +391,17 @@ export function BeatBoard({
     }
     setScenes((prev) => prev.filter((s) => s.id !== sceneId));
     // 削除したシーンのレビューパネルが開いていたら閉じる（セッションは履歴ごと削除済み）
-    setReview((prev) => (prev?.kind === "scene" && prev.scene.id === sceneId ? null : prev));
+    setReview((prev) =>
+      prev?.kind === "scene" && prev.scene.id === sceneId ? null : prev,
+    );
     toast("シーンを削除しました");
     return true;
   }
 
   // 編集中シーンのボード表示順での位置（前後シーン移動ボタンの活性判定。Issue #171）
-  const editingIndex = editing ? novelScenes.findIndex((s) => s.id === editing.id) : -1;
+  const editingIndex = editing
+    ? novelScenes.findIndex((s) => s.id === editing.id)
+    : -1;
 
   return (
     <div className="flex min-h-0 flex-1">
@@ -378,7 +425,9 @@ export function BeatBoard({
               ))}
             </select>
           </label>
-          <span className="text-xs text-muted-foreground">シーン {novelScenes.length}枚</span>
+          <span className="text-xs text-muted-foreground">
+            シーン {novelScenes.length}枚
+          </span>
           {structureApproved && (
             <Badge variant="secondary">
               <BadgeCheck data-icon="inline-start" />
@@ -391,7 +440,9 @@ export function BeatBoard({
             className="ml-auto"
             aria-pressed={review?.kind === "structure"}
             onClick={() =>
-              setReview((prev) => (prev?.kind === "structure" ? null : { kind: "structure" }))
+              setReview((prev) =>
+                prev?.kind === "structure" ? null : { kind: "structure" },
+              )
             }
           >
             <ClipboardCheck data-icon="inline-start" />
@@ -417,8 +468,14 @@ export function BeatBoard({
                 <Lane
                   key={part}
                   part={part}
-                  scenes={laneScenes.filter((s) => !(boundary && s.anchor === boundary))}
-                  boundaryScene={boundary ? laneScenes.find((s) => s.anchor === boundary) : undefined}
+                  scenes={laneScenes.filter(
+                    (s) => !(boundary && s.anchor === boundary),
+                  )}
+                  boundaryScene={
+                    boundary
+                      ? laneScenes.find((s) => s.anchor === boundary)
+                      : undefined
+                  }
                   noteCounts={noteCounts}
                   adding={adding}
                   onAdd={(p) => void handleAdd(p)}
@@ -429,7 +486,10 @@ export function BeatBoard({
           </div>
           <DragOverlay>
             {activeScene && !isBoundaryAnchor(activeScene.anchor) ? (
-              <SceneCardContent scene={activeScene} noteCount={noteCounts[activeScene.id]} />
+              <SceneCardContent
+                scene={activeScene}
+                noteCount={noteCounts[activeScene.id]}
+              />
             ) : null}
           </DragOverlay>
         </DndContext>
@@ -450,10 +510,17 @@ export function BeatBoard({
           enableCopyToNote
           onClose={() => setReview(null)}
           renderFooter={({ latestVerdict, busy, sessionId }) => {
-            if (latestVerdict === "approved" && !structureApproved && !busy && sessionId !== null) {
+            if (
+              latestVerdict === "approved" &&
+              !structureApproved &&
+              !busy &&
+              sessionId !== null
+            ) {
               return (
                 <Button
-                  onClick={() => void handleApprove(sessionId, { kind: "structure" })}
+                  onClick={() =>
+                    void handleApprove(sessionId, { kind: "structure" })
+                  }
                   disabled={approving}
                 >
                   <BadgeCheck data-icon="inline-start" />
@@ -486,8 +553,14 @@ export function BeatBoard({
             // review.scene は開いた時点のスナップショットなので、最新の承認状態は scenes から引く
             const target = review;
             const approved =
-              scenes.find((s) => s.id === target.scene.id)?.status === "approved";
-            if (latestVerdict === "approved" && !approved && !busy && sessionId !== null) {
+              scenes.find((s) => s.id === target.scene.id)?.status ===
+              "approved";
+            if (
+              latestVerdict === "approved" &&
+              !approved &&
+              !busy &&
+              sessionId !== null
+            ) {
               return (
                 <Button
                   onClick={() => void handleApprove(sessionId, target)}
@@ -519,17 +592,22 @@ export function BeatBoard({
           <AlertDialogHeader>
             <AlertDialogTitle>
               構成テンプレートを「
-              {pendingTemplate ? BOARD_TEMPLATES[pendingTemplate].label : ""}」に切り替えますか？
+              {pendingTemplate ? BOARD_TEMPLATES[pendingTemplate].label : ""}
+              」に切り替えますか？
             </AlertDialogTitle>
             <AlertDialogDescription>
               全シーンは新テンプレートの先頭レーン「
-              {pendingTemplate ? BOARD_TEMPLATES[pendingTemplate].lanes[0].label : ""}
+              {pendingTemplate
+                ? BOARD_TEMPLATES[pendingTemplate].lanes[0].label
+                : ""}
               」に移動し、転換点マークはすべて解除されます。構成の承認状態もリセットされます。
               シーンのタイトル・本文・感情・ノート紐づけは保持されます。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={switching}>キャンセル</AlertDialogCancel>
+            <AlertDialogCancel disabled={switching}>
+              キャンセル
+            </AlertDialogCancel>
             <AlertDialogAction
               disabled={switching}
               onClick={(e) => {

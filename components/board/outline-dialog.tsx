@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ExternalLink, Trash2 } from "lucide-react";
 
-import { getManuscriptTree, type ManuscriptTreeData } from "@/lib/actions/manuscripts";
+import {
+  getManuscriptTree,
+  type ManuscriptTreeData,
+} from "@/lib/actions/manuscripts";
 import type { SceneRecord } from "@/lib/board";
 import type { SceneEdit } from "@/lib/schemas/projects";
 import {
@@ -51,7 +54,9 @@ export function OutlineDialog({
 }) {
   const [title, setTitle] = useState(scene.title);
   const [content, setContent] = useState(scene.content);
-  const [manuscriptPath, setManuscriptPath] = useState<string | null>(scene.manuscript_path);
+  const [manuscriptPath, setManuscriptPath] = useState<string | null>(
+    scene.manuscript_path,
+  );
   // 原稿ファイルの選択肢（scene-dialog と同じ遅延取得。null = 読み込み中）
   const [tree, setTree] = useState<ManuscriptTreeData | null>(null);
   const [busy, setBusy] = useState(false);
@@ -73,7 +78,9 @@ export function OutlineDialog({
     if (tree === null || tree.gate !== "ok") return [];
     const base = tree.basePath.replace(/\/$/, "");
     const prefix = base === "" ? "" : `${base}/`;
-    return tree.files.filter((f) => f.startsWith(`${prefix}manuscripts/`) && f.endsWith(".md"));
+    return tree.files.filter(
+      (f) => f.startsWith(`${prefix}manuscripts/`) && f.endsWith(".md"),
+    );
   })();
 
   async function handleSave() {
@@ -154,13 +161,20 @@ export function OutlineDialog({
               <select
                 className={selectClass}
                 value={manuscriptPath ?? ""}
-                onChange={(e) => setManuscriptPath(e.target.value === "" ? null : e.target.value)}
+                onChange={(e) =>
+                  setManuscriptPath(
+                    e.target.value === "" ? null : e.target.value,
+                  )
+                }
               >
                 <option value="">なし</option>
                 {/* 保存済みパスが章一覧から消えていても（改名・削除）現在値は選択肢に残す */}
-                {manuscriptPath !== null && !chapterFiles.includes(manuscriptPath) && (
-                  <option value={manuscriptPath}>{manuscriptPath}（見つかりません）</option>
-                )}
+                {manuscriptPath !== null &&
+                  !chapterFiles.includes(manuscriptPath) && (
+                    <option value={manuscriptPath}>
+                      {manuscriptPath}（見つかりません）
+                    </option>
+                  )}
                 {chapterFiles.map((file) => (
                   <option key={file} value={file}>
                     {file}
@@ -184,7 +198,12 @@ export function OutlineDialog({
           <AlertDialog>
             <AlertDialogTrigger
               render={
-                <Button variant="ghost" size="sm" className="text-destructive" disabled={busy}>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive"
+                  disabled={busy}
+                >
                   <Trash2 data-icon="inline-start" />
                   削除
                 </Button>
@@ -194,12 +213,16 @@ export function OutlineDialog({
               <AlertDialogHeader>
                 <AlertDialogTitle>この章を削除しますか？</AlertDialogTitle>
                 <AlertDialogDescription>
-                  「{scene.title || "（無題）"}」を完全に削除します。元に戻せません
+                  「{scene.title || "（無題）"}
+                  」を完全に削除します。元に戻せません
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                <AlertDialogAction variant="destructive" onClick={() => void handleDelete()}>
+                <AlertDialogAction
+                  variant="destructive"
+                  onClick={() => void handleDelete()}
+                >
                   削除する
                 </AlertDialogAction>
               </AlertDialogFooter>

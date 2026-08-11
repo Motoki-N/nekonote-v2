@@ -1,36 +1,39 @@
-'use server'
+"use server";
 
-import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
-import { createClient } from '@/lib/supabase/server'
-import { AppError, toActionError } from '@/lib/errors'
-import type { ActionResult } from '@/lib/errors'
-import { noteUpdateSchema, tagInputSchema } from '@/lib/schemas/notes'
-import type { TagInput } from '@/lib/schemas/notes'
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { createClient } from "@/lib/supabase/server";
+import { AppError, toActionError } from "@/lib/errors";
+import type { ActionResult } from "@/lib/errors";
+import { noteUpdateSchema, tagInputSchema } from "@/lib/schemas/notes";
+import type { TagInput } from "@/lib/schemas/notes";
 
-export type { ActionResult } from '@/lib/errors'
+export type { ActionResult } from "@/lib/errors";
 
 /** 1クリック新規作成: 空ノートを作ってエディタへ遷移する */
 export async function createNote(): Promise<never> {
-  const supabase = await createClient()
+  const supabase = await createClient();
   const { data, error } = await supabase
-    .from('notes')
+    .from("notes")
     .insert({})
-    .select('id')
-    .single()
+    .select("id")
+    .single();
   if (error || !data) {
     // redirect を含むアクションのため、失敗時のみ throw（一覧側の error.tsx で拾う）
-    throw new AppError('internal', error?.message ?? 'ノートの作成に失敗しました')
+    throw new AppError(
+      "internal",
+      error?.message ?? "ノートの作成に失敗しました",
+    );
   }
-  revalidatePath('/notes')
-  redirect(`/notes/${data.id}`)
+  revalidatePath("/notes");
+  redirect(`/notes/${data.id}`);
 }
 
 /** 履歴スナップショットの間引き間隔（前回バージョンからこの時間経過していたら保存。Issue #111） */
-const VERSION_INTERVAL_MS = 10 * 60 * 1000
+const VERSION_INTERVAL_MS = 10 * 60 * 1000;
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>
-type NoteSnapshot = { title: string; content: string }
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+type NoteSnapshot = { title: string; content: string };
 
 /** 上書き前のノート行を note_versions へ保存する */
 async function insertSnapshot(
@@ -39,9 +42,9 @@ async function insertSnapshot(
   row: NoteSnapshot,
 ): Promise<void> {
   const { error } = await supabase
-    .from('note_versions')
-    .insert({ note_id: noteId, title: row.title, content: row.content })
-  if (error) throw new AppError('internal', error.message)
+    .from("note_versions")
+    .insert({ note_id: noteId, title: row.title, content: row.content });
+  if (error) throw new AppError("internal", error.message);
 }
 
 /** 時間ベース間引き: 最新バージョンから一定時間経過していたら上書き前の行をスナップショットする */
@@ -51,15 +54,19 @@ async function snapshotIfStale(
   current: NoteSnapshot,
 ): Promise<void> {
   const { data: latest, error } = await supabase
-    .from('note_versions')
-    .select('created_at')
-    .eq('note_id', noteId)
-    .order('created_at', { ascending: false })
+    .from("note_versions")
+    .select("created_at")
+    .eq("note_id", noteId)
+    .order("created_at", { ascending: false })
     .limit(1)
-    .maybeSingle()
-  if (error) throw new AppError('internal', error.message)
-  if (latest && Date.now() - Date.parse(latest.created_at) < VERSION_INTERVAL_MS) return
-  await insertSnapshot(supabase, noteId, current)
+    .maybeSingle();
+  if (error) throw new AppError("internal", error.message);
+  if (
+    latest &&
+    Date.now() - Date.parse(latest.created_at) < VERSION_INTERVAL_MS
+  )
+    return;
+  await insertSnapshot(supabase, noteId, current);
 }
 
 /** 現在のノート行を取得する（存在しなければ not_found） */
@@ -68,13 +75,13 @@ async function fetchNoteSnapshot(
   id: string,
 ): Promise<NoteSnapshot> {
   const { data, error } = await supabase
-    .from('notes')
-    .select('title, content')
-    .eq('id', id)
-    .maybeSingle()
-  if (error) throw new AppError('internal', error.message)
-  if (!data) throw new AppError('not_found', 'ノートが見つかりません')
-  return data
+    .from("notes")
+    .select("title, content")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new AppError("internal", error.message);
+  if (!data) throw new AppError("not_found", "ノートが見つかりません");
+  return data;
 }
 
 /** 自動保存の受け口 */
@@ -83,47 +90,55 @@ export async function updateNote(
   input: { title?: string; content?: string },
 ): Promise<ActionResult> {
   try {
-    const parsed = noteUpdateSchema.parse(input)
-    const supabase = await createClient()
-    const current = await fetchNoteSnapshot(supabase, id)
+    const parsed = noteUpdateSchema.parse(input);
+    const supabase = await createClient();
+    const current = await fetchNoteSnapshot(supabase, id);
     // 内容が変わらない保存（復元直後のフラッシュ等）は更新もスナップショットもしない
     if (
       (parsed.title ?? current.title) === current.title &&
       (parsed.content ?? current.content) === current.content
     ) {
-      return { ok: true }
+      return { ok: true };
     }
     // 「上書き前の状態」を残す: 編集セッション開始前の行が必ず1つ版に残る（Issue #111）
-    await snapshotIfStale(supabase, id, current)
+    await snapshotIfStale(supabase, id, current);
     const { data, error } = await supabase
-      .from('notes')
+      .from("notes")
       .update(parsed)
-      .eq('id', id)
-      .select('id')
-    if (error) throw new AppError('internal', error.message)
-    if (!data || data.length === 0) throw new AppError('not_found', 'ノートが見つかりません')
-    revalidatePath('/notes')
-    return { ok: true }
+      .eq("id", id)
+      .select("id");
+    if (error) throw new AppError("internal", error.message);
+    if (!data || data.length === 0)
+      throw new AppError("not_found", "ノートが見つかりません");
+    revalidatePath("/notes");
+    return { ok: true };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
-export type NoteVersion = { id: string; title: string; content: string; created_at: string }
+export type NoteVersion = {
+  id: string;
+  title: string;
+  content: string;
+  created_at: string;
+};
 
 /** バージョン履歴の一覧（新しい順。プレビュー用に content も返す） */
-export async function listNoteVersions(noteId: string): Promise<ActionResult<NoteVersion[]>> {
+export async function listNoteVersions(
+  noteId: string,
+): Promise<ActionResult<NoteVersion[]>> {
   try {
-    const supabase = await createClient()
+    const supabase = await createClient();
     const { data, error } = await supabase
-      .from('note_versions')
-      .select('id, title, content, created_at')
-      .eq('note_id', noteId)
-      .order('created_at', { ascending: false })
-    if (error) throw new AppError('internal', error.message)
-    return { ok: true, data: data ?? [] }
+      .from("note_versions")
+      .select("id, title, content, created_at")
+      .eq("note_id", noteId)
+      .order("created_at", { ascending: false });
+    if (error) throw new AppError("internal", error.message);
+    return { ok: true, data: data ?? [] };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -133,78 +148,86 @@ export async function restoreNoteVersion(
   versionId: string,
 ): Promise<ActionResult> {
   try {
-    const supabase = await createClient()
+    const supabase = await createClient();
     const { data: version, error: versionError } = await supabase
-      .from('note_versions')
-      .select('title, content')
-      .eq('id', versionId)
-      .eq('note_id', noteId)
-      .maybeSingle()
-    if (versionError) throw new AppError('internal', versionError.message)
-    if (!version) throw new AppError('not_found', 'バージョンが見つかりません')
+      .from("note_versions")
+      .select("title, content")
+      .eq("id", versionId)
+      .eq("note_id", noteId)
+      .maybeSingle();
+    if (versionError) throw new AppError("internal", versionError.message);
+    if (!version) throw new AppError("not_found", "バージョンが見つかりません");
 
-    const current = await fetchNoteSnapshot(supabase, noteId)
+    const current = await fetchNoteSnapshot(supabase, noteId);
     // 現在と同一内容への復元は何もしない（無駄な版を作らない）
-    if (version.title === current.title && version.content === current.content) {
-      return { ok: true }
+    if (
+      version.title === current.title &&
+      version.content === current.content
+    ) {
+      return { ok: true };
     }
-    await insertSnapshot(supabase, noteId, current)
+    await insertSnapshot(supabase, noteId, current);
 
     const { data, error } = await supabase
-      .from('notes')
+      .from("notes")
       .update({ title: version.title, content: version.content })
-      .eq('id', noteId)
-      .select('id')
-    if (error) throw new AppError('internal', error.message)
-    if (!data || data.length === 0) throw new AppError('not_found', 'ノートが見つかりません')
-    revalidatePath('/notes')
-    return { ok: true }
+      .eq("id", noteId)
+      .select("id");
+    if (error) throw new AppError("internal", error.message);
+    if (!data || data.length === 0)
+      throw new AppError("not_found", "ノートが見つかりません");
+    revalidatePath("/notes");
+    return { ok: true };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
 /** ごみ箱へ移動（ソフトデリート） */
 export async function trashNote(id: string): Promise<ActionResult> {
-  return setDeletedAt(id, new Date().toISOString())
+  return setDeletedAt(id, new Date().toISOString());
 }
 
 /** ごみ箱から復元 */
 export async function restoreNote(id: string): Promise<ActionResult> {
-  return setDeletedAt(id, null)
+  return setDeletedAt(id, null);
 }
 
-async function setDeletedAt(id: string, deletedAt: string | null): Promise<ActionResult> {
+async function setDeletedAt(
+  id: string,
+  deletedAt: string | null,
+): Promise<ActionResult> {
   try {
-    const supabase = await createClient()
+    const supabase = await createClient();
     const { data, error } = await supabase
-      .from('notes')
+      .from("notes")
       .update({ deleted_at: deletedAt })
-      .eq('id', id)
-      .select('id')
-    if (error) throw new AppError('internal', error.message)
-    if (!data || data.length === 0) throw new AppError('not_found', 'ノートが見つかりません')
-    revalidatePath('/notes')
-    return { ok: true }
+      .eq("id", id)
+      .select("id");
+    if (error) throw new AppError("internal", error.message);
+    if (!data || data.length === 0)
+      throw new AppError("not_found", "ノートが見つかりません");
+    revalidatePath("/notes");
+    return { ok: true };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
 /** 完全削除（物理DELETE。note_tags は cascade で外れ、タグ自体は残る） */
 export async function deleteNotePermanently(id: string): Promise<ActionResult> {
   try {
-    const supabase = await createClient()
-    const { error } = await supabase.from('notes').delete().eq('id', id)
-    if (error) throw new AppError('internal', error.message)
-    revalidatePath('/notes')
-    return { ok: true }
+    const supabase = await createClient();
+    const { error } = await supabase.from("notes").delete().eq("id", id);
+    if (error) throw new AppError("internal", error.message);
+    revalidatePath("/notes");
+    return { ok: true };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
-export type AttachedTag = { id: string; name: string; kind: string }
+export type AttachedTag = { id: string; name: string; kind: string };
 
 /**
  * タグを get-or-create してノートに付与する。
@@ -215,43 +238,53 @@ export async function attachTag(
   input: TagInput,
 ): Promise<ActionResult<AttachedTag>> {
   try {
-    const parsed = tagInputSchema.parse(input)
-    const supabase = await createClient()
+    const parsed = tagInputSchema.parse(input);
+    const supabase = await createClient();
 
     // get-or-create: unique (user_id, kind, name) に対する upsert
     const { data: tag, error: tagError } = await supabase
-      .from('tags')
-      .upsert(parsed, { onConflict: 'user_id,kind,name', ignoreDuplicates: false })
-      .select('id, name, kind')
-      .single()
-    if (tagError || !tag) throw new AppError('internal', tagError?.message ?? 'タグの作成に失敗しました')
+      .from("tags")
+      .upsert(parsed, {
+        onConflict: "user_id,kind,name",
+        ignoreDuplicates: false,
+      })
+      .select("id, name, kind")
+      .single();
+    if (tagError || !tag)
+      throw new AppError(
+        "internal",
+        tagError?.message ?? "タグの作成に失敗しました",
+      );
 
     // 既に付与済みなら成功扱い（テンプレ再挿入などで重複しうる）
     const { error: linkError } = await supabase
-      .from('note_tags')
-      .upsert({ note_id: noteId, tag_id: tag.id }, { ignoreDuplicates: true })
-    if (linkError) throw new AppError('internal', linkError.message)
+      .from("note_tags")
+      .upsert({ note_id: noteId, tag_id: tag.id }, { ignoreDuplicates: true });
+    if (linkError) throw new AppError("internal", linkError.message);
 
-    revalidatePath('/notes')
-    return { ok: true, data: tag }
+    revalidatePath("/notes");
+    return { ok: true, data: tag };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
 /** ノートからタグを外す（タグ自体は残す） */
-export async function detachTag(noteId: string, tagId: string): Promise<ActionResult> {
+export async function detachTag(
+  noteId: string,
+  tagId: string,
+): Promise<ActionResult> {
   try {
-    const supabase = await createClient()
+    const supabase = await createClient();
     const { error } = await supabase
-      .from('note_tags')
+      .from("note_tags")
       .delete()
-      .eq('note_id', noteId)
-      .eq('tag_id', tagId)
-    if (error) throw new AppError('internal', error.message)
-    revalidatePath('/notes')
-    return { ok: true }
+      .eq("note_id", noteId)
+      .eq("tag_id", tagId);
+    if (error) throw new AppError("internal", error.message);
+    revalidatePath("/notes");
+    return { ok: true };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }

@@ -12,7 +12,10 @@ const LEFT_PAD = 28; // 軸ラベル分
 // 固定ドメイン(-5〜+5)の線形スケール。実データのmin/maxは使わない
 // （感情強度は絶対値として比較できることが重要なため、シーン構成ごとに縮尺が変わるのを避ける）
 function yFor(value: number): number {
-  return BOTTOM - ((value - EMOTION_MIN) / (EMOTION_MAX - EMOTION_MIN)) * (BOTTOM - TOP);
+  return (
+    BOTTOM -
+    ((value - EMOTION_MIN) / (EMOTION_MAX - EMOTION_MIN)) * (BOTTOM - TOP)
+  );
 }
 
 /**
@@ -25,7 +28,10 @@ export function EmotionLine({ scenes }: { scenes: SceneRecord[] }) {
   const points: { x: number; y: number }[] = [];
   scenes.forEach((scene, index) => {
     if (scene.emotion_start !== null) {
-      points.push({ x: LEFT_PAD + index * 2 * SLOT_WIDTH, y: yFor(scene.emotion_start) });
+      points.push({
+        x: LEFT_PAD + index * 2 * SLOT_WIDTH,
+        y: yFor(scene.emotion_start),
+      });
     }
     if (scene.emotion_end !== null) {
       points.push({
@@ -55,13 +61,25 @@ export function EmotionLine({ scenes }: { scenes: SceneRecord[] }) {
             className="text-primary"
           >
             {/* 感情強度の基準線と軸ラベル */}
-            <text x={4} y={yFor(EMOTION_MAX) + 4} className="fill-muted-foreground text-[11px]">
+            <text
+              x={4}
+              y={yFor(EMOTION_MAX) + 4}
+              className="fill-muted-foreground text-[11px]"
+            >
               +5
             </text>
-            <text x={4} y={yFor(0) + 4} className="fill-muted-foreground text-[11px]">
+            <text
+              x={4}
+              y={yFor(0) + 4}
+              className="fill-muted-foreground text-[11px]"
+            >
               0
             </text>
-            <text x={4} y={yFor(EMOTION_MIN) + 4} className="fill-muted-foreground text-[11px]">
+            <text
+              x={4}
+              y={yFor(EMOTION_MIN) + 4}
+              className="fill-muted-foreground text-[11px]"
+            >
               -5
             </text>
             <line

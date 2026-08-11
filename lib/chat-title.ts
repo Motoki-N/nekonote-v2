@@ -4,6 +4,10 @@
  * （app/api/chat/route.ts）で共用する（SPEC-chat-thread-list §5.2）
  */
 export function chatTitleFrom(content: string): string {
-  const firstLine = content.split('\n').find((line) => line.trim() !== '') ?? ''
-  return firstLine.replace(/^[#>\-*+\s]+/, '').trim().slice(0, 50)
+  const firstLine =
+    content.split("\n").find((line) => line.trim() !== "") ?? "";
+  return firstLine
+    .replace(/^[#>\-*+\s]+/, "")
+    .trim()
+    .slice(0, 50);
 }

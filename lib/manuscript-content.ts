@@ -1,16 +1,16 @@
-import { getFileContent, getManuscriptTree } from '@/lib/git/github'
+import { getFileContent, getManuscriptTree } from "@/lib/git/github";
 
 // 原稿全ファイルの取得・文字数の共通処理。
 // 進捗集計（lib/actions/manuscripts.ts）と講評の全文結合（/api/review・lib/actions/critique.ts)が共用する
 
 export type ManuscriptFileContent = {
-  path: string
-  content: string
-}
+  path: string;
+  content: string;
+};
 
 /** 空白・改行を除いた文字数（表示・進捗集計・講評ガードで共通の数え方） */
 export function countChars(content: string): number {
-  return content.replaceAll(/\s/g, '').length
+  return content.replaceAll(/\s/g, "").length;
 }
 
 /**
@@ -24,9 +24,9 @@ export async function fetchAllManuscriptContents(
   basePath: string,
   opened?: ManuscriptFileContent,
 ): Promise<ManuscriptFileContent[]> {
-  const files = await getManuscriptTree(token, repo, basePath)
-  const results: ManuscriptFileContent[] = []
-  const CONCURRENCY = 10
+  const files = await getManuscriptTree(token, repo, basePath);
+  const results: ManuscriptFileContent[] = [];
+  const CONCURRENCY = 10;
   for (let i = 0; i < files.length; i += CONCURRENCY) {
     const batch = await Promise.all(
       files.slice(i, i + CONCURRENCY).map(async (f) => ({
@@ -36,8 +36,8 @@ export async function fetchAllManuscriptContents(
             ? opened.content
             : (await getFileContent(token, repo, f.path)).content,
       })),
-    )
-    results.push(...batch)
+    );
+    results.push(...batch);
   }
-  return results
+  return results;
 }

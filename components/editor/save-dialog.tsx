@@ -1,9 +1,9 @@
-'use client'
+"use client";
 
-import { useState } from 'react'
-import { Loader2 } from 'lucide-react'
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
 
-import { Button } from '@/components/ui/button'
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,8 +11,8 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-} from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 
 /**
  * 保存＝コミットの確認ダイアログ（SPEC-vertical-editor-phase2 §6）。
@@ -27,13 +27,13 @@ export function SaveDialog({
   onConfirm,
   onOpenChange,
 }: {
-  open: boolean
+  open: boolean;
   /** コミット先ブランチ（SPEC-vertical-editor-phase5 §3.1で明示するようにした） */
-  branch: string
-  defaultMessage: string
-  saving: boolean
-  onConfirm: (message: string) => void
-  onOpenChange: (open: boolean) => void
+  branch: string;
+  defaultMessage: string;
+  saving: boolean;
+  onConfirm: (message: string) => void;
+  onOpenChange: (open: boolean) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={(next) => !saving && onOpenChange(next)}>
@@ -47,7 +47,7 @@ export function SaveDialog({
         />
       </DialogContent>
     </Dialog>
-  )
+  );
 }
 
 function SaveForm({
@@ -57,13 +57,13 @@ function SaveForm({
   onConfirm,
   onCancel,
 }: {
-  branch: string
-  defaultMessage: string
-  saving: boolean
-  onConfirm: (message: string) => void
-  onCancel: () => void
+  branch: string;
+  defaultMessage: string;
+  saving: boolean;
+  onConfirm: (message: string) => void;
+  onCancel: () => void;
 }) {
-  const [message, setMessage] = useState(defaultMessage)
+  const [message, setMessage] = useState(defaultMessage);
 
   return (
     <>
@@ -76,8 +76,8 @@ function SaveForm({
       <form
         id="editor-save-form"
         onSubmit={(event) => {
-          event.preventDefault()
-          if (message.trim().length > 0) onConfirm(message.trim())
+          event.preventDefault();
+          if (message.trim().length > 0) onConfirm(message.trim());
         }}
       >
         <label className="flex flex-col gap-1.5 text-sm text-foreground">
@@ -92,7 +92,12 @@ function SaveForm({
         </label>
       </form>
       <DialogFooter>
-        <Button variant="outline" size="sm" disabled={saving} onClick={onCancel}>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={saving}
+          onClick={onCancel}
+        >
           キャンセル
         </Button>
         <Button
@@ -101,10 +106,12 @@ function SaveForm({
           size="sm"
           disabled={saving || message.trim().length === 0}
         >
-          {saving && <Loader2 data-icon="inline-start" className="animate-spin" />}
+          {saving && (
+            <Loader2 data-icon="inline-start" className="animate-spin" />
+          )}
           コミット
         </Button>
       </DialogFooter>
     </>
-  )
+  );
 }

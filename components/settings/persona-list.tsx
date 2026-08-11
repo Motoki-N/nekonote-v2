@@ -101,13 +101,17 @@ export function PersonaList({ personas }: { personas: PersonaRecord[] }) {
           >
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               <span className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium text-card-foreground">{persona.name}</span>
+                <span className="text-sm font-medium text-card-foreground">
+                  {persona.name}
+                </span>
                 {persona.is_default && <Badge variant="secondary">標準</Badge>}
               </span>
               <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
                 <span>{PERSONA_TYPE_LABEL[persona.persona_type]}</span>
                 <span>能力: {CAPABILITY_LABEL[persona.ai_capability]}</span>
-                <span>参照: {REFERENCE_SCOPE_LABEL[persona.reference_scope]}</span>
+                <span>
+                  参照: {REFERENCE_SCOPE_LABEL[persona.reference_scope]}
+                </span>
                 <span>ジャンル: {genreScopeLabel(persona.writing_genre)}</span>
               </span>
             </div>
@@ -152,7 +156,9 @@ export function PersonaList({ personas }: { personas: PersonaRecord[] }) {
                     />
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>「{persona.name}」を削除しますか？</AlertDialogTitle>
+                        <AlertDialogTitle>
+                          「{persona.name}」を削除しますか？
+                        </AlertDialogTitle>
                         <AlertDialogDescription>
                           このペルソナを起用したレビュー履歴は削除されずに残ります（担当表示は消えます）。この操作は元に戻せません。
                         </AlertDialogDescription>
@@ -190,9 +196,15 @@ function PersonaDialog({
   const [open, setOpen] = useState(false);
   const [name, setName] = useState(persona?.name ?? "");
   const [description, setDescription] = useState(persona?.description ?? "");
-  const [capability, setCapability] = useState<AiCapability>(persona?.ai_capability ?? "medium");
-  const [scope, setScope] = useState<ReferenceScope>(persona?.reference_scope ?? "all");
-  const [personaType, setPersonaType] = useState<PersonaType>(persona?.persona_type ?? "reviewer");
+  const [capability, setCapability] = useState<AiCapability>(
+    persona?.ai_capability ?? "medium",
+  );
+  const [scope, setScope] = useState<ReferenceScope>(
+    persona?.reference_scope ?? "all",
+  );
+  const [personaType, setPersonaType] = useState<PersonaType>(
+    persona?.persona_type ?? "reviewer",
+  );
   // "" = 全ジャンル共通（writing_genre null。SPEC-genre-profiles）
   const [writingGenre, setWritingGenre] = useState<WritingGenre | "">(
     persona?.writing_genre ?? "",
@@ -212,7 +224,9 @@ function PersonaDialog({
         persona_type: personaType,
         writing_genre: writingGenre === "" ? null : writingGenre,
       };
-      const result = persona ? await updatePersona(persona.id, input) : await createPersona(input);
+      const result = persona
+        ? await updatePersona(persona.id, input)
+        : await createPersona(input);
       if (!result.ok) {
         toast.error(result.error.message);
         return;
@@ -230,12 +244,18 @@ function PersonaDialog({
       <DialogTrigger render={trigger} />
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{persona ? "ペルソナを編集" : "新規ペルソナ"}</DialogTitle>
+          <DialogTitle>
+            {persona ? "ペルソナを編集" : "新規ペルソナ"}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-sm">
             名前（必須）
-            <Input value={name} onChange={(e) => setName(e.target.value)} required />
+            <Input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
           </label>
           <label className="flex flex-col gap-1 text-sm">
             性格・口調・スタンス（プロンプトに反映）
@@ -296,7 +316,9 @@ function PersonaDialog({
               <select
                 className={selectClass}
                 value={writingGenre}
-                onChange={(e) => setWritingGenre(e.target.value as WritingGenre | "")}
+                onChange={(e) =>
+                  setWritingGenre(e.target.value as WritingGenre | "")
+                }
               >
                 <option value="">共通（全ジャンル）</option>
                 {writingGenres.map((g) => (
@@ -310,7 +332,9 @@ function PersonaDialog({
           <DialogFooter>
             <Button
               type="submit"
-              disabled={submitting || name.trim() === "" || description.trim() === ""}
+              disabled={
+                submitting || name.trim() === "" || description.trim() === ""
+              }
             >
               {persona ? "保存する" : "作成する"}
             </Button>

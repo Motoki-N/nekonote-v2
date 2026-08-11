@@ -5,7 +5,11 @@ import { DEFAULT_SORT, type SortValue } from "@/components/notes/sort-options";
 
 type Tag = { id: string; name: string; kind: string };
 
-function buildHref(q: string | undefined, tagIds: string[], sort?: SortValue): string {
+function buildHref(
+  q: string | undefined,
+  tagIds: string[],
+  sort?: SortValue,
+): string {
   const params = new URLSearchParams();
   if (q) params.set("q", q);
   if (tagIds.length > 0) params.set("tags", tagIds.join(","));
@@ -39,7 +43,11 @@ export function TagFilter({
           <Badge
             key={tag.id}
             variant={
-              selected ? "default" : tag.kind === "working_title" ? "secondary" : "outline"
+              selected
+                ? "default"
+                : tag.kind === "working_title"
+                  ? "secondary"
+                  : "outline"
             }
             render={
               <Link href={buildHref(q, nextIds, sort)}>

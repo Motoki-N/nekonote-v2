@@ -4,7 +4,10 @@ import Link from "next/link";
 import type { ToolUIPart } from "ai";
 import { CalendarCheck, Check, ExternalLink, Loader2 } from "lucide-react";
 
-import type { SaveMemoNoteOutput, SaveScheduleOutput } from "@/lib/schemas/schedule";
+import type {
+  SaveMemoNoteOutput,
+  SaveScheduleOutput,
+} from "@/lib/schemas/schedule";
 
 /**
  * ツール呼び出しの結果カード（セッション内表示のみ。リロード後は消える。
@@ -17,21 +20,30 @@ export function ToolCard({ part }: { part: ToolUIPart }) {
     : "ノートへの保存に失敗しました";
 
   if (part.state === "output-error") {
-    return <p className="mr-4 self-start text-sm text-destructive">{failedText}</p>;
+    return (
+      <p className="mr-4 self-start text-sm text-destructive">{failedText}</p>
+    );
   }
   if (part.state !== "output-available") {
     return (
       <div className="mr-4 flex items-center gap-2 self-start rounded-lg border border-border bg-card px-3 py-2 text-xs text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
-        {isSchedule ? "スケジュールを保存しています…" : "ノートに保存しています…"}
+        {isSchedule
+          ? "スケジュールを保存しています…"
+          : "ノートに保存しています…"}
       </div>
     );
   }
 
   // 出力型はサーバーの execute 戻り値と共有（lib/schemas/schedule.ts）
-  const output = part.output as (SaveScheduleOutput | SaveMemoNoteOutput) | undefined;
+  const output = part.output as
+    (SaveScheduleOutput | SaveMemoNoteOutput) | undefined;
   if (!output?.ok) {
-    return <p className="mr-4 self-start text-sm text-destructive">{output?.message ?? failedText}</p>;
+    return (
+      <p className="mr-4 self-start text-sm text-destructive">
+        {output?.message ?? failedText}
+      </p>
+    );
   }
   return (
     <div className="mr-4 flex flex-wrap items-center gap-2 self-start rounded-lg border border-border bg-card px-3 py-2 text-xs text-card-foreground">

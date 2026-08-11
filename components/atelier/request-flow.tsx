@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { getManuscriptTree, type ManuscriptTreeData } from "@/lib/actions/manuscripts";
+import {
+  getManuscriptTree,
+  type ManuscriptTreeData,
+} from "@/lib/actions/manuscripts";
 import { illustrationKinds, type IllustrationKind } from "@/lib/schemas/enums";
 import {
   COLOR_MODE_LABEL,
@@ -19,7 +22,10 @@ import {
 } from "@/lib/schemas/illustration";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { selectClass, type AtelierProject } from "@/components/atelier/atelier-workspace";
+import {
+  selectClass,
+  type AtelierProject,
+} from "@/components/atelier/atelier-workspace";
 
 const ASPECT_LABEL: Record<IllustrationAspectRatio, string> = {
   "2:3": "縦（2:3）",
@@ -28,7 +34,10 @@ const ASPECT_LABEL: Record<IllustrationAspectRatio, string> = {
 };
 
 /** API の errorResponse（JSON）からユーザー向けメッセージを取り出す（critique-panel と同じ流儀） */
-async function toDisplayError(res: Response, fallback: string): Promise<string> {
+async function toDisplayError(
+  res: Response,
+  fallback: string,
+): Promise<string> {
   try {
     const parsed = (await res.json()) as { error?: { message?: string } };
     if (parsed.error?.message) return parsed.error.message;
@@ -68,9 +77,13 @@ export function RequestFlow({
 
   // 挿絵の対象ファイル一覧（kind=insert かつ repo 設定済みのときだけ取得）。
   // fetch_failed は一時エラー（GitHub API 失敗等）＝再試行ボタンで tree を null に戻して取り直す
-  const [tree, setTree] = useState<ManuscriptTreeData | { gate: "fetch_failed" } | null>(null);
+  const [tree, setTree] = useState<
+    ManuscriptTreeData | { gate: "fetch_failed" } | null
+  >(null);
 
-  const [proposals, setProposals] = useState<IllustrationProposal[] | null>(null);
+  const [proposals, setProposals] = useState<IllustrationProposal[] | null>(
+    null,
+  );
   const [selectedProposal, setSelectedProposal] = useState<number | null>(null);
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState<"propose" | "generate" | null>(null);
@@ -115,7 +128,8 @@ export function RequestFlow({
       colorMode,
       aspectRatio,
       instructions,
-      manuscriptPath: kind === "insert" ? manuscriptPath || undefined : undefined,
+      manuscriptPath:
+        kind === "insert" ? manuscriptPath || undefined : undefined,
       sceneNote: kind === "insert" ? sceneNote || undefined : undefined,
       referenceIllustrationId: reference?.id,
     };
@@ -123,7 +137,8 @@ export function RequestFlow({
 
   function validate(): string | null {
     if (instructions.trim() === "") return "描いてほしい内容を入力してください";
-    if (kind === "insert" && manuscriptPath === "") return "挿絵は対象の原稿ファイルを選択してください";
+    if (kind === "insert" && manuscriptPath === "")
+      return "挿絵は対象の原稿ファイルを選択してください";
     return null;
   }
 
@@ -143,7 +158,12 @@ export function RequestFlow({
         body: JSON.stringify({ request: buildRequest() }),
       });
       if (!res.ok) {
-        toast.error(await toDisplayError(res, "案出しに失敗しました。時間をおいて再試行してください"));
+        toast.error(
+          await toDisplayError(
+            res,
+            "案出しに失敗しました。時間をおいて再試行してください",
+          ),
+        );
         return;
       }
       const data = (await res.json()) as { proposals: IllustrationProposal[] };
@@ -173,7 +193,12 @@ export function RequestFlow({
         body: JSON.stringify({ request: buildRequest(), prompt }),
       });
       if (!res.ok) {
-        toast.error(await toDisplayError(res, "生成に失敗しました。時間をおいて再試行してください"));
+        toast.error(
+          await toDisplayError(
+            res,
+            "生成に失敗しました。時間をおいて再試行してください",
+          ),
+        );
         return;
       }
       const data = (await res.json()) as { illustration: IllustrationItem };
@@ -195,7 +220,9 @@ export function RequestFlow({
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-      <h2 className="text-base font-semibold text-card-foreground">イラスト依頼</h2>
+      <h2 className="text-base font-semibold text-card-foreground">
+        イラスト依頼
+      </h2>
 
       {/* 依頼フォーム（§4.2） */}
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
@@ -239,7 +266,9 @@ export function RequestFlow({
             className={selectClass}
             value={aspectRatio}
             disabled={busy !== null}
-            onChange={(e) => setAspectRatio(e.target.value as IllustrationAspectRatio)}
+            onChange={(e) =>
+              setAspectRatio(e.target.value as IllustrationAspectRatio)
+            }
           >
             {illustrationAspectRatios.map((value) => (
               <option key={value} value={value}>
@@ -257,10 +286,14 @@ export function RequestFlow({
               挿絵にはリポジトリの設定が必要です（プロジェクト設定）
             </p>
           ) : tree === null ? (
-            <p className="text-xs text-muted-foreground">原稿ファイルを読み込み中…</p>
+            <p className="text-xs text-muted-foreground">
+              原稿ファイルを読み込み中…
+            </p>
           ) : tree.gate === "fetch_failed" ? (
             <div className="flex items-center gap-2">
-              <p className="text-xs text-destructive">原稿ファイルの取得に失敗しました</p>
+              <p className="text-xs text-destructive">
+                原稿ファイルの取得に失敗しました
+              </p>
               <Button size="sm" variant="outline" onClick={() => setTree(null)}>
                 再試行
               </Button>
@@ -342,8 +375,15 @@ export function RequestFlow({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => void handlePropose()}>
-          {busy === "propose" && <Loader2 className="animate-spin" data-icon="inline-start" />}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={busy !== null}
+          onClick={() => void handlePropose()}
+        >
+          {busy === "propose" && (
+            <Loader2 className="animate-spin" data-icon="inline-start" />
+          )}
           案を出してもらう
         </Button>
         <span className="text-xs text-muted-foreground">
@@ -369,8 +409,12 @@ export function RequestFlow({
                     : "border-border bg-card hover:bg-accent/50"
                 }`}
               >
-                <p className="text-sm font-medium text-card-foreground">{proposal.title}</p>
-                <p className="mt-1 text-xs text-muted-foreground">{proposal.description}</p>
+                <p className="text-sm font-medium text-card-foreground">
+                  {proposal.title}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {proposal.description}
+                </p>
               </button>
             </li>
           ))}
@@ -397,18 +441,24 @@ export function RequestFlow({
           disabled={busy !== null || prompt.trim() === ""}
           onClick={() => void handleGenerate()}
         >
-          {busy === "generate" && <Loader2 className="animate-spin" data-icon="inline-start" />}
+          {busy === "generate" && (
+            <Loader2 className="animate-spin" data-icon="inline-start" />
+          )}
           この内容で描いてもらう
         </Button>
         {busy === "generate" && (
-          <span className="text-xs text-muted-foreground">生成中（10〜30秒ほど）…</span>
+          <span className="text-xs text-muted-foreground">
+            生成中（10〜30秒ほど）…
+          </span>
         )}
       </div>
 
       {/* 生成結果（§4.3）。直下から編集依頼へつなげる */}
       {result && (
         <div className="flex flex-col gap-2 rounded-md border border-border p-3">
-          <p className="text-sm font-medium text-card-foreground">{result.title}</p>
+          <p className="text-sm font-medium text-card-foreground">
+            {result.title}
+          </p>
           {/* eslint-disable-next-line @next/next/no-img-element -- 署名URLのため素の img を使う */}
           <img
             src={result.signedUrl}

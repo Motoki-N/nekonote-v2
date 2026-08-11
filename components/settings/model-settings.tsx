@@ -14,7 +14,11 @@ import { aiProviders } from "@/lib/schemas/enums";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { CAPABILITY_LABEL, PROVIDER_LABEL, selectClass } from "@/components/settings/labels";
+import {
+  CAPABILITY_LABEL,
+  PROVIDER_LABEL,
+  selectClass,
+} from "@/components/settings/labels";
 
 type RowState = {
   provider: AiProvider;
@@ -28,18 +32,28 @@ type RowState = {
  * 「デフォルトに戻す」= 行削除。キー未設定プロバイダには警告バッジ（サーバー判定の boolean のみ）
  */
 export function ModelSettings({ data }: { data: AiModelSettingsData }) {
-  const [rows, setRows] = useState<Record<ModelCapability, RowState>>(() =>
-    Object.fromEntries(
-      data.rows.map((row) => [
-        row.capability,
-        { provider: row.provider, modelId: row.modelId, isCustom: row.isCustom },
-      ]),
-    ) as Record<ModelCapability, RowState>,
+  const [rows, setRows] = useState<Record<ModelCapability, RowState>>(
+    () =>
+      Object.fromEntries(
+        data.rows.map((row) => [
+          row.capability,
+          {
+            provider: row.provider,
+            modelId: row.modelId,
+            isCustom: row.isCustom,
+          },
+        ]),
+      ) as Record<ModelCapability, RowState>,
   );
-  const [busyCapability, setBusyCapability] = useState<ModelCapability | null>(null);
+  const [busyCapability, setBusyCapability] = useState<ModelCapability | null>(
+    null,
+  );
 
   function setRow(capability: ModelCapability, patch: Partial<RowState>) {
-    setRows((prev) => ({ ...prev, [capability]: { ...prev[capability], ...patch } }));
+    setRows((prev) => ({
+      ...prev,
+      [capability]: { ...prev[capability], ...patch },
+    }));
   }
 
   async function handleSave(capability: ModelCapability) {
@@ -75,7 +89,11 @@ export function ModelSettings({ data }: { data: AiModelSettingsData }) {
       const fallback = data.defaults[capability];
       setRows((prev) => ({
         ...prev,
-        [capability]: { provider: fallback.provider, modelId: fallback.modelId, isCustom: false },
+        [capability]: {
+          provider: fallback.provider,
+          modelId: fallback.modelId,
+          isCustom: false,
+        },
       }));
       toast(`${CAPABILITY_LABEL[capability]}をデフォルトに戻しました`);
     } finally {
@@ -116,7 +134,11 @@ export function ModelSettings({ data }: { data: AiModelSettingsData }) {
                 className={`${selectClass} w-32 flex-none`}
                 value={row.provider}
                 disabled={busy}
-                onChange={(e) => setRow(meta.capability, { provider: e.target.value as AiProvider })}
+                onChange={(e) =>
+                  setRow(meta.capability, {
+                    provider: e.target.value as AiProvider,
+                  })
+                }
               >
                 {aiProviders.map((provider) => (
                   <option key={provider} value={provider}>
@@ -130,7 +152,9 @@ export function ModelSettings({ data }: { data: AiModelSettingsData }) {
                 value={row.modelId}
                 placeholder={data.defaults[meta.capability].modelId}
                 disabled={busy}
-                onChange={(e) => setRow(meta.capability, { modelId: e.target.value })}
+                onChange={(e) =>
+                  setRow(meta.capability, { modelId: e.target.value })
+                }
               />
               <Button
                 size="sm"

@@ -2,7 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, BookOpenText, FileText, History, Info, Loader2, PenLine, Settings, SpellCheck } from "lucide-react";
+import {
+  ArrowLeft,
+  BookOpenText,
+  FileText,
+  History,
+  Info,
+  Loader2,
+  PenLine,
+  Settings,
+  SpellCheck,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -38,7 +48,9 @@ export function ManuscriptWorkspace({
 }) {
   // ?file= の初期表示（エディタからの相互リンク。一覧との一致でのみ採用する多層防御。SPEC-phase4 §3.1）
   const [selectedPath, setSelectedPath] = useState<string | null>(() =>
-    initialFile && tree?.gate === "ok" && tree.files.includes(initialFile) ? initialFile : null,
+    initialFile && tree?.gate === "ok" && tree.files.includes(initialFile)
+      ? initialFile
+      : null,
   );
   const [file, setFile] = useState<ManuscriptFileData | null>(null);
   const [loading, setLoading] = useState(selectedPath !== null);
@@ -49,7 +61,10 @@ export function ManuscriptWorkspace({
   // 履歴パネル（SPEC-manuscript-history）。校正・講評と排他表示
   const [historyOpen, setHistoryOpen] = useState(false);
   // 提案カードクリックによる該当箇所ハイライト。nonce は同じカードの再クリックでも再スクロールさせるため
-  const [highlight, setHighlight] = useState<{ text: string; nonce: number } | null>(null);
+  const [highlight, setHighlight] = useState<{
+    text: string;
+    nonce: number;
+  } | null>(null);
 
   // 本文の取得のみ（先頭 await まで同期 setState なし＝初期表示の effect からも呼べる）
   const loadFile = useCallback(
@@ -58,7 +73,11 @@ export function ManuscriptWorkspace({
         const result = await openManuscriptFile(projectId, path);
         if (!result.ok || !result.data) {
           setFile(null);
-          setFileError(result.ok ? "ファイルの読み込みに失敗しました" : result.error.message);
+          setFileError(
+            result.ok
+              ? "ファイルの読み込みに失敗しました"
+              : result.error.message,
+          );
           return;
         }
         setFile(result.data);
@@ -106,7 +125,9 @@ export function ManuscriptWorkspace({
         prev
           ? {
               ...prev,
-              suggestions: prev.suggestions.map((s) => (s.id === id ? { ...s, status } : s)),
+              suggestions: prev.suggestions.map((s) =>
+                s.id === id ? { ...s, status } : s,
+              ),
             }
           : prev,
       );
@@ -120,10 +141,15 @@ export function ManuscriptWorkspace({
     (originalText: string) => {
       if (!file) return;
       if (originalText === "" || !file.content.includes(originalText)) {
-        toast.error("該当箇所が原稿内に見つかりません（原稿が更新された可能性があります）");
+        toast.error(
+          "該当箇所が原稿内に見つかりません（原稿が更新された可能性があります）",
+        );
         return;
       }
-      setHighlight((prev) => ({ text: originalText, nonce: (prev?.nonce ?? 0) + 1 }));
+      setHighlight((prev) => ({
+        text: originalText,
+        nonce: (prev?.nonce ?? 0) + 1,
+      }));
     },
     [file],
   );
@@ -168,7 +194,9 @@ export function ManuscriptWorkspace({
   if (tree.gate === "no_repo") {
     return (
       <GuidanceCard>
-        <p className="text-sm text-foreground">原稿リポジトリが設定されていません。</p>
+        <p className="text-sm text-foreground">
+          原稿リポジトリが設定されていません。
+        </p>
         <p className="text-sm text-muted-foreground">
           ヘッダーの編集ボタン（鉛筆アイコン）から「原稿リポジトリ（owner/repo）」を設定してください。
         </p>
@@ -177,13 +205,17 @@ export function ManuscriptWorkspace({
   }
 
   const relativeLabel = (path: string) =>
-    tree.basePath === "" ? path : path.slice(tree.basePath.replace(/\/$/, "").length + 1);
+    tree.basePath === ""
+      ? path
+      : path.slice(tree.basePath.replace(/\/$/, "").length + 1);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {/* 原稿タブのツールバー（講評はファイルを開いていなくても実行できる。SPEC-dashboard-critique-settings §3.3） */}
       <div className="flex items-center gap-2 border-b border-border px-3 py-1.5">
-        <span className="text-xs text-muted-foreground">原稿 全{tree.files.length}ファイル</span>
+        <span className="text-xs text-muted-foreground">
+          原稿 全{tree.files.length}ファイル
+        </span>
         <Button
           size="sm"
           variant="outline"
@@ -201,167 +233,183 @@ export function ManuscriptWorkspace({
       </div>
 
       <div className="flex min-h-0 flex-1">
-      {/* ファイル一覧（モバイルはファイル未選択時のみ表示） */}
-      <nav
-        aria-label="原稿ファイル一覧"
-        className={cn(
-          "w-full shrink-0 overflow-y-auto border-border p-2 lg:block lg:w-64 lg:border-r",
-          selectedPath !== null && "hidden",
-        )}
-      >
-        {tree.files.length === 0 ? (
-          <p className="p-2 text-sm text-muted-foreground">
-            原稿ファイル（.md / .txt）が見つかりません
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-0.5">
-            {tree.files.map((path) => (
-              <li key={path}>
-                <button
-                  type="button"
-                  onClick={() => void openFile(path)}
-                  aria-current={selectedPath === path ? "true" : undefined}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                    selectedPath === path
-                      ? "bg-secondary text-secondary-foreground"
-                      : "text-foreground hover:bg-secondary/50",
-                  )}
-                >
-                  <FileText className="size-4 shrink-0 text-muted-foreground" />
-                  <span className="min-w-0 break-all">{relativeLabel(path)}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </nav>
+        {/* ファイル一覧（モバイルはファイル未選択時のみ表示） */}
+        <nav
+          aria-label="原稿ファイル一覧"
+          className={cn(
+            "w-full shrink-0 overflow-y-auto border-border p-2 lg:block lg:w-64 lg:border-r",
+            selectedPath !== null && "hidden",
+          )}
+        >
+          {tree.files.length === 0 ? (
+            <p className="p-2 text-sm text-muted-foreground">
+              原稿ファイル（.md / .txt）が見つかりません
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-0.5">
+              {tree.files.map((path) => (
+                <li key={path}>
+                  <button
+                    type="button"
+                    onClick={() => void openFile(path)}
+                    aria-current={selectedPath === path ? "true" : undefined}
+                    className={cn(
+                      "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                      selectedPath === path
+                        ? "bg-secondary text-secondary-foreground"
+                        : "text-foreground hover:bg-secondary/50",
+                    )}
+                  >
+                    <FileText className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="min-w-0 break-all">
+                      {relativeLabel(path)}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </nav>
 
-      {/* 原稿ビュー（読み込み専用） */}
-      <main
-        className={cn(
-          "min-w-0 flex-1 flex-col overflow-y-auto",
-          selectedPath === null ? "hidden lg:flex" : "flex",
-        )}
-      >
-        {selectedPath === null ? (
-          <p className="p-6 text-sm text-muted-foreground">
-            左の一覧からファイルを選ぶと本文が表示されます
-          </p>
-        ) : (
-          <>
-            <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="ファイル一覧へ戻る"
-                className="text-muted-foreground lg:hidden"
-                onClick={() => {
-                  setSelectedPath(null);
-                  setFile(null);
-                  setPanelOpen(false);
-                  setHistoryOpen(false);
-                }}
-              >
-                <ArrowLeft />
-              </Button>
-              <span className="min-w-0 break-all text-sm font-medium text-foreground">
-                {relativeLabel(selectedPath)}
-              </span>
-              {file && (
-                <span className="text-xs text-muted-foreground">{file.charCount}字</span>
-              )}
-              <div className="ml-auto flex items-center gap-1.5">
-                {/* 縦書きエディタへの相互リンク（同じ章を開いたまま遷移。SPEC-phase4 §3.1） */}
+        {/* 原稿ビュー（読み込み専用） */}
+        <main
+          className={cn(
+            "min-w-0 flex-1 flex-col overflow-y-auto",
+            selectedPath === null ? "hidden lg:flex" : "flex",
+          )}
+        >
+          {selectedPath === null ? (
+            <p className="p-6 text-sm text-muted-foreground">
+              左の一覧からファイルを選ぶと本文が表示されます
+            </p>
+          ) : (
+            <>
+              <header className="sticky top-0 z-10 flex flex-wrap items-center gap-2 border-b border-border bg-background px-4 py-2">
                 <Button
-                  size="sm"
-                  variant="outline"
-                  nativeButton={false}
-                  render={
-                    <Link
-                      href={`/projects/${projectId}/editor?file=${encodeURIComponent(selectedPath)}`}
-                    >
-                      <PenLine data-icon="inline-start" />
-                      エディタで開く
-                    </Link>
-                  }
-                />
-                {/* 変更履歴（校正コミット・書き戻しの確認。SPEC-manuscript-history §3） */}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  disabled={!file}
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="ファイル一覧へ戻る"
+                  className="text-muted-foreground lg:hidden"
                   onClick={() => {
-                    setCritiqueOpen(false);
+                    setSelectedPath(null);
+                    setFile(null);
                     setPanelOpen(false);
-                    setHistoryOpen(true);
-                  }}
-                >
-                  <History data-icon="inline-start" />
-                  履歴
-                </Button>
-                <Button
-                  size="sm"
-                  disabled={!file}
-                  onClick={() => {
-                    setCritiqueOpen(false);
                     setHistoryOpen(false);
-                    setPanelOpen(true);
                   }}
                 >
-                  <SpellCheck data-icon="inline-start" />
-                  校正を受ける
+                  <ArrowLeft />
                 </Button>
-              </div>
-            </header>
-
-            {file &&
-              file.lastReviewedCommit !== null &&
-              file.lastReviewedCommit !== file.latestSha && (
-                <div className="flex items-center gap-2 border-b border-border bg-secondary px-4 py-2 text-sm text-secondary-foreground">
-                  <Info className="size-4 shrink-0" />
-                  前回の校正以降に原稿が更新されています
+                <span className="min-w-0 break-all text-sm font-medium text-foreground">
+                  {relativeLabel(selectedPath)}
+                </span>
+                {file && (
+                  <span className="text-xs text-muted-foreground">
+                    {file.charCount}字
+                  </span>
+                )}
+                <div className="ml-auto flex items-center gap-1.5">
+                  {/* 縦書きエディタへの相互リンク（同じ章を開いたまま遷移。SPEC-phase4 §3.1） */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    nativeButton={false}
+                    render={
+                      <Link
+                        href={`/projects/${projectId}/editor?file=${encodeURIComponent(selectedPath)}`}
+                      >
+                        <PenLine data-icon="inline-start" />
+                        エディタで開く
+                      </Link>
+                    }
+                  />
+                  {/* 変更履歴（校正コミット・書き戻しの確認。SPEC-manuscript-history §3） */}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!file}
+                    onClick={() => {
+                      setCritiqueOpen(false);
+                      setPanelOpen(false);
+                      setHistoryOpen(true);
+                    }}
+                  >
+                    <History data-icon="inline-start" />
+                    履歴
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={!file}
+                    onClick={() => {
+                      setCritiqueOpen(false);
+                      setHistoryOpen(false);
+                      setPanelOpen(true);
+                    }}
+                  >
+                    <SpellCheck data-icon="inline-start" />
+                    校正を受ける
+                  </Button>
                 </div>
+              </header>
+
+              {file &&
+                file.lastReviewedCommit !== null &&
+                file.lastReviewedCommit !== file.latestSha && (
+                  <div className="flex items-center gap-2 border-b border-border bg-secondary px-4 py-2 text-sm text-secondary-foreground">
+                    <Info className="size-4 shrink-0" />
+                    前回の校正以降に原稿が更新されています
+                  </div>
+                )}
+
+              {loading ? (
+                <div className="flex flex-1 items-center justify-center">
+                  <Loader2
+                    className="size-5 animate-spin text-muted-foreground"
+                    aria-label="読み込み中"
+                  />
+                </div>
+              ) : fileError ? (
+                <p className="p-4 text-sm text-destructive">{fileError}</p>
+              ) : (
+                file && (
+                  <div className="mx-auto w-full max-w-2xl flex-1 whitespace-pre-wrap p-4 text-[15px] leading-7 text-foreground sm:p-6">
+                    <ManuscriptBody
+                      content={file.content}
+                      highlight={highlight}
+                    />
+                  </div>
+                )
               )}
+            </>
+          )}
+        </main>
 
-            {loading ? (
-              <div className="flex flex-1 items-center justify-center">
-                <Loader2
-                  className="size-5 animate-spin text-muted-foreground"
-                  aria-label="読み込み中"
-                />
-              </div>
-            ) : fileError ? (
-              <p className="p-4 text-sm text-destructive">{fileError}</p>
-            ) : (
-              file && (
-                <div className="mx-auto w-full max-w-2xl flex-1 whitespace-pre-wrap p-4 text-[15px] leading-7 text-foreground sm:p-6">
-                  <ManuscriptBody content={file.content} highlight={highlight} />
-                </div>
-              )
-            )}
-          </>
+        {panelOpen && !critiqueOpen && file && (
+          <ProofreadPanel
+            key={file.linkId}
+            linkId={file.linkId}
+            content={file.content}
+            suggestions={file.suggestions}
+            onUpdateStatus={handleUpdateSuggestion}
+            onLocate={handleLocate}
+            onCompleted={refreshFile}
+            onClose={() => setPanelOpen(false)}
+          />
         )}
-      </main>
 
-      {panelOpen && !critiqueOpen && file && (
-        <ProofreadPanel
-          key={file.linkId}
-          linkId={file.linkId}
-          content={file.content}
-          suggestions={file.suggestions}
-          onUpdateStatus={handleUpdateSuggestion}
-          onLocate={handleLocate}
-          onCompleted={refreshFile}
-          onClose={() => setPanelOpen(false)}
-        />
-      )}
+        {historyOpen && !panelOpen && !critiqueOpen && file && (
+          <HistoryPanel
+            key={file.linkId}
+            linkId={file.linkId}
+            onClose={() => setHistoryOpen(false)}
+          />
+        )}
 
-      {historyOpen && !panelOpen && !critiqueOpen && file && (
-        <HistoryPanel key={file.linkId} linkId={file.linkId} onClose={() => setHistoryOpen(false)} />
-      )}
-
-      {critiqueOpen && <CritiquePanel projectId={projectId} onClose={() => setCritiqueOpen(false)} />}
+        {critiqueOpen && (
+          <CritiquePanel
+            projectId={projectId}
+            onClose={() => setCritiqueOpen(false)}
+          />
+        )}
       </div>
     </div>
   );
@@ -390,7 +438,10 @@ function ManuscriptBody({
   return (
     <>
       {content.slice(0, idx)}
-      <mark ref={markRef} className="scroll-mt-24 rounded-sm bg-primary/20 text-foreground">
+      <mark
+        ref={markRef}
+        className="scroll-mt-24 rounded-sm bg-primary/20 text-foreground"
+      >
         {highlight.text}
       </mark>
       {content.slice(idx + highlight.text.length)}

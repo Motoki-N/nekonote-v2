@@ -4,7 +4,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { EditorContent, type Editor } from "@tiptap/react";
-import { ArrowLeft, ClipboardCheck, History, Sparkles, Trash2, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ClipboardCheck,
+  History,
+  Sparkles,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -19,7 +26,10 @@ import type { NoteContext } from "@/lib/ai/prompts";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { EditorToolbar, useMarkdownEditor } from "@/components/editor/markdown-editor";
+import {
+  EditorToolbar,
+  useMarkdownEditor,
+} from "@/components/editor/markdown-editor";
 import {
   clearStoredDraft,
   readStoredDraft,
@@ -53,11 +63,13 @@ export function NoteEditor({
   const router = useRouter();
   const [title, setTitle] = useState(note.title);
   const [tags, setTags] = useState<AttachedTag[]>(initialTags);
-  const [restorableDraft, setRestorableDraft] = useState<NotePayload | null>(null);
-  // パネルは排他表示（掘り下げ / キャラクターレビュー / バージョン履歴のいずれか一方。Issue #47）
-  const [openPanel, setOpenPanel] = useState<"deep-dive" | "character-review" | "history" | null>(
+  const [restorableDraft, setRestorableDraft] = useState<NotePayload | null>(
     null,
   );
+  // パネルは排他表示（掘り下げ / キャラクターレビュー / バージョン履歴のいずれか一方。Issue #47）
+  const [openPanel, setOpenPanel] = useState<
+    "deep-dive" | "character-review" | "history" | null
+  >(null);
 
   const titleRef = useRef(note.title);
   const editorRef = useRef<Editor | null>(null);
@@ -92,7 +104,10 @@ export function NoteEditor({
         typeof draft.payload.content === "string" &&
         draft.savedAt > Date.parse(note.updated_at)
       ) {
-        setRestorableDraft({ title: draft.payload.title ?? "", content: draft.payload.content });
+        setRestorableDraft({
+          title: draft.payload.title ?? "",
+          content: draft.payload.content,
+        });
       }
     },
   });
@@ -104,7 +119,9 @@ export function NoteEditor({
     if (!restorableDraft || !editor) return;
     setTitle(restorableDraft.title);
     titleRef.current = restorableDraft.title;
-    editor.commands.setContent(restorableDraft.content, { contentType: "markdown" });
+    editor.commands.setContent(restorableDraft.content, {
+      contentType: "markdown",
+    });
     setRestorableDraft(null);
     void flush();
   }
@@ -115,7 +132,9 @@ export function NoteEditor({
   }
 
   function handleAttached(tag: AttachedTag) {
-    setTags((prev) => (prev.some((t) => t.id === tag.id) ? prev : [...prev, tag]));
+    setTags((prev) =>
+      prev.some((t) => t.id === tag.id) ? prev : [...prev, tag],
+    );
   }
 
   async function handleDetach(tagId: string) {
@@ -130,9 +149,16 @@ export function NoteEditor({
   function insertTemplate(template: Template) {
     if (!editor) return;
     // 1つの insertContent 呼び出し＝1回のUndoで丸ごと取り消せる
-    editor.chain().focus().insertContent(template.content, { contentType: "markdown" }).run();
+    editor
+      .chain()
+      .focus()
+      .insertContent(template.content, { contentType: "markdown" })
+      .run();
     if (template.tag_name) {
-      void attachTag(note.id, { name: template.tag_name, kind: "category" }).then((result) => {
+      void attachTag(note.id, {
+        name: template.tag_name,
+        kind: "category",
+      }).then((result) => {
         if (result.ok && result.data) handleAttached(result.data);
         else if (!result.ok) toast.error(result.error.message);
       });
@@ -151,7 +177,11 @@ export function NoteEditor({
   function insertFromDeepDive(markdown: string) {
     if (!editor) return;
     // テンプレ挿入と同じ流儀: カーソル位置に挿入、1回のUndoで取り消せる
-    editor.chain().focus().insertContent(markdown, { contentType: "markdown" }).run();
+    editor
+      .chain()
+      .focus()
+      .insertContent(markdown, { contentType: "markdown" })
+      .run();
   }
 
   async function toggleHistory() {
@@ -256,69 +286,79 @@ export function NoteEditor({
 
       <div className="flex min-h-0 flex-1">
         <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6">
-        <Input
-          value={title}
-          onChange={(e) => {
-            setTitle(e.target.value);
-            titleRef.current = e.target.value;
-            scheduleSave();
-          }}
-          placeholder="無題"
-          aria-label="タイトル"
-          className="h-auto border-none bg-transparent px-0 text-xl font-bold shadow-none focus-visible:ring-0 dark:bg-transparent"
-        />
-
-        <div className="flex flex-wrap items-center gap-1.5">
-          {tags.map((tag) => (
-            <Badge key={tag.id} variant={tagVariant(tag.kind)} className="gap-0.5 pr-1">
-              {tag.kind === "working_title" ? `《${tag.name}》` : tag.name}
-              <button
-                type="button"
-                aria-label={`タグ「${tag.name}」を外す`}
-                className="rounded-full p-0.5 hover:bg-muted-foreground/20"
-                onClick={() => handleDetach(tag.id)}
-              >
-                <X className="size-3" />
-              </button>
-            </Badge>
-          ))}
-          <TagInput
-            noteId={note.id}
-            allTags={allTags}
-            attachedTagIds={tags.map((t) => t.id)}
-            onAttached={handleAttached}
+          <Input
+            value={title}
+            onChange={(e) => {
+              setTitle(e.target.value);
+              titleRef.current = e.target.value;
+              scheduleSave();
+            }}
+            placeholder="無題"
+            aria-label="タイトル"
+            className="h-auto border-none bg-transparent px-0 text-xl font-bold shadow-none focus-visible:ring-0 dark:bg-transparent"
           />
-        </div>
 
-        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-lg border border-border bg-background/95 p-1 backdrop-blur">
-          {/* useEditorState はマウント時の editor でスナップショットを初期化するため、生成後にマウントする */}
-          {editor && <EditorToolbar editor={editor} />}
-          <div className="ml-auto flex items-center gap-1">
-            <TemplateMenu templates={templates} onInsert={insertTemplate} />
-            <Button
-              variant={openPanel === "deep-dive" ? "secondary" : "outline"}
-              size="sm"
-              aria-pressed={openPanel === "deep-dive"}
-              onClick={() => setOpenPanel((v) => (v === "deep-dive" ? null : "deep-dive"))}
-            >
-              <Sparkles data-icon="inline-start" />
-              掘り下げ
-            </Button>
-            <Button
-              variant={openPanel === "character-review" ? "secondary" : "outline"}
-              size="sm"
-              aria-pressed={openPanel === "character-review"}
-              onClick={() =>
-                setOpenPanel((v) => (v === "character-review" ? null : "character-review"))
-              }
-            >
-              <ClipboardCheck data-icon="inline-start" />
-              キャラクターレビュー
-            </Button>
+          <div className="flex flex-wrap items-center gap-1.5">
+            {tags.map((tag) => (
+              <Badge
+                key={tag.id}
+                variant={tagVariant(tag.kind)}
+                className="gap-0.5 pr-1"
+              >
+                {tag.kind === "working_title" ? `《${tag.name}》` : tag.name}
+                <button
+                  type="button"
+                  aria-label={`タグ「${tag.name}」を外す`}
+                  className="rounded-full p-0.5 hover:bg-muted-foreground/20"
+                  onClick={() => handleDetach(tag.id)}
+                >
+                  <X className="size-3" />
+                </button>
+              </Badge>
+            ))}
+            <TagInput
+              noteId={note.id}
+              allTags={allTags}
+              attachedTagIds={tags.map((t) => t.id)}
+              onAttached={handleAttached}
+            />
           </div>
-        </div>
 
-        <EditorContent editor={editor} className="flex flex-1 flex-col" />
+          <div className="sticky top-0 z-10 flex flex-wrap items-center gap-0.5 rounded-lg border border-border bg-background/95 p-1 backdrop-blur">
+            {/* useEditorState はマウント時の editor でスナップショットを初期化するため、生成後にマウントする */}
+            {editor && <EditorToolbar editor={editor} />}
+            <div className="ml-auto flex items-center gap-1">
+              <TemplateMenu templates={templates} onInsert={insertTemplate} />
+              <Button
+                variant={openPanel === "deep-dive" ? "secondary" : "outline"}
+                size="sm"
+                aria-pressed={openPanel === "deep-dive"}
+                onClick={() =>
+                  setOpenPanel((v) => (v === "deep-dive" ? null : "deep-dive"))
+                }
+              >
+                <Sparkles data-icon="inline-start" />
+                掘り下げ
+              </Button>
+              <Button
+                variant={
+                  openPanel === "character-review" ? "secondary" : "outline"
+                }
+                size="sm"
+                aria-pressed={openPanel === "character-review"}
+                onClick={() =>
+                  setOpenPanel((v) =>
+                    v === "character-review" ? null : "character-review",
+                  )
+                }
+              >
+                <ClipboardCheck data-icon="inline-start" />
+                キャラクターレビュー
+              </Button>
+            </div>
+          </div>
+
+          <EditorContent editor={editor} className="flex flex-1 flex-col" />
         </main>
 
         {openPanel === "deep-dive" && (

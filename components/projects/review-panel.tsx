@@ -64,7 +64,10 @@ export function ProposalReviewPanel({
           sessionId !== null
         ) {
           return (
-            <Button onClick={() => void handleApprove(sessionId)} disabled={approving}>
+            <Button
+              onClick={() => void handleApprove(sessionId)}
+              disabled={approving}
+            >
               <BadgeCheck data-icon="inline-start" />
               企画を通す
             </Button>

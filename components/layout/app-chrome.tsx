@@ -11,7 +11,9 @@ const ChromeContext = createContext<{
 export function ChromeProvider({ children }: { children: React.ReactNode }) {
   const [hidden, setHidden] = useState(false);
   const value = useMemo(() => ({ hidden, setHidden }), [hidden]);
-  return <ChromeContext.Provider value={value}>{children}</ChromeContext.Provider>;
+  return (
+    <ChromeContext.Provider value={value}>{children}</ChromeContext.Provider>
+  );
 }
 
 export function useChrome() {

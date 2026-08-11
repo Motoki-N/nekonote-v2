@@ -21,13 +21,19 @@ export function ProjectTabs({
     { href: `/projects/${projectId}/manuscript`, label: "原稿", exact: false },
     { href: `/projects/${projectId}/editor`, label: "エディタ", exact: false },
     // 過去レビューセッションの閲覧（SPEC-review-history §3.1）
-    { href: `/projects/${projectId}/reviews`, label: "レビュー履歴", exact: false },
+    {
+      href: `/projects/${projectId}/reviews`,
+      label: "レビュー履歴",
+      exact: false,
+    },
   ];
 
   return (
     <nav aria-label="プロジェクトのタブ" className="flex gap-1">
       {tabs.map((tab) => {
-        const active = tab.exact ? pathname === tab.href : pathname.startsWith(tab.href);
+        const active = tab.exact
+          ? pathname === tab.href
+          : pathname.startsWith(tab.href);
         return (
           <Link
             key={tab.href}

@@ -1,11 +1,11 @@
-'use client'
+"use client";
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef } from "react";
 
-import { EditorState } from '@codemirror/state'
-import { EditorView } from '@codemirror/view'
+import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 
-import { buildEditorExtensions } from '@/components/editor/codemirror'
+import { buildEditorExtensions } from "@/components/editor/codemirror";
 
 /**
  * 入力ペイン（SPEC-vertical-editor-phase2 §4）。CodeMirror の生成・破棄のみを担い、
@@ -20,25 +20,35 @@ export function EditorPane({
   onSelectionChange,
   viewRef,
 }: {
-  initialContent: string
-  onDocChange: (content: string) => void
-  onSaveRequest: () => void
+  initialContent: string;
+  onDocChange: (content: string) => void;
+  onSaveRequest: () => void;
   /** 画像ファイルのドロップ（SPEC-phase3 §6） */
-  onImageDrop?: (file: File) => void
+  onImageDrop?: (file: File) => void;
   /** 主選択範囲のテキスト変更通知（選択範囲の校正。SPEC-proofread-selection §3） */
-  onSelectionChange?: (selectedText: string) => void
+  onSelectionChange?: (selectedText: string) => void;
   /** 親がコメントジャンプ・入力補助で EditorView を操作するための参照（SPEC-phase3 §3・§4） */
-  viewRef?: React.RefObject<EditorView | null>
+  viewRef?: React.RefObject<EditorView | null>;
 }) {
-  const containerRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null);
   // ハンドラは ref 経由で参照し、親の再レンダーでエディタを作り直さない
-  const handlersRef = useRef({ onDocChange, onSaveRequest, onImageDrop, onSelectionChange })
+  const handlersRef = useRef({
+    onDocChange,
+    onSaveRequest,
+    onImageDrop,
+    onSelectionChange,
+  });
   useEffect(() => {
-    handlersRef.current = { onDocChange, onSaveRequest, onImageDrop, onSelectionChange }
-  }, [onDocChange, onSaveRequest, onImageDrop, onSelectionChange])
+    handlersRef.current = {
+      onDocChange,
+      onSaveRequest,
+      onImageDrop,
+      onSelectionChange,
+    };
+  }, [onDocChange, onSaveRequest, onImageDrop, onSelectionChange]);
 
   useEffect(() => {
-    if (!containerRef.current) return
+    if (!containerRef.current) return;
     const view = new EditorView({
       state: EditorState.create({
         doc: initialContent,
@@ -46,19 +56,26 @@ export function EditorPane({
           onDocChange: (content) => handlersRef.current.onDocChange(content),
           onSaveRequest: () => handlersRef.current.onSaveRequest(),
           onImageDrop: (file) => handlersRef.current.onImageDrop?.(file),
-          onSelectionChange: (text) => handlersRef.current.onSelectionChange?.(text),
+          onSelectionChange: (text) =>
+            handlersRef.current.onSelectionChange?.(text),
         }),
       }),
       parent: containerRef.current,
-    })
-    if (viewRef) viewRef.current = view
+    });
+    if (viewRef) viewRef.current = view;
     return () => {
-      if (viewRef) viewRef.current = null
-      view.destroy()
-    }
+      if (viewRef) viewRef.current = null;
+      view.destroy();
+    };
     // initialContent は初期値のみ（変更で作り直さない。差し替えは view.dispatch で行う）
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []);
 
-  return <div ref={containerRef} className="h-full min-h-0" aria-label="本文の入力ペイン" />
+  return (
+    <div
+      ref={containerRef}
+      className="h-full min-h-0"
+      aria-label="本文の入力ペイン"
+    />
+  );
 }

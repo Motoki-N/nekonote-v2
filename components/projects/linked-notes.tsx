@@ -29,7 +29,9 @@ export function LinkedNotes({
       toast.error(result.error.message);
       return;
     }
-    setNotes((prev) => (prev.some((n) => n.id === note.id) ? prev : [...prev, note]));
+    setNotes((prev) =>
+      prev.some((n) => n.id === note.id) ? prev : [...prev, note],
+    );
   }
 
   async function handleDetach(noteId: string) {
@@ -44,7 +46,11 @@ export function LinkedNotes({
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       <span className="text-xs text-muted-foreground">紐づけノート:</span>
-      <LinkedNoteChips notes={notes} onAttach={handleAttach} onDetach={handleDetach} />
+      <LinkedNoteChips
+        notes={notes}
+        onAttach={handleAttach}
+        onDetach={handleDetach}
+      />
     </div>
   );
 }

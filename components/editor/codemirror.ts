@@ -1,8 +1,8 @@
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
-import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
-import { EditorSelection } from '@codemirror/state'
-import type { Extension } from '@codemirror/state'
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
+import { EditorSelection } from "@codemirror/state";
+import type { Extension } from "@codemirror/state";
 import {
   Decoration,
   EditorView,
@@ -10,9 +10,9 @@ import {
   ViewPlugin,
   keymap,
   placeholder,
-} from '@codemirror/view'
-import type { DecorationSet, ViewUpdate } from '@codemirror/view'
-import { tags } from '@lezer/highlight'
+} from "@codemirror/view";
+import type { DecorationSet, ViewUpdate } from "@codemirror/view";
+import { tags } from "@lezer/highlight";
 
 // 入力ペイン（CodeMirror 6）の共通セットアップ（SPEC-vertical-editor-phase2 §4）。
 // 横書きプレーンテキスト＋Markdownハイライトを土台に、VFM固有記法（ルビ）を装飾で重ねる。
@@ -21,59 +21,60 @@ import { tags } from '@lezer/highlight'
 /** ルビ記法 `{漢字|かんじ}` の装飾（VFM標準記法） */
 const rubyDecorator = new MatchDecorator({
   regexp: /\{[^{}|\n]+\|[^{}|\n]+\}/g,
-  decoration: Decoration.mark({ class: 'cm-vfm-ruby' }),
-})
+  decoration: Decoration.mark({ class: "cm-vfm-ruby" }),
+});
 
 const rubyHighlight = ViewPlugin.fromClass(
   class {
-    decorations: DecorationSet
+    decorations: DecorationSet;
     constructor(view: EditorView) {
-      this.decorations = rubyDecorator.createDeco(view)
+      this.decorations = rubyDecorator.createDeco(view);
     }
     update(update: ViewUpdate) {
-      this.decorations = rubyDecorator.updateDeco(update, this.decorations)
+      this.decorations = rubyDecorator.updateDeco(update, this.decorations);
     }
   },
   { decorations: (v) => v.decorations },
-)
+);
 
 // Markdown構文（見出し等）とHTMLコメントの色。lang-markdown はHTMLをネスト解析するため
 // `<!-- -->` は tags.comment として拾える
 const vfmHighlightStyle = HighlightStyle.define([
-  { tag: tags.heading, color: 'var(--primary)', fontWeight: 'bold' },
-  { tag: tags.comment, color: 'var(--muted-foreground)', fontStyle: 'italic' },
-  { tag: tags.emphasis, fontStyle: 'italic' },
-  { tag: tags.strong, fontWeight: 'bold' },
-  { tag: tags.quote, color: 'var(--muted-foreground)' },
-  { tag: tags.monospace, fontFamily: 'var(--font-mono)' },
-])
+  { tag: tags.heading, color: "var(--primary)", fontWeight: "bold" },
+  { tag: tags.comment, color: "var(--muted-foreground)", fontStyle: "italic" },
+  { tag: tags.emphasis, fontStyle: "italic" },
+  { tag: tags.strong, fontWeight: "bold" },
+  { tag: tags.quote, color: "var(--muted-foreground)" },
+  { tag: tags.monospace, fontFamily: "var(--font-mono)" },
+]);
 
 const editorTheme = EditorView.theme({
-  '&': {
-    height: '100%',
-    fontSize: '15px',
-    backgroundColor: 'var(--background)',
-    color: 'var(--foreground)',
+  "&": {
+    height: "100%",
+    fontSize: "15px",
+    backgroundColor: "var(--background)",
+    color: "var(--foreground)",
   },
-  '.cm-content': {
-    fontFamily: 'var(--font-sans)',
-    lineHeight: '1.9',
-    padding: '16px 0',
-    caretColor: 'var(--foreground)',
+  ".cm-content": {
+    fontFamily: "var(--font-sans)",
+    lineHeight: "1.9",
+    padding: "16px 0",
+    caretColor: "var(--foreground)",
   },
-  '.cm-line': { padding: '0 16px' },
-  '&.cm-focused': { outline: 'none' },
-  '.cm-cursor': { borderLeftColor: 'var(--foreground)' },
-  '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
-    backgroundColor: 'color-mix(in oklab, var(--primary) 18%, transparent)',
+  ".cm-line": { padding: "0 16px" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-cursor": { borderLeftColor: "var(--foreground)" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection":
+    {
+      backgroundColor: "color-mix(in oklab, var(--primary) 18%, transparent)",
+    },
+  ".cm-vfm-ruby": {
+    color: "var(--primary)",
+    backgroundColor: "color-mix(in oklab, var(--primary) 8%, transparent)",
+    borderRadius: "3px",
   },
-  '.cm-vfm-ruby': {
-    color: 'var(--primary)',
-    backgroundColor: 'color-mix(in oklab, var(--primary) 8%, transparent)',
-    borderRadius: '3px',
-  },
-  '.cm-scroller': { overflow: 'auto' },
-})
+  ".cm-scroller": { overflow: "auto" },
+});
 
 /**
  * コメントのトグル（SPEC-vertical-editor-phase3 §3。`Cmd/Ctrl+/`・ツールバー共用）。
@@ -82,35 +83,35 @@ const editorTheme = EditorView.theme({
  */
 export function toggleVfmComment(view: EditorView): boolean {
   const spec = view.state.changeByRange((range) => {
-    const selected = view.state.sliceDoc(range.from, range.to)
+    const selected = view.state.sliceDoc(range.from, range.to);
     if (/^<!--[\s\S]*-->$/.test(selected)) {
-      const inner = selected.replace(/^<!--[ ]?/, '').replace(/[ ]?-->$/, '')
+      const inner = selected.replace(/^<!--[ ]?/, "").replace(/[ ]?-->$/, "");
       return {
         changes: { from: range.from, to: range.to, insert: inner },
         range: EditorSelection.range(range.from, range.from + inner.length),
-      }
+      };
     }
     if (range.empty) {
       return {
-        changes: { from: range.from, insert: '<!--  -->' },
+        changes: { from: range.from, insert: "<!--  -->" },
         range: EditorSelection.cursor(range.from + 5),
-      }
+      };
     }
-    const wrapped = `<!-- ${selected} -->`
+    const wrapped = `<!-- ${selected} -->`;
     return {
       changes: { from: range.from, to: range.to, insert: wrapped },
       range: EditorSelection.range(range.from, range.from + wrapped.length),
-    }
-  })
-  view.dispatch(spec, { scrollIntoView: true, userEvent: 'input' })
-  view.focus()
-  return true
+    };
+  });
+  view.dispatch(spec, { scrollIntoView: true, userEvent: "input" });
+  view.focus();
+  return true;
 }
 
 /** 主選択範囲のテキスト（ルビ入力補助の親文字プリセット用） */
 export function getSelectedText(view: EditorView): string {
-  const range = view.state.selection.main
-  return view.state.sliceDoc(range.from, range.to)
+  const range = view.state.selection.main;
+  return view.state.sliceDoc(range.from, range.to);
 }
 
 /**
@@ -118,19 +119,22 @@ export function getSelectedText(view: EditorView): string {
  * HTML直書き記法は Phase 1 のサンプル原稿でプレビュー・入稿PDF両方の組版を実証済み。
  * 選択がなければ何もせず false（呼び出し側が案内を出す）
  */
-export function wrapSelectionWithSpan(view: EditorView, className: 'tenten' | 'tcy'): boolean {
-  if (view.state.selection.main.empty) return false
+export function wrapSelectionWithSpan(
+  view: EditorView,
+  className: "tenten" | "tcy",
+): boolean {
+  if (view.state.selection.main.empty) return false;
   const spec = view.state.changeByRange((range) => {
-    const selected = view.state.sliceDoc(range.from, range.to)
-    const wrapped = `<span class="${className}">${selected}</span>`
+    const selected = view.state.sliceDoc(range.from, range.to);
+    const wrapped = `<span class="${className}">${selected}</span>`;
     return {
       changes: { from: range.from, to: range.to, insert: wrapped },
       range: EditorSelection.range(range.from, range.from + wrapped.length),
-    }
-  })
-  view.dispatch(spec, { scrollIntoView: true, userEvent: 'input' })
-  view.focus()
-  return true
+    };
+  });
+  view.dispatch(spec, { scrollIntoView: true, userEvent: "input" });
+  view.focus();
+  return true;
 }
 
 /**
@@ -139,17 +143,24 @@ export function wrapSelectionWithSpan(view: EditorView, className: 'tenten' | 't
  * `<span class="warichu"><span>前半</span><span>後半</span></span>` と明示する。
  * 後半が空なら1行の小書きとして挿入する
  */
-export function insertWarichuText(view: EditorView, first: string, second: string): void {
-  const range = view.state.selection.main
-  const inner = second === '' ? `<span>${first}</span>` : `<span>${first}</span><span>${second}</span>`
-  const insert = `<span class="warichu">${inner}</span>`
+export function insertWarichuText(
+  view: EditorView,
+  first: string,
+  second: string,
+): void {
+  const range = view.state.selection.main;
+  const inner =
+    second === ""
+      ? `<span>${first}</span>`
+      : `<span>${first}</span><span>${second}</span>`;
+  const insert = `<span class="warichu">${inner}</span>`;
   view.dispatch({
     changes: { from: range.from, to: range.to, insert },
     selection: EditorSelection.cursor(range.from + insert.length),
     scrollIntoView: true,
-    userEvent: 'input',
-  })
-  view.focus()
+    userEvent: "input",
+  });
+  view.focus();
 }
 
 /**
@@ -158,33 +169,47 @@ export function insertWarichuText(view: EditorView, first: string, second: strin
  * 選択範囲があっても本文は削除せず、カーソル側の端（head）へ挿入する
  */
 export function insertPageBreak(view: EditorView): void {
-  const pos = view.state.selection.main.head
-  const doc = view.state.doc
-  const before = doc.sliceString(Math.max(0, pos - 2), pos)
-  const after = doc.sliceString(pos, Math.min(doc.length, pos + 2))
-  const prefix = pos === 0 || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n'
-  const suffix = pos === doc.length || after.startsWith('\n\n') ? '' : after.startsWith('\n') ? '\n' : '\n\n'
-  const insert = `${prefix}<div class="page-break"></div>${suffix}`
+  const pos = view.state.selection.main.head;
+  const doc = view.state.doc;
+  const before = doc.sliceString(Math.max(0, pos - 2), pos);
+  const after = doc.sliceString(pos, Math.min(doc.length, pos + 2));
+  const prefix =
+    pos === 0 || before.endsWith("\n\n")
+      ? ""
+      : before.endsWith("\n")
+        ? "\n"
+        : "\n\n";
+  const suffix =
+    pos === doc.length || after.startsWith("\n\n")
+      ? ""
+      : after.startsWith("\n")
+        ? "\n"
+        : "\n\n";
+  const insert = `${prefix}<div class="page-break"></div>${suffix}`;
   view.dispatch({
     changes: { from: pos, insert },
     selection: EditorSelection.cursor(pos + insert.length),
     scrollIntoView: true,
-    userEvent: 'input',
-  })
-  view.focus()
+    userEvent: "input",
+  });
+  view.focus();
 }
 
 /** 主選択範囲（未選択ならカーソル位置）をルビ記法 `{親文字|よみ}` で置き換える */
-export function insertRubyText(view: EditorView, base: string, reading: string): void {
-  const range = view.state.selection.main
-  const insert = `{${base}|${reading}}`
+export function insertRubyText(
+  view: EditorView,
+  base: string,
+  reading: string,
+): void {
+  const range = view.state.selection.main;
+  const insert = `{${base}|${reading}}`;
   view.dispatch({
     changes: { from: range.from, to: range.to, insert },
     selection: EditorSelection.cursor(range.from + insert.length),
     scrollIntoView: true,
-    userEvent: 'input',
-  })
-  view.focus()
+    userEvent: "input",
+  });
+  view.focus();
 }
 
 /**
@@ -192,46 +217,48 @@ export function insertRubyText(view: EditorView, base: string, reading: string):
  * onDocChange は打鍵ごとに呼ばれる（待避・プレビューのデバウンスは呼び出し側の責務）
  */
 export function buildEditorExtensions(handlers: {
-  onDocChange: (content: string) => void
+  onDocChange: (content: string) => void;
   /** Cmd/Ctrl+S。保存ダイアログを開く（SPEC §6） */
-  onSaveRequest: () => void
+  onSaveRequest: () => void;
   /** 画像ファイルのドロップ（SPEC-phase3 §6。カーソルはドロップ位置へ移動済みで呼ばれる） */
-  onImageDrop?: (file: File) => void
+  onImageDrop?: (file: File) => void;
   /** 主選択範囲のテキスト変更通知（選択範囲の校正。SPEC-proofread-selection §3） */
-  onSelectionChange?: (selectedText: string) => void
+  onSelectionChange?: (selectedText: string) => void;
 }): Extension[] {
   const imageDropHandlers = EditorView.domEventHandlers({
     dragover: (event) => {
-      if (handlers.onImageDrop && event.dataTransfer?.types.includes('Files')) {
-        event.preventDefault()
-        return true
+      if (handlers.onImageDrop && event.dataTransfer?.types.includes("Files")) {
+        event.preventDefault();
+        return true;
       }
-      return false
+      return false;
     },
     drop: (event, view) => {
-      const file = event.dataTransfer?.files?.[0]
-      if (!handlers.onImageDrop || !file || !file.type.startsWith('image/')) return false
-      event.preventDefault()
+      const file = event.dataTransfer?.files?.[0];
+      if (!handlers.onImageDrop || !file || !file.type.startsWith("image/"))
+        return false;
+      event.preventDefault();
       // 挿入記法はドロップ位置に入れる
-      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY })
-      if (pos !== null) view.dispatch({ selection: EditorSelection.cursor(pos) })
-      handlers.onImageDrop(file)
-      return true
+      const pos = view.posAtCoords({ x: event.clientX, y: event.clientY });
+      if (pos !== null)
+        view.dispatch({ selection: EditorSelection.cursor(pos) });
+      handlers.onImageDrop(file);
+      return true;
     },
-  })
+  });
   return [
     imageDropHandlers,
     history(),
     keymap.of([
       {
-        key: 'Mod-s',
+        key: "Mod-s",
         preventDefault: true,
         run: () => {
-          handlers.onSaveRequest()
-          return true
+          handlers.onSaveRequest();
+          return true;
         },
       },
-      { key: 'Mod-/', preventDefault: true, run: toggleVfmComment },
+      { key: "Mod-/", preventDefault: true, run: toggleVfmComment },
       ...defaultKeymap,
       ...historyKeymap,
     ]),
@@ -240,13 +267,16 @@ export function buildEditorExtensions(handlers: {
     rubyHighlight,
     EditorView.lineWrapping,
     editorTheme,
-    placeholder('本文をVFM（Markdown）で入力…'),
+    placeholder("本文をVFM（Markdown）で入力…"),
     EditorView.updateListener.of((update) => {
-      if (update.docChanged) handlers.onDocChange(update.state.doc.toString())
-      if (handlers.onSelectionChange && (update.selectionSet || update.docChanged)) {
-        const range = update.state.selection.main
-        handlers.onSelectionChange(update.state.sliceDoc(range.from, range.to))
+      if (update.docChanged) handlers.onDocChange(update.state.doc.toString());
+      if (
+        handlers.onSelectionChange &&
+        (update.selectionSet || update.docChanged)
+      ) {
+        const range = update.state.selection.main;
+        handlers.onSelectionChange(update.state.sliceDoc(range.from, range.to));
       }
     }),
-  ]
+  ];
 }

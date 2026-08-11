@@ -23,7 +23,8 @@ export async function sendMilestoneReminderEmail(
   items: MilestoneReminderItem[],
 ): Promise<void> {
   const lines = items.map(
-    (item) => `・${item.projectTitle} / ${item.label}（${item.dueDate}・あと${item.daysUntil}日）`,
+    (item) =>
+      `・${item.projectTitle} / ${item.label}（${item.dueDate}・あと${item.daysUntil}日）`,
   );
   const { error } = await resend().emails.send({
     from: process.env.REMINDER_FROM_EMAIL || DEFAULT_FROM,

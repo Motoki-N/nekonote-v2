@@ -1,11 +1,11 @@
-'use server'
+"use server";
 
-import { randomUUID } from 'node:crypto'
+import { randomUUID } from "node:crypto";
 
-import { revalidatePath } from 'next/cache'
-import { z } from 'zod'
+import { revalidatePath } from "next/cache";
+import { z } from "zod";
 
-import type { LinkedNote } from '@/lib/actions/projects'
+import type { LinkedNote } from "@/lib/actions/projects";
 import {
   findTurningPointOrderViolation,
   normalizeAnchor,
@@ -13,40 +13,51 @@ import {
   toCanonicalOrder,
   turningPointOrderMessage,
   type SceneRecord,
-} from '@/lib/board'
-import { BOARD_TEMPLATES } from '@/lib/board-templates'
-import { AppError, toActionError } from '@/lib/errors'
-import type { ActionResult } from '@/lib/errors'
-import { OUTLINE_TEMPLATE, outlineTemplateKeys } from '@/lib/constants/outline-template'
+} from "@/lib/board";
+import { BOARD_TEMPLATES } from "@/lib/board-templates";
+import { AppError, toActionError } from "@/lib/errors";
+import type { ActionResult } from "@/lib/errors";
+import {
+  OUTLINE_TEMPLATE,
+  outlineTemplateKeys,
+} from "@/lib/constants/outline-template";
 import {
   CHAPTER_PART,
   scenePartsAll,
   structureTemplates,
   type ScenePartAll,
   type StructureTemplate,
-} from '@/lib/schemas/enums'
-import { sceneEditSchema, sceneOrderSchema, type SceneEdit, type SceneOrder } from '@/lib/schemas/projects'
-import { createClient } from '@/lib/supabase/server'
+} from "@/lib/schemas/enums";
+import {
+  sceneEditSchema,
+  sceneOrderSchema,
+  type SceneEdit,
+  type SceneOrder,
+} from "@/lib/schemas/projects";
+import { createClient } from "@/lib/supabase/server";
 
-const uuidSchema = z.uuid()
-const partSchema = z.enum(scenePartsAll)
-const outlineTemplateKeySchema = z.enum(outlineTemplateKeys)
-const structureTemplateSchema = z.enum(structureTemplates)
+const uuidSchema = z.uuid();
+const partSchema = z.enum(scenePartsAll);
+const outlineTemplateKeySchema = z.enum(outlineTemplateKeys);
+const structureTemplateSchema = z.enum(structureTemplates);
 
 const SCENE_COLUMNS =
-  'id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status, manuscript_path'
+  "id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status, manuscript_path";
 
-type Supabase = Awaited<ReturnType<typeof createClient>>
+type Supabase = Awaited<ReturnType<typeof createClient>>;
 
 /** プロジェクトの全シーンを構成順（order_index 昇順）で取得。RLS越し＝所有分のみ */
-async function fetchProjectScenes(supabase: Supabase, projectId: string): Promise<SceneRecord[]> {
+async function fetchProjectScenes(
+  supabase: Supabase,
+  projectId: string,
+): Promise<SceneRecord[]> {
   const { data, error } = await supabase
-    .from('scenes')
+    .from("scenes")
     .select(SCENE_COLUMNS)
-    .eq('project_id', projectId)
-    .order('order_index')
-  if (error) throw new AppError('internal', error.message)
-  return (data ?? []) as SceneRecord[]
+    .eq("project_id", projectId)
+    .order("order_index");
+  if (error) throw new AppError("internal", error.message);
+  return (data ?? []) as SceneRecord[];
 }
 
 /** RLS越しのプロジェクト所有確認（他人・不存在はともに not_found に正規化）。
@@ -56,30 +67,37 @@ async function getOwnedProject(
   projectId: string,
 ): Promise<{ structureTemplate: StructureTemplate }> {
   const { data, error } = await supabase
-    .from('projects')
-    .select('id, structure_template')
-    .eq('id', projectId)
-    .maybeSingle()
-  if (error) throw new AppError('internal', error.message)
-  if (!data) throw new AppError('not_found', 'プロジェクトが見つかりません')
-  return { structureTemplate: data.structure_template as StructureTemplate }
+    .from("projects")
+    .select("id, structure_template")
+    .eq("id", projectId)
+    .maybeSingle();
+  if (error) throw new AppError("internal", error.message);
+  if (!data) throw new AppError("not_found", "プロジェクトが見つかりません");
+  return { structureTemplate: data.structure_template as StructureTemplate };
 }
 
 /** part が「章」またはプロジェクトの現テンプレートのレーンであることの担保
  * （DB CHECK は全テンプレートの和集合のため、テンプレート整合はここで守る。SPEC-structure-templates §4） */
-function assertPartInTemplate(part: ScenePartAll, template: StructureTemplate): void {
-  if (part === CHAPTER_PART) return
-  if (BOARD_TEMPLATES[template].lanes.some((lane) => lane.id === part)) return
+function assertPartInTemplate(
+  part: ScenePartAll,
+  template: StructureTemplate,
+): void {
+  if (part === CHAPTER_PART) return;
+  if (BOARD_TEMPLATES[template].lanes.some((lane) => lane.id === part)) return;
   throw new AppError(
-    'validation',
-    'レーンが現在の構成テンプレートと一致しません。再読み込みしてください',
-  )
+    "validation",
+    "レーンが現在の構成テンプレートと一致しません。再読み込みしてください",
+  );
 }
 
 /** レーン内の転換点の並び順制約の担保（SPEC-structure-templates §5。scenes は正準順序で渡す） */
-function assertTurningPointOrder(scenes: SceneRecord[], template: StructureTemplate): void {
-  const violation = findTurningPointOrderViolation(scenes, template)
-  if (violation) throw new AppError('validation', turningPointOrderMessage(violation))
+function assertTurningPointOrder(
+  scenes: SceneRecord[],
+  template: StructureTemplate,
+): void {
+  const violation = findTurningPointOrderViolation(scenes, template);
+  if (violation)
+    throw new AppError("validation", turningPointOrderMessage(violation));
 }
 
 /**
@@ -92,8 +110,8 @@ async function persistChanges(
   after: SceneRecord[],
 ): Promise<void> {
   const changed = after.filter((scene) => {
-    const prev = before.get(scene.id)
-    if (!prev) return true // 新規行
+    const prev = before.get(scene.id);
+    if (!prev) return true; // 新規行
     return (
       prev.part !== scene.part ||
       prev.anchor !== scene.anchor ||
@@ -103,9 +121,9 @@ async function persistChanges(
       prev.emotion_start !== scene.emotion_start ||
       prev.emotion_end !== scene.emotion_end ||
       prev.manuscript_path !== scene.manuscript_path
-    )
-  })
-  if (changed.length === 0) return
+    );
+  });
+  if (changed.length === 0) return;
   // status はシーン系アクションの管理外（approveBoardReview だけが更新する）。取得時点の値を
   // 書き戻して承認を巻き戻さないよう upsert ペイロードから除外する（新規行は default 'draft'）
   const payload = changed.map((scene) => ({
@@ -119,13 +137,13 @@ async function persistChanges(
     emotion_start: scene.emotion_start,
     emotion_end: scene.emotion_end,
     manuscript_path: scene.manuscript_path,
-  }))
-  const { error } = await supabase.from('scenes').upsert(payload)
-  if (error) throw new AppError('internal', error.message)
+  }));
+  const { error } = await supabase.from("scenes").upsert(payload);
+  if (error) throw new AppError("internal", error.message);
 }
 
 function toMap(scenes: SceneRecord[]): Map<string, SceneRecord> {
-  return new Map(scenes.map((s) => [s.id, s]))
+  return new Map(scenes.map((s) => [s.id, s]));
 }
 
 /** シーン作成。レーン末尾（境界アンカースロットの手前）に置き、全体を正準順序で再採番する */
@@ -134,35 +152,35 @@ export async function createScene(
   part: string,
 ): Promise<ActionResult<{ scenes: SceneRecord[]; createdId: string }>> {
   try {
-    const pid = uuidSchema.parse(projectId)
-    const targetPart = partSchema.parse(part)
-    const supabase = await createClient()
-    const { structureTemplate } = await getOwnedProject(supabase, pid)
-    assertPartInTemplate(targetPart, structureTemplate)
+    const pid = uuidSchema.parse(projectId);
+    const targetPart = partSchema.parse(part);
+    const supabase = await createClient();
+    const { structureTemplate } = await getOwnedProject(supabase, pid);
+    assertPartInTemplate(targetPart, structureTemplate);
 
-    const scenes = await fetchProjectScenes(supabase, pid)
+    const scenes = await fetchProjectScenes(supabase, pid);
     const created: SceneRecord = {
       id: randomUUID(),
       project_id: pid,
       part: targetPart,
       anchor: null,
       order_index: scenes.length, // 仮値。toCanonicalOrder で確定する
-      title: '',
+      title: "",
       // 小説シーンは4観点テンプレを初期値として残す（Issue #155。章カードは対象外）
-      content: targetPart === CHAPTER_PART ? '' : SCENE_CONTENT_TEMPLATE,
+      content: targetPart === CHAPTER_PART ? "" : SCENE_CONTENT_TEMPLATE,
       emotion_start: null,
       emotion_end: null,
-      status: 'draft',
+      status: "draft",
       manuscript_path: null,
-    }
+    };
     // 配列末尾に足すと、正準順序では該当レーンの通常カード末尾（境界スロット手前）に入る
-    const next = toCanonicalOrder([...scenes, created])
-    await persistChanges(supabase, toMap(scenes), next)
+    const next = toCanonicalOrder([...scenes, created]);
+    await persistChanges(supabase, toMap(scenes), next);
 
-    revalidatePath(`/projects/${pid}/board`)
-    return { ok: true, data: { scenes: next, createdId: created.id } }
+    revalidatePath(`/projects/${pid}/board`);
+    return { ok: true, data: { scenes: next, createdId: created.id } };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -175,19 +193,19 @@ export async function duplicateScene(
   sceneId: string,
 ): Promise<ActionResult<{ scenes: SceneRecord[]; createdId: string }>> {
   try {
-    const sid = uuidSchema.parse(sceneId)
-    const supabase = await createClient()
+    const sid = uuidSchema.parse(sceneId);
+    const supabase = await createClient();
 
     const { data: target, error: targetError } = await supabase
-      .from('scenes')
+      .from("scenes")
       .select(SCENE_COLUMNS)
-      .eq('id', sid)
-      .maybeSingle()
-    if (targetError) throw new AppError('internal', targetError.message)
-    if (!target) throw new AppError('not_found', 'シーンが見つかりません')
-    const source = target as SceneRecord
+      .eq("id", sid)
+      .maybeSingle();
+    if (targetError) throw new AppError("internal", targetError.message);
+    if (!target) throw new AppError("not_found", "シーンが見つかりません");
+    const source = target as SceneRecord;
 
-    const scenes = await fetchProjectScenes(supabase, source.project_id)
+    const scenes = await fetchProjectScenes(supabase, source.project_id);
     const created: SceneRecord = {
       id: randomUUID(),
       project_id: source.project_id,
@@ -195,27 +213,27 @@ export async function duplicateScene(
       anchor: null,
       order_index: 0, // 仮値。toCanonicalOrder で確定する
       // sceneEditSchema の max(200) を超えると複製後に保存できなくなるため付加後に切り詰める
-      title: source.title === '' ? '' : `${source.title}のコピー`.slice(0, 200),
+      title: source.title === "" ? "" : `${source.title}のコピー`.slice(0, 200),
       content: source.content,
       emotion_start: source.emotion_start,
       emotion_end: source.emotion_end,
-      status: 'draft',
+      status: "draft",
       manuscript_path: null,
-    }
+    };
     // 元シーンの直後に挿入。元が境界アンカー付き（レーン末尾固定）でも、複製にアンカーは
     // ないため正準順序で境界スロットの手前に収まる
-    const index = scenes.findIndex((s) => s.id === sid)
+    const index = scenes.findIndex((s) => s.id === sid);
     const next = toCanonicalOrder([
       ...scenes.slice(0, index + 1),
       created,
       ...scenes.slice(index + 1),
-    ])
-    await persistChanges(supabase, toMap(scenes), next)
+    ]);
+    await persistChanges(supabase, toMap(scenes), next);
 
-    revalidatePath(`/projects/${source.project_id}/board`)
-    return { ok: true, data: { scenes: next, createdId: created.id } }
+    revalidatePath(`/projects/${source.project_id}/board`);
+    return { ok: true, data: { scenes: next, createdId: created.id } };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -228,32 +246,34 @@ export async function applyOutlineTemplate(
   templateKey: string,
 ): Promise<ActionResult<{ scenes: SceneRecord[] }>> {
   try {
-    const pid = uuidSchema.parse(projectId)
-    const key = outlineTemplateKeySchema.parse(templateKey)
-    const supabase = await createClient()
-    await getOwnedProject(supabase, pid)
+    const pid = uuidSchema.parse(projectId);
+    const key = outlineTemplateKeySchema.parse(templateKey);
+    const supabase = await createClient();
+    await getOwnedProject(supabase, pid);
 
-    const scenes = await fetchProjectScenes(supabase, pid)
-    const created: SceneRecord[] = OUTLINE_TEMPLATE[key].chapters.map((title, index) => ({
-      id: randomUUID(),
-      project_id: pid,
-      part: 'chapter',
-      anchor: null,
-      order_index: scenes.length + index, // 仮値。toCanonicalOrder で確定する
-      title,
-      content: '',
-      emotion_start: null,
-      emotion_end: null,
-      status: 'draft',
-      manuscript_path: null,
-    }))
-    const next = toCanonicalOrder([...scenes, ...created])
-    await persistChanges(supabase, toMap(scenes), next)
+    const scenes = await fetchProjectScenes(supabase, pid);
+    const created: SceneRecord[] = OUTLINE_TEMPLATE[key].chapters.map(
+      (title, index) => ({
+        id: randomUUID(),
+        project_id: pid,
+        part: "chapter",
+        anchor: null,
+        order_index: scenes.length + index, // 仮値。toCanonicalOrder で確定する
+        title,
+        content: "",
+        emotion_start: null,
+        emotion_end: null,
+        status: "draft",
+        manuscript_path: null,
+      }),
+    );
+    const next = toCanonicalOrder([...scenes, ...created]);
+    await persistChanges(supabase, toMap(scenes), next);
 
-    revalidatePath(`/projects/${pid}/board`)
-    return { ok: true, data: { scenes: next } }
+    revalidatePath(`/projects/${pid}/board`);
+    return { ok: true, data: { scenes: next } };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -268,45 +288,50 @@ export async function updateScene(
   input: SceneEdit,
 ): Promise<ActionResult<{ scenes: SceneRecord[] }>> {
   try {
-    const sid = uuidSchema.parse(sceneId)
-    const parsed = sceneEditSchema.parse(input)
-    const supabase = await createClient()
+    const sid = uuidSchema.parse(sceneId);
+    const parsed = sceneEditSchema.parse(input);
+    const supabase = await createClient();
 
     const { data: target, error: targetError } = await supabase
-      .from('scenes')
+      .from("scenes")
       .select(SCENE_COLUMNS)
-      .eq('id', sid)
-      .maybeSingle()
-    if (targetError) throw new AppError('internal', targetError.message)
-    if (!target) throw new AppError('not_found', 'シーンが見つかりません')
-    const current = target as SceneRecord
+      .eq("id", sid)
+      .maybeSingle();
+    if (targetError) throw new AppError("internal", targetError.message);
+    if (!target) throw new AppError("not_found", "シーンが見つかりません");
+    const current = target as SceneRecord;
 
-    const { structureTemplate } = await getOwnedProject(supabase, current.project_id)
-    assertPartInTemplate(parsed.part, structureTemplate)
+    const { structureTemplate } = await getOwnedProject(
+      supabase,
+      current.project_id,
+    );
+    assertPartInTemplate(parsed.part, structureTemplate);
 
-    const scenes = await fetchProjectScenes(supabase, current.project_id)
-    const anchor = normalizeAnchor(parsed.anchor, parsed.part)
+    const scenes = await fetchProjectScenes(supabase, current.project_id);
+    const anchor = normalizeAnchor(parsed.anchor, parsed.part);
 
     let updatedScenes = scenes.map((scene): SceneRecord => {
-      if (scene.id === sid) return { ...scene, ...parsed, anchor }
+      if (scene.id === sid) return { ...scene, ...parsed, anchor };
       // 1転換点1シーン: 付け替え時は元のシーンから自動で外す
-      if (anchor !== null && scene.anchor === anchor) return { ...scene, anchor: null }
-      return scene
-    })
+      if (anchor !== null && scene.anchor === anchor)
+        return { ...scene, anchor: null };
+      return scene;
+    });
     if (parsed.part !== current.part) {
       // レーン移動は移動先レーンの末尾へ（配列末尾に回すと正準順序でレーン末尾になる）
-      const moved = updatedScenes.find((s) => s.id === sid)
-      if (moved) updatedScenes = [...updatedScenes.filter((s) => s.id !== sid), moved]
+      const moved = updatedScenes.find((s) => s.id === sid);
+      if (moved)
+        updatedScenes = [...updatedScenes.filter((s) => s.id !== sid), moved];
     }
-    const next = toCanonicalOrder(updatedScenes)
+    const next = toCanonicalOrder(updatedScenes);
     // アンカー付与・付け替えが転換点の並び順制約に違反しないか（SPEC-structure-templates §5）
-    assertTurningPointOrder(next, structureTemplate)
-    await persistChanges(supabase, toMap(scenes), next)
+    assertTurningPointOrder(next, structureTemplate);
+    await persistChanges(supabase, toMap(scenes), next);
 
-    revalidatePath(`/projects/${current.project_id}/board`)
-    return { ok: true, data: { scenes: next } }
+    revalidatePath(`/projects/${current.project_id}/board`);
+    return { ok: true, data: { scenes: next } };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -319,14 +344,15 @@ export async function reorderScenes(
   order: SceneOrder,
 ): Promise<ActionResult<{ scenes: SceneRecord[] }>> {
   try {
-    const pid = uuidSchema.parse(projectId)
-    const parsed = sceneOrderSchema.parse(order)
-    const supabase = await createClient()
-    const { structureTemplate } = await getOwnedProject(supabase, pid)
-    for (const entry of parsed) assertPartInTemplate(entry.part, structureTemplate)
+    const pid = uuidSchema.parse(projectId);
+    const parsed = sceneOrderSchema.parse(order);
+    const supabase = await createClient();
+    const { structureTemplate } = await getOwnedProject(supabase, pid);
+    for (const entry of parsed)
+      assertPartInTemplate(entry.part, structureTemplate);
 
-    const scenes = await fetchProjectScenes(supabase, pid)
-    const byId = toMap(scenes)
+    const scenes = await fetchProjectScenes(supabase, pid);
+    const byId = toMap(scenes);
 
     // id 集合の完全一致（重複や欠落、並び替え中の別経路での増減はやり直してもらう）
     if (
@@ -334,23 +360,30 @@ export async function reorderScenes(
       new Set(parsed.map((entry) => entry.id)).size !== scenes.length ||
       parsed.some((entry) => !byId.has(entry.id))
     ) {
-      throw new AppError('conflict', 'ボードの内容が変わっています。再読み込みしてください')
+      throw new AppError(
+        "conflict",
+        "ボードの内容が変わっています。再読み込みしてください",
+      );
     }
 
     const submitted = parsed.map((entry): SceneRecord => {
-      const scene = byId.get(entry.id) as SceneRecord
+      const scene = byId.get(entry.id) as SceneRecord;
       // レーン間移動で part が変わったピンチ等のアンカーは自動解除（part↔anchor 整合の正規化）
-      return { ...scene, part: entry.part, anchor: normalizeAnchor(scene.anchor, entry.part) }
-    })
-    const next = toCanonicalOrder(submitted)
+      return {
+        ...scene,
+        part: entry.part,
+        anchor: normalizeAnchor(scene.anchor, entry.part),
+      };
+    });
+    const next = toCanonicalOrder(submitted);
     // 転換点の並び順制約（SPEC-structure-templates §5。クライアントの事前検証をすり抜けた場合の砦）
-    assertTurningPointOrder(next, structureTemplate)
-    await persistChanges(supabase, byId, next)
+    assertTurningPointOrder(next, structureTemplate);
+    await persistChanges(supabase, byId, next);
 
-    revalidatePath(`/projects/${pid}/board`)
-    return { ok: true, data: { scenes: next } }
+    revalidatePath(`/projects/${pid}/board`);
+    return { ok: true, data: { scenes: next } };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -367,34 +400,35 @@ export async function switchStructureTemplate(
   template: string,
 ): Promise<ActionResult<{ scenes: SceneRecord[] }>> {
   try {
-    const pid = uuidSchema.parse(projectId)
-    const nextTemplate = structureTemplateSchema.parse(template)
-    const supabase = await createClient()
-    const { structureTemplate } = await getOwnedProject(supabase, pid)
+    const pid = uuidSchema.parse(projectId);
+    const nextTemplate = structureTemplateSchema.parse(template);
+    const supabase = await createClient();
+    const { structureTemplate } = await getOwnedProject(supabase, pid);
 
-    const scenes = await fetchProjectScenes(supabase, pid)
+    const scenes = await fetchProjectScenes(supabase, pid);
     if (nextTemplate === structureTemplate) {
-      return { ok: true, data: { scenes } }
+      return { ok: true, data: { scenes } };
     }
 
-    const firstLane = BOARD_TEMPLATES[nextTemplate].lanes[0].id
-    const moved = scenes.map(
-      (scene): SceneRecord =>
-        scene.part === CHAPTER_PART ? scene : { ...scene, part: firstLane, anchor: null },
-    )
-    const next = toCanonicalOrder(moved)
-    await persistChanges(supabase, toMap(scenes), next)
+    const firstLane = BOARD_TEMPLATES[nextTemplate].lanes[0].id;
+    const moved = scenes.map((scene): SceneRecord =>
+      scene.part === CHAPTER_PART
+        ? scene
+        : { ...scene, part: firstLane, anchor: null },
+    );
+    const next = toCanonicalOrder(moved);
+    await persistChanges(supabase, toMap(scenes), next);
 
     const { error } = await supabase
-      .from('projects')
-      .update({ structure_template: nextTemplate, structure_status: 'draft' })
-      .eq('id', pid)
-    if (error) throw new AppError('internal', error.message)
+      .from("projects")
+      .update({ structure_template: nextTemplate, structure_status: "draft" })
+      .eq("id", pid);
+    if (error) throw new AppError("internal", error.message);
 
-    revalidatePath(`/projects/${pid}/board`)
-    return { ok: true, data: { scenes: next } }
+    revalidatePath(`/projects/${pid}/board`);
+    return { ok: true, data: { scenes: next } };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -405,32 +439,35 @@ export async function switchStructureTemplate(
  */
 export async function deleteScene(sceneId: string): Promise<ActionResult> {
   try {
-    const sid = uuidSchema.parse(sceneId)
-    const supabase = await createClient()
+    const sid = uuidSchema.parse(sceneId);
+    const supabase = await createClient();
 
     const { data: target, error: targetError } = await supabase
-      .from('scenes')
-      .select('id, project_id')
-      .eq('id', sid)
-      .maybeSingle()
-    if (targetError) throw new AppError('internal', targetError.message)
-    if (!target) throw new AppError('not_found', 'シーンが見つかりません')
+      .from("scenes")
+      .select("id, project_id")
+      .eq("id", sid)
+      .maybeSingle();
+    if (targetError) throw new AppError("internal", targetError.message);
+    if (!target) throw new AppError("not_found", "シーンが見つかりません");
 
     // 「シーンなきセッション」を残さないため、セッション → シーンの順で消す
     const { error: sessionError } = await supabase
-      .from('review_sessions')
+      .from("review_sessions")
       .delete()
-      .eq('project_id', target.project_id)
-      .eq('target_ref', sid)
-    if (sessionError) throw new AppError('internal', sessionError.message)
+      .eq("project_id", target.project_id)
+      .eq("target_ref", sid);
+    if (sessionError) throw new AppError("internal", sessionError.message);
 
-    const { error: deleteError } = await supabase.from('scenes').delete().eq('id', sid)
-    if (deleteError) throw new AppError('internal', deleteError.message)
+    const { error: deleteError } = await supabase
+      .from("scenes")
+      .delete()
+      .eq("id", sid);
+    if (deleteError) throw new AppError("internal", deleteError.message);
 
-    revalidatePath(`/projects/${target.project_id}/board`)
-    return { ok: true }
+    revalidatePath(`/projects/${target.project_id}/board`);
+    return { ok: true };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
@@ -440,13 +477,13 @@ async function fetchSceneRef(
   sceneId: string,
 ): Promise<{ id: string; project_id: string }> {
   const { data, error } = await supabase
-    .from('scenes')
-    .select('id, project_id')
-    .eq('id', sceneId)
-    .maybeSingle()
-  if (error) throw new AppError('internal', error.message)
-  if (!data) throw new AppError('not_found', 'シーンが見つかりません')
-  return data
+    .from("scenes")
+    .select("id, project_id")
+    .eq("id", sceneId)
+    .maybeSingle();
+  if (error) throw new AppError("internal", error.message);
+  if (!data) throw new AppError("not_found", "シーンが見つかりません");
+  return data;
 }
 
 /** シーンにノートを紐づける（Issue #56。attachProposalNote と同型。紐づけ済みなら成功扱い） */
@@ -455,53 +492,56 @@ export async function attachSceneNote(
   noteId: string,
 ): Promise<ActionResult<LinkedNote>> {
   try {
-    const sid = uuidSchema.parse(sceneId)
-    const nid = uuidSchema.parse(noteId)
-    const supabase = await createClient()
+    const sid = uuidSchema.parse(sceneId);
+    const nid = uuidSchema.parse(noteId);
+    const supabase = await createClient();
 
-    const scene = await fetchSceneRef(supabase, sid)
+    const scene = await fetchSceneRef(supabase, sid);
 
     // RLS越しで所有確認（他人・実在しない・ごみ箱中のノートは not_found に正規化する）
     const { data: note, error: noteError } = await supabase
-      .from('notes')
-      .select('id, title')
-      .eq('id', nid)
-      .is('deleted_at', null)
-      .maybeSingle()
-    if (noteError) throw new AppError('internal', noteError.message)
-    if (!note) throw new AppError('not_found', 'ノートが見つかりません')
+      .from("notes")
+      .select("id, title")
+      .eq("id", nid)
+      .is("deleted_at", null)
+      .maybeSingle();
+    if (noteError) throw new AppError("internal", noteError.message);
+    if (!note) throw new AppError("not_found", "ノートが見つかりません");
 
     const { error } = await supabase
-      .from('scene_notes')
-      .upsert({ scene_id: sid, note_id: nid }, { ignoreDuplicates: true })
-    if (error) throw new AppError('internal', error.message)
+      .from("scene_notes")
+      .upsert({ scene_id: sid, note_id: nid }, { ignoreDuplicates: true });
+    if (error) throw new AppError("internal", error.message);
 
-    revalidatePath(`/projects/${scene.project_id}/board`)
-    return { ok: true, data: note }
+    revalidatePath(`/projects/${scene.project_id}/board`);
+    return { ok: true, data: note };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }
 
 /** シーンからノートの紐づけを解除する（Issue #56） */
-export async function detachSceneNote(sceneId: string, noteId: string): Promise<ActionResult> {
+export async function detachSceneNote(
+  sceneId: string,
+  noteId: string,
+): Promise<ActionResult> {
   try {
-    const sid = uuidSchema.parse(sceneId)
-    const nid = uuidSchema.parse(noteId)
-    const supabase = await createClient()
+    const sid = uuidSchema.parse(sceneId);
+    const nid = uuidSchema.parse(noteId);
+    const supabase = await createClient();
 
-    const scene = await fetchSceneRef(supabase, sid)
+    const scene = await fetchSceneRef(supabase, sid);
 
     const { error } = await supabase
-      .from('scene_notes')
+      .from("scene_notes")
       .delete()
-      .eq('scene_id', sid)
-      .eq('note_id', nid)
-    if (error) throw new AppError('internal', error.message)
+      .eq("scene_id", sid)
+      .eq("note_id", nid);
+    if (error) throw new AppError("internal", error.message);
 
-    revalidatePath(`/projects/${scene.project_id}/board`)
-    return { ok: true }
+    revalidatePath(`/projects/${scene.project_id}/board`);
+    return { ok: true };
   } catch (error) {
-    return toActionError(error)
+    return toActionError(error);
   }
 }

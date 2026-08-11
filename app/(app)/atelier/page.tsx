@@ -28,7 +28,9 @@ export default async function AtelierPage() {
   // 既定値: ダッシュボードの選択中プロジェクト → なければ最新更新（SPEC §4.1）
   const selectedId = settingsRow?.selected_project_id;
   const initialProjectId =
-    selectedId && items.some((item) => item.id === selectedId) ? selectedId : null;
+    selectedId && items.some((item) => item.id === selectedId)
+      ? selectedId
+      : null;
 
   return (
     <div className="flex flex-1 flex-col">
@@ -37,7 +39,10 @@ export default async function AtelierPage() {
       </header>
 
       <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-4 p-4 sm:p-6">
-        <AtelierWorkspace projects={items} initialProjectId={initialProjectId} />
+        <AtelierWorkspace
+          projects={items}
+          initialProjectId={initialProjectId}
+        />
       </main>
     </div>
   );

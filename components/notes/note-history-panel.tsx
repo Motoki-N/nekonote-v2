@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import { History, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { listNoteVersions, restoreNoteVersion, type NoteVersion } from "@/lib/actions/notes";
+import {
+  listNoteVersions,
+  restoreNoteVersion,
+  type NoteVersion,
+} from "@/lib/actions/notes";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -97,7 +101,10 @@ export function NoteHistoryPanel({
         </div>
       ) : versions === null ? (
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="読み込み中" />
+          <Loader2
+            className="size-5 animate-spin text-muted-foreground"
+            aria-label="読み込み中"
+          />
         </div>
       ) : versions.length === 0 ? (
         <div className="flex flex-1 items-center justify-center p-4 text-sm text-muted-foreground">
@@ -143,14 +150,18 @@ export function NoteHistoryPanel({
                   />
                   <AlertDialogContent>
                     <AlertDialogHeader>
-                      <AlertDialogTitle>この版に復元しますか？</AlertDialogTitle>
+                      <AlertDialogTitle>
+                        この版に復元しますか？
+                      </AlertDialogTitle>
                       <AlertDialogDescription>
                         現在の内容は復元前に新しい版として保存されるため、履歴から戻せます。
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                       <AlertDialogCancel>キャンセル</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => void handleRestore(selected)}>
+                      <AlertDialogAction
+                        onClick={() => void handleRestore(selected)}
+                      >
                         復元する
                       </AlertDialogAction>
                     </AlertDialogFooter>

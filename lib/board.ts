@@ -1,7 +1,7 @@
 // ビートボードの純関数ヘルパー（SPEC-beat-board §4）。
 // Server Actions / API / クライアントUI で共用するため副作用を持たない
 
-import { BOARD_TEMPLATES, boardTemplateList } from '@/lib/board-templates'
+import { BOARD_TEMPLATES, boardTemplateList } from "@/lib/board-templates";
 import type {
   ApprovalStatus,
   Emotion,
@@ -9,97 +9,105 @@ import type {
   ScenePart,
   ScenePartAll,
   StructureTemplate,
-} from '@/lib/schemas/enums'
-import { scenePartsAll } from '@/lib/schemas/enums'
+} from "@/lib/schemas/enums";
+import { scenePartsAll } from "@/lib/schemas/enums";
 
 export type SceneRecord = {
-  id: string
-  project_id: string
+  id: string;
+  project_id: string;
   /** 'chapter' は目次ボードの章カード（SPEC-outline-board。ビートボードには描画しない） */
-  part: ScenePartAll
-  anchor: SceneAnchor | null
-  order_index: number
-  title: string
-  content: string
-  emotion_start: Emotion | null
-  emotion_end: Emotion | null
+  part: ScenePartAll;
+  anchor: SceneAnchor | null;
+  order_index: number;
+  title: string;
+  content: string;
+  emotion_start: Emotion | null;
+  emotion_end: Emotion | null;
   /** シーンレビューのゲート状態（Issue #57。「通す」で approved になる） */
-  status: ApprovalStatus
+  status: ApprovalStatus;
   /** 紐づく原稿ファイルのパス（Issue #56。null = 未紐づけ） */
-  manuscript_path: string | null
-}
+  manuscript_path: string | null;
+};
 
 // ---- テンプレートレジストリからのグローバル対応表の導出（Issue #54） ----
 // スラッグがテンプレート横断で一意なため、全テンプレートを平坦化した対応表が成立する。
 // Record の網羅性は「enums の全語彙がいずれかのテンプレート定義に現れること」に依存する
 // （語彙を追加するときは lib/board-templates.ts も同時に更新すること）
 
-const allLanes = boardTemplateList.flatMap((t) => t.lanes)
+const allLanes = boardTemplateList.flatMap((t) => t.lanes);
 const allTurningPoints = boardTemplateList.flatMap((t) =>
-  t.lanes.flatMap((lane) => lane.turningPoints.map((tp) => ({ ...tp, part: lane.id }))),
-)
+  t.lanes.flatMap((lane) =>
+    lane.turningPoints.map((tp) => ({ ...tp, part: lane.id })),
+  ),
+);
 
 export const PART_LABEL = {
   ...Object.fromEntries(allLanes.map((lane) => [lane.id, lane.label])),
-  chapter: '章',
-} as Record<ScenePartAll, string>
+  chapter: "章",
+} as Record<ScenePartAll, string>;
 
 // レーンヘッダーの短い説明
 export const PART_DESCRIPTION = Object.fromEntries(
   allLanes.map((lane) => [lane.id, lane.description]),
-) as Record<ScenePart, string>
+) as Record<ScenePart, string>;
 
 export const ANCHOR_LABEL = Object.fromEntries(
   allTurningPoints.map((tp) => [tp.id, tp.label]),
-) as Record<SceneAnchor, string>
+) as Record<SceneAnchor, string>;
 
 /** カード上のアンカーバッジ用の短縮ラベル */
 export const ANCHOR_BADGE = Object.fromEntries(
   allTurningPoints.map((tp) => [tp.id, tp.badge]),
-) as Record<SceneAnchor, string>
+) as Record<SceneAnchor, string>;
 
 /** 新規シーン本文の初期値（Issue #155。4観点のテンプレとして残す。
  * 章カードは対象外。編集ダイアログの placeholder（本文を空にしたとき）と共用） */
 export const SCENE_CONTENT_TEMPLATE = [
-  '4観点を目安に自由に:',
-  '・シチュエーション（場所・時刻）',
-  '・起きること',
-  '・感情の変化',
-  '・葛藤',
-].join('\n')
+  "4観点を目安に自由に:",
+  "・シチュエーション（場所・時刻）",
+  "・起きること",
+  "・感情の変化",
+  "・葛藤",
+].join("\n");
 
 /** 感情の強度の表示用テキスト（null=未設定、0=0、それ以外は符号付き数値） */
 export function formatEmotion(value: Emotion | null): string {
-  if (value === null) return '未設定'
-  return value > 0 ? `+${value}` : `${value}`
+  if (value === null) return "未設定";
+  return value > 0 ? `+${value}` : `${value}`;
 }
 
 /** アンカーが属するパート（pp1⇔setup 等の整合はこの対応表が正） */
 export const ANCHOR_TO_PART = Object.fromEntries(
   allTurningPoints.map((tp) => [tp.id, tp.part]),
-) as Record<SceneAnchor, ScenePart>
+) as Record<SceneAnchor, ScenePart>;
 
 /** 各レーン末尾の固定スロットに置く境界アンカー（持たないレーンもある。SPEC-structure-templates §3） */
-export const BOUNDARY_ANCHOR_BY_PART: Partial<Record<ScenePartAll, SceneAnchor>> =
-  Object.fromEntries(
-    allLanes
-      .map((lane) => [lane.id, lane.turningPoints.find((tp) => tp.boundary)?.id])
-      .filter(([, anchor]) => anchor !== undefined),
-  )
+export const BOUNDARY_ANCHOR_BY_PART: Partial<
+  Record<ScenePartAll, SceneAnchor>
+> = Object.fromEntries(
+  allLanes
+    .map((lane) => [lane.id, lane.turningPoints.find((tp) => tp.boundary)?.id])
+    .filter(([, anchor]) => anchor !== undefined),
+);
 
 const boundaryAnchors = new Set<SceneAnchor>(
   allTurningPoints.filter((tp) => tp.boundary).map((tp) => tp.id),
-)
+);
 
-export function isBoundaryAnchor(anchor: SceneAnchor | null): anchor is SceneAnchor {
-  return anchor !== null && boundaryAnchors.has(anchor)
+export function isBoundaryAnchor(
+  anchor: SceneAnchor | null,
+): anchor is SceneAnchor {
+  return anchor !== null && boundaryAnchors.has(anchor);
 }
 
 /** part と整合しないアンカーを解除する（D&Dのレーン間移動・ダイアログのパート変更の正規化。
  * chapter は ANCHOR_TO_PART に存在せず常に不一致 → null になる） */
-export function normalizeAnchor(anchor: SceneAnchor | null, part: ScenePartAll): SceneAnchor | null {
-  if (anchor !== null && ANCHOR_TO_PART[anchor] !== part) return null
-  return anchor
+export function normalizeAnchor(
+  anchor: SceneAnchor | null,
+  part: ScenePartAll,
+): SceneAnchor | null {
+  if (anchor !== null && ANCHOR_TO_PART[anchor] !== part) return null;
+  return anchor;
 }
 
 /**
@@ -110,14 +118,14 @@ export function normalizeAnchor(anchor: SceneAnchor | null, part: ScenePartAll):
  * 全件送信された並べ替えでも、もう一方のビューのカードが保全される（SPEC-outline-board §4）
  */
 export function toCanonicalOrder(scenes: SceneRecord[]): SceneRecord[] {
-  const result: SceneRecord[] = []
+  const result: SceneRecord[] = [];
   for (const part of scenePartsAll) {
-    const lane = scenes.filter((s) => s.part === part)
-    const boundary = BOUNDARY_ANCHOR_BY_PART[part]
-    result.push(...lane.filter((s) => !(boundary && s.anchor === boundary)))
-    if (boundary) result.push(...lane.filter((s) => s.anchor === boundary))
+    const lane = scenes.filter((s) => s.part === part);
+    const boundary = BOUNDARY_ANCHOR_BY_PART[part];
+    result.push(...lane.filter((s) => !(boundary && s.anchor === boundary)));
+    if (boundary) result.push(...lane.filter((s) => s.anchor === boundary));
   }
-  return result.map((s, index) => ({ ...s, order_index: index }))
+  return result.map((s, index) => ({ ...s, order_index: index }));
 }
 
 /**
@@ -132,30 +140,32 @@ export function findTurningPointOrderViolation(
   template: StructureTemplate,
 ): { prior: SceneAnchor; later: SceneAnchor } | null {
   for (const lane of BOARD_TEMPLATES[template].lanes) {
-    const defIndex = new Map(lane.turningPoints.map((tp, index) => [tp.id, index]))
-    let maxIndex = -1
-    let maxAnchor: SceneAnchor | null = null
+    const defIndex = new Map(
+      lane.turningPoints.map((tp, index) => [tp.id, index]),
+    );
+    let maxIndex = -1;
+    let maxAnchor: SceneAnchor | null = null;
     for (const scene of scenes) {
-      if (scene.part !== lane.id || scene.anchor === null) continue
-      const index = defIndex.get(scene.anchor)
+      if (scene.part !== lane.id || scene.anchor === null) continue;
+      const index = defIndex.get(scene.anchor);
       // part↔anchor 不整合はここでは扱わない（normalizeAnchor が解除する）
-      if (index === undefined) continue
+      if (index === undefined) continue;
       if (index < maxIndex && maxAnchor !== null) {
-        return { prior: scene.anchor, later: maxAnchor }
+        return { prior: scene.anchor, later: maxAnchor };
       }
       if (index > maxIndex) {
-        maxIndex = index
-        maxAnchor = scene.anchor
+        maxIndex = index;
+        maxAnchor = scene.anchor;
       }
     }
   }
-  return null
+  return null;
 }
 
 /** 順序違反の日本語メッセージ（トースト・AppError 共用） */
 export function turningPointOrderMessage(violation: {
-  prior: SceneAnchor
-  later: SceneAnchor
+  prior: SceneAnchor;
+  later: SceneAnchor;
 }): string {
-  return `「${ANCHOR_LABEL[violation.prior]}」は「${ANCHOR_LABEL[violation.later]}」より前に置く必要があります`
+  return `「${ANCHOR_LABEL[violation.prior]}」は「${ANCHOR_LABEL[violation.later]}」より前に置く必要があります`;
 }

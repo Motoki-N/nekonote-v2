@@ -101,7 +101,9 @@ export function AtelierGallery({
       formData.append("file", file);
       const result = await uploadReferenceImage(projectId, formData);
       if (!result.ok || !result.data) {
-        toast.error(result.ok ? "アップロードに失敗しました" : result.error.message);
+        toast.error(
+          result.ok ? "アップロードに失敗しました" : result.error.message,
+        );
         return;
       }
       onUploaded(result.data);
@@ -152,7 +154,9 @@ export function AtelierGallery({
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-base font-semibold text-card-foreground">ギャラリー</h2>
+        <h2 className="text-base font-semibold text-card-foreground">
+          ギャラリー
+        </h2>
         {/* 参照画像のアップロード（Issue #104）。絵柄・キャラの統一に使う外部画像を取り込む */}
         <input
           ref={fileInputRef}
@@ -191,7 +195,9 @@ export function AtelierGallery({
         </p>
       ) : items.length === 0 ? (
         <div className="flex flex-col gap-2 py-6 text-center">
-          <p className="text-sm text-card-foreground">まだイラストがありません。</p>
+          <p className="text-sm text-card-foreground">
+            まだイラストがありません。
+          </p>
           <p className="text-sm text-muted-foreground">
             イラストレーターが原稿と設定資料を読み、表紙・挿絵・キャラクター・コンセプトアートを
             描きます。左のフォームから最初の依頼をどうぞ。
@@ -266,7 +272,9 @@ export function AtelierGallery({
               </div>
 
               <div className="flex flex-wrap items-center gap-1">
-                <Badge variant="secondary">{ILLUSTRATION_KIND_LABEL[item.kind]}</Badge>
+                <Badge variant="secondary">
+                  {ILLUSTRATION_KIND_LABEL[item.kind]}
+                </Badge>
                 <span className="text-xs text-muted-foreground">
                   {dateFormat.format(new Date(item.createdAt))}
                 </span>
@@ -297,7 +305,11 @@ export function AtelierGallery({
                 </div>
               </div>
 
-              <Button size="sm" variant="outline" onClick={() => onSetReference(item)}>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => onSetReference(item)}
+              >
                 参照画像にして依頼
               </Button>
             </li>
@@ -306,7 +318,10 @@ export function AtelierGallery({
       )}
 
       {/* 拡大表示: プロンプトを説明文として添える（SPEC §4.4） */}
-      <Dialog open={zoomed !== null} onOpenChange={(open) => !open && setZoomed(null)}>
+      <Dialog
+        open={zoomed !== null}
+        onOpenChange={(open) => !open && setZoomed(null)}
+      >
         <DialogContent className="sm:max-w-2xl">
           {zoomed && (
             <>
@@ -326,7 +341,9 @@ export function AtelierGallery({
               {/* アップロード参照画像（kind 'reference'）にはプロンプトがない */}
               {zoomed.prompt !== "" && (
                 <div className="max-h-32 overflow-y-auto rounded-md bg-muted/50 p-2">
-                  <p className="whitespace-pre-wrap text-xs text-muted-foreground">{zoomed.prompt}</p>
+                  <p className="whitespace-pre-wrap text-xs text-muted-foreground">
+                    {zoomed.prompt}
+                  </p>
                 </div>
               )}
             </>
@@ -335,12 +352,16 @@ export function AtelierGallery({
       </Dialog>
 
       {/* 削除確認: 被参照なら警告を添える（SPEC §2） */}
-      <AlertDialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>
+      <AlertDialog
+        open={deleting !== null}
+        onOpenChange={(open) => !open && setDeleting(null)}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>イラストを削除しますか？</AlertDialogTitle>
             <AlertDialogDescription>
-              「{deleting?.title}」を完全に削除します。この操作は取り消せません。
+              「{deleting?.title}
+              」を完全に削除します。この操作は取り消せません。
               {deleting && deleting.referencedCount > 0 && (
                 <>
                   <br />

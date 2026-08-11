@@ -25,8 +25,12 @@ export function NoteCharacterReviewPanel({
   onClose: () => void;
 }) {
   // undefined = 読込中
-  const [linked, setLinked] = useState<LinkedProposalOption[] | undefined>(undefined);
-  const [selectedProposalId, setSelectedProposalId] = useState<string | null>(null);
+  const [linked, setLinked] = useState<LinkedProposalOption[] | undefined>(
+    undefined,
+  );
+  const [selectedProposalId, setSelectedProposalId] = useState<string | null>(
+    null,
+  );
   const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -34,12 +38,15 @@ export function NoteCharacterReviewPanel({
     void getLinkedProposalsForNote(noteId).then((result) => {
       if (cancelled) return;
       if (!result.ok || !result.data) {
-        setLoadError(result.ok ? "紐づく企画の取得に失敗しました" : result.error.message);
+        setLoadError(
+          result.ok ? "紐づく企画の取得に失敗しました" : result.error.message,
+        );
         setLinked([]);
         return;
       }
       setLinked(result.data);
-      if (result.data.length === 1) setSelectedProposalId(result.data[0].proposalId);
+      if (result.data.length === 1)
+        setSelectedProposalId(result.data[0].proposalId);
     });
     return () => {
       cancelled = true;
@@ -112,13 +119,16 @@ export function NoteCharacterReviewPanel({
           </p>
         ) : (
           <div className="flex flex-col gap-2">
-            <p>このノートは複数の企画に紐づいています。レビューする企画を選んでください。</p>
+            <p>
+              このノートは複数の企画に紐づいています。レビューする企画を選んでください。
+            </p>
             <select
               aria-label="レビューする企画"
               className="h-8 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground"
               value=""
               onChange={(e) => {
-                if (e.target.value !== "") setSelectedProposalId(e.target.value);
+                if (e.target.value !== "")
+                  setSelectedProposalId(e.target.value);
               }}
             >
               <option value="">企画を選択…</option>

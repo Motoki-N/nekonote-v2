@@ -25,7 +25,10 @@ import {
   saveChatMessageAsNote,
   type ChatMessageRecord,
 } from "@/lib/actions/chat";
-import { ASSISTANT_PERSONA_ID, CAFE_MASTER_PERSONA_ID } from "@/lib/ai/personas";
+import {
+  ASSISTANT_PERSONA_ID,
+  CAFE_MASTER_PERSONA_ID,
+} from "@/lib/ai/personas";
 import type { SaveScheduleOutput } from "@/lib/schemas/schedule";
 import { ToolCard } from "@/components/chats/tool-card";
 import { Button } from "@/components/ui/button";
@@ -51,7 +54,11 @@ const EMPTY_MESSAGE: Record<string, string> = {
 };
 
 function toUIMessage(record: ChatMessageRecord): UIMessage {
-  return { id: record.id, role: record.role, parts: [{ type: "text", text: record.content }] };
+  return {
+    id: record.id,
+    role: record.role,
+    parts: [{ type: "text", text: record.content }],
+  };
 }
 
 function textOf(message: UIMessage): string {
@@ -71,7 +78,8 @@ function textOf(message: UIMessage): string {
  */
 function mergeToolParts(current: UIMessage[], next: UIMessage[]): UIMessage[] {
   const candidates = current.filter(
-    (message) => message.role === "assistant" && message.parts.some(isStaticToolUIPart),
+    (message) =>
+      message.role === "assistant" && message.parts.some(isStaticToolUIPart),
   );
   let cursor = 0;
   const merged: UIMessage[] = [];
@@ -93,7 +101,10 @@ function mergeToolParts(current: UIMessage[], next: UIMessage[]): UIMessage[] {
     // 元メッセージと同じ並び（ツール実行→締めのテキスト）で先頭に置く
     merged.push({
       ...message,
-      parts: [...candidates[index].parts.filter(isStaticToolUIPart), ...message.parts],
+      parts: [
+        ...candidates[index].parts.filter(isStaticToolUIPart),
+        ...message.parts,
+      ],
     });
   }
   // 末尾までマッチしなかったカード保持メッセージも残す（締めテキストなしの典型ケース）
@@ -104,7 +115,9 @@ function mergeToolParts(current: UIMessage[], next: UIMessage[]): UIMessage[] {
 /** /api/chat の errorResponse（JSON）からユーザー向けメッセージを取り出す */
 function toDisplayError(error: Error): string {
   try {
-    const parsed = JSON.parse(error.message) as { error?: { message?: string } };
+    const parsed = JSON.parse(error.message) as {
+      error?: { message?: string };
+    };
     if (parsed.error?.message) return parsed.error.message;
   } catch {
     // JSON でなければ汎用文言にフォールバック
@@ -192,20 +205,28 @@ function ConsultPanel({
       if (!result.ok || !result.data) {
         setConsult({
           state: "error",
-          message: result.ok ? "スレッドが見つかりません" : result.error.message,
+          message: result.ok
+            ? "スレッドが見つかりません"
+            : result.error.message,
         });
         return;
       }
       const personaId = result.data.personaId;
       if (!personaId || !TABS.some((tab) => tab.personaId === personaId)) {
-        setConsult({ state: "error", message: "このスレッドは相談パネルでは開けません" });
+        setConsult({
+          state: "error",
+          message: "このスレッドは相談パネルでは開けません",
+        });
         return;
       }
       setActiveTab(personaId);
       setConsult({
         state: "ready",
         personaId,
-        thread: { threadId: result.data.threadId, messages: result.data.messages },
+        thread: {
+          threadId: result.data.threadId,
+          messages: result.data.messages,
+        },
       });
     });
     return () => {
@@ -243,7 +264,10 @@ function ConsultPanel({
 
       {consult.state === "loading" ? (
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="読み込み中" />
+          <Loader2
+            className="size-5 animate-spin text-muted-foreground"
+            aria-label="読み込み中"
+          />
         </div>
       ) : consult.state === "error" ? (
         <div className="flex flex-1 items-center justify-center p-4">
@@ -251,7 +275,11 @@ function ConsultPanel({
         </div>
       ) : (
         <>
-          <div role="tablist" aria-label="相談相手" className="flex border-b border-border">
+          <div
+            role="tablist"
+            aria-label="相談相手"
+            className="flex border-b border-border"
+          >
             {TABS.map((tab) => (
               <button
                 key={tab.personaId}
@@ -274,14 +302,19 @@ function ConsultPanel({
             <div
               key={tab.personaId}
               className={
-                activeTab === tab.personaId ? "flex min-h-0 flex-1 flex-col" : "hidden"
+                activeTab === tab.personaId
+                  ? "flex min-h-0 flex-1 flex-col"
+                  : "hidden"
               }
             >
               <ConsultThread
                 personaId={tab.personaId}
-                projects={tab.personaId === ASSISTANT_PERSONA_ID ? projects : null}
+                projects={
+                  tab.personaId === ASSISTANT_PERSONA_ID ? projects : null
+                }
                 preloaded={
-                  consult.state === "ready" && consult.personaId === tab.personaId
+                  consult.state === "ready" &&
+                  consult.personaId === tab.personaId
                     ? consult.thread
                     : null
                 }
@@ -310,7 +343,9 @@ function ConsultThread({
   /** `?consult=` で指定されたスレッド（担当タブのみ非null） */
   preloaded: LoadedThread | null;
 }) {
-  const [thread, setThread] = useState<(LoadedThread & { chatKey: string }) | null>(() =>
+  const [thread, setThread] = useState<
+    (LoadedThread & { chatKey: string }) | null
+  >(() =>
     preloaded ? { ...preloaded, chatKey: preloaded.threadId ?? "new" } : null,
   );
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -385,7 +420,10 @@ function ConsultThread({
         />
       ) : (
         <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="size-5 animate-spin text-muted-foreground" aria-label="読み込み中" />
+          <Loader2
+            className="size-5 animate-spin text-muted-foreground"
+            aria-label="読み込み中"
+          />
         </div>
       )}
     </>
@@ -420,8 +458,12 @@ function ConsultChat({
   // DBに保存済みのメッセージid（＝「ノートに保存」を押せるもの）。
   // ストリーミング直後の応答はクライアント採番のidでDBと一致しないため、
   // 応答完了後にDBから履歴を取り直して差し替える
-  const [dbIds, setDbIds] = useState<ReadonlySet<string>>(() => new Set(initialDbIds));
-  const [savedNotes, setSavedNotes] = useState<Readonly<Record<string, string>>>({});
+  const [dbIds, setDbIds] = useState<ReadonlySet<string>>(
+    () => new Set(initialDbIds),
+  );
+  const [savedNotes, setSavedNotes] = useState<
+    Readonly<Record<string, string>>
+  >({});
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
@@ -462,12 +504,20 @@ function ConsultChat({
     syncTimers.current.push(
       setTimeout(() => {
         // 次の送信が始まっていたら差し替えない（onFinish 時に改めて同期される）
-        if (statusRef.current === "submitted" || statusRef.current === "streaming") return;
+        if (
+          statusRef.current === "submitted" ||
+          statusRef.current === "streaming"
+        )
+          return;
         const syncThreadId = threadIdRef.current;
         if (!syncThreadId) return;
         void getDashboardThreadById(syncThreadId).then((result) => {
           if (!result.ok || !result.data) return;
-          if (statusRef.current === "submitted" || statusRef.current === "streaming") return;
+          if (
+            statusRef.current === "submitted" ||
+            statusRef.current === "streaming"
+          )
+            return;
           if (result.data.threadId !== threadIdRef.current) return;
           // ツール結果カードはDBに残らないため、差し替え時に現在のメッセージから引き継ぐ
           const next = result.data.messages.map(toUIMessage);
@@ -502,7 +552,9 @@ function ConsultChat({
       try {
         const result = await createDashboardThread(personaId);
         if (!result.ok || !result.data) {
-          setSendError(result.ok ? "スレッドの作成に失敗しました" : result.error.message);
+          setSendError(
+            result.ok ? "スレッドの作成に失敗しました" : result.error.message,
+          );
           return;
         }
         currentThreadId = result.data.threadId;
@@ -533,7 +585,10 @@ function ConsultChat({
     try {
       const result = await saveChatMessageAsNote(message.id);
       if (result.ok && result.data) {
-        setSavedNotes((prev) => ({ ...prev, [message.id]: result.data!.noteId }));
+        setSavedNotes((prev) => ({
+          ...prev,
+          [message.id]: result.data!.noteId,
+        }));
       } else if (!result.ok) {
         setSaveError(result.error.message);
       }
@@ -564,7 +619,9 @@ function ConsultChat({
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto p-3">
         {messages.length === 0 && (
-          <p className="p-2 text-sm text-muted-foreground">{EMPTY_MESSAGE[personaId]}</p>
+          <p className="p-2 text-sm text-muted-foreground">
+            {EMPTY_MESSAGE[personaId]}
+          </p>
         )}
         <ul className="flex flex-col gap-3">
           {messages.map((message) => (
@@ -573,7 +630,9 @@ function ConsultChat({
               {message.role === "assistant" &&
                 message.parts
                   .filter(isStaticToolUIPart)
-                  .map((part) => <ToolCard key={part.toolCallId} part={part} />)}
+                  .map((part) => (
+                    <ToolCard key={part.toolCallId} part={part} />
+                  ))}
               {(message.role === "user" || textOf(message) !== "") && (
                 <div
                   className={
@@ -606,11 +665,16 @@ function ConsultChat({
                       size="xs"
                       variant="ghost"
                       className="text-muted-foreground"
-                      disabled={busy || savingId !== null || !dbIds.has(message.id)}
+                      disabled={
+                        busy || savingId !== null || !dbIds.has(message.id)
+                      }
                       onClick={() => void handleSave(message)}
                     >
                       {savingId === message.id ? (
-                        <Loader2 data-icon="inline-start" className="animate-spin" />
+                        <Loader2
+                          data-icon="inline-start"
+                          className="animate-spin"
+                        />
                       ) : (
                         <FilePlus2 data-icon="inline-start" />
                       )}
@@ -628,12 +692,23 @@ function ConsultChat({
             aria-label="応答を待っています"
           />
         )}
-        {error && <p className="mt-3 text-sm text-destructive">{toDisplayError(error)}</p>}
-        {sendError && <p className="mt-3 text-sm text-destructive">{sendError}</p>}
-        {saveError && <p className="mt-3 text-sm text-destructive">{saveError}</p>}
+        {error && (
+          <p className="mt-3 text-sm text-destructive">
+            {toDisplayError(error)}
+          </p>
+        )}
+        {sendError && (
+          <p className="mt-3 text-sm text-destructive">{sendError}</p>
+        )}
+        {saveError && (
+          <p className="mt-3 text-sm text-destructive">{saveError}</p>
+        )}
       </div>
 
-      <form onSubmit={handleSubmit} className="flex items-center gap-2 border-t border-border p-3">
+      <form
+        onSubmit={handleSubmit}
+        className="flex items-center gap-2 border-t border-border p-3"
+      >
         <Button
           type="button"
           variant="ghost"
@@ -652,11 +727,22 @@ function ConsultChat({
           aria-label="メッセージ"
         />
         {busy ? (
-          <Button type="button" variant="outline" size="icon" aria-label="停止" onClick={() => void stop()}>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="停止"
+            onClick={() => void stop()}
+          >
             <CircleStop />
           </Button>
         ) : (
-          <Button type="submit" size="icon" aria-label="送信" disabled={input.trim().length === 0}>
+          <Button
+            type="submit"
+            size="icon"
+            aria-label="送信"
+            disabled={input.trim().length === 0}
+          >
             <Send />
           </Button>
         )}
