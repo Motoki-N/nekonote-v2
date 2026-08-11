@@ -17,7 +17,10 @@ import {
 } from "@/lib/ai/prompts";
 import type { SceneRecord } from "@/lib/board";
 import { AppError, errorResponse } from "@/lib/errors";
-import { patCredentialProvider } from "@/lib/git/credentials";
+import {
+  fetchProjectGitFields,
+  resolveRepoGit,
+} from "@/lib/git/project-context";
 import {
   countChars,
   fetchAllManuscriptContents,
@@ -428,27 +431,10 @@ export async function POST(req: Request) {
       if (targetRef.data !== session.project_id) {
         throw new AppError("not_found", "レビュー対象が見つかりません");
       }
-      const { data: project, error: projectError } = await supabase
-        .from("projects")
-        .select("id, repo, base_path")
-        .eq("id", session.project_id)
-        .maybeSingle();
-      if (projectError) throw new AppError("internal", projectError.message);
-      if (!project)
-        throw new AppError("not_found", "プロジェクトが見つかりません");
-      if (!project.repo)
-        throw new AppError("validation", "リポジトリが設定されていません");
+      const project = await fetchProjectGitFields(supabase, session.project_id);
+      const { repo, basePath, token } = await resolveRepoGit(supabase, project);
 
-      const credential = await patCredentialProvider.getCredential(supabase);
-      if (!credential)
-        throw new AppError("validation", "GitHub PATが未登録です");
-
-      const basePath = project.base_path ?? "";
-      const files = await fetchAllManuscriptContents(
-        credential.token,
-        project.repo,
-        basePath,
-      );
+      const files = await fetchAllManuscriptContents(token, repo, basePath);
       if (files.length === 0) {
         throw new AppError(
           "validation",

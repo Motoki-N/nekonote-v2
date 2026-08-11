@@ -3,7 +3,10 @@ import type { NextRequest } from "next/server";
 import { z } from "zod";
 
 import { AppError, errorResponse } from "@/lib/errors";
-import { patCredentialProvider } from "@/lib/git/credentials";
+import {
+  fetchProjectGitFields,
+  resolveRepoGit,
+} from "@/lib/git/project-context";
 import { getReleaseAssetLocation } from "@/lib/git/github";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
@@ -39,25 +42,10 @@ export async function GET(request: NextRequest) {
     });
 
     // RLS越しの取得＝所有確認を兼ねる（画像プロキシと同じ作法）
-    const { data: project, error } = await supabase
-      .from("projects")
-      .select("id, repo")
-      .eq("id", projectId)
-      .maybeSingle();
-    if (error) throw new AppError("internal", error.message);
-    if (!project)
-      throw new AppError("not_found", "プロジェクトが見つかりません");
-    if (!project.repo)
-      throw new AppError("validation", "リポジトリが設定されていません");
+    const project = await fetchProjectGitFields(supabase, projectId);
+    const { repo, token } = await resolveRepoGit(supabase, project);
 
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) throw new AppError("validation", "GitHub PATが未登録です");
-
-    const location = await getReleaseAssetLocation(
-      credential.token,
-      project.repo,
-      assetId,
-    );
+    const location = await getReleaseAssetLocation(token, repo, assetId);
     // 署名付きURLは短命。キャッシュさせずその場のダウンロードだけに使う
     return NextResponse.redirect(location, {
       status: 302,

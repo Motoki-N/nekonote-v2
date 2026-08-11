@@ -5,7 +5,10 @@ import { z } from "zod";
 
 import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
-import { patCredentialProvider } from "@/lib/git/credentials";
+import {
+  fetchProjectGitFields,
+  resolveRepoGit,
+} from "@/lib/git/project-context";
 import {
   createCommit,
   createFileContent,
@@ -60,27 +63,11 @@ export async function setupManuscriptRepo(
     const supabase = await createClient();
 
     // RLS越しに取得（他人のプロジェクトは not_found になる）
-    const { data: project, error: projectError } = await supabase
-      .from("projects")
-      .select("id, repo")
-      .eq("id", pid)
-      .maybeSingle();
-    if (projectError) throw new AppError("internal", projectError.message);
-    if (!project)
-      throw new AppError("not_found", "プロジェクトが見つかりません");
-    if (!project.repo) {
-      throw new AppError("validation", "原稿リポジトリが設定されていません");
-    }
-
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) {
-      throw new AppError(
-        "validation",
-        "GitHubのPATが未登録です。設定画面で登録してください",
-      );
-    }
-    const { token } = credential;
-    const repo = project.repo;
+    const project = await fetchProjectGitFields(supabase, pid);
+    const { repo, token } = await resolveRepoGit(supabase, project, {
+      repoMessage: "原稿リポジトリが設定されていません",
+      patMessage: "GitHubのPATが未登録です。設定画面で登録してください",
+    });
 
     const templateFiles = await loadManuscriptTemplate(parsed);
 

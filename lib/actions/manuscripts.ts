@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
-import { patCredentialProvider } from "@/lib/git/credentials";
 import {
   getCommitFilePatch,
   getFileContent,
@@ -14,6 +13,13 @@ import {
   putFileContent,
   type FileCommitEntry,
 } from "@/lib/git/github";
+import {
+  fetchProjectGitFields,
+  loadProjectGitOrGate,
+  normalizeBasePath,
+  requirePatToken,
+  resolveRepoGit,
+} from "@/lib/git/project-context";
 import {
   countChars,
   fetchAllManuscriptContents,
@@ -47,28 +53,16 @@ export async function getManuscriptTree(
   projectId: string,
 ): Promise<ActionResult<ManuscriptTreeData>> {
   try {
-    const pid = uuidSchema.parse(projectId);
     const supabase = await createClient();
 
     // RLS越しの取得＝所有確認を兼ねる
-    const { data: project, error } = await supabase
-      .from("projects")
-      .select("id, repo, base_path")
-      .eq("id", pid)
-      .maybeSingle();
-    if (error) throw new AppError("internal", error.message);
-    if (!project)
-      throw new AppError("not_found", "プロジェクトが見つかりません");
+    const gitCtx = await loadProjectGitOrGate(supabase, projectId);
+    if (gitCtx.gate !== "ok") return { ok: true, data: { gate: gitCtx.gate } };
 
-    if (!project.repo) return { ok: true, data: { gate: "no_repo" } };
-
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) return { ok: true, data: { gate: "no_pat" } };
-
-    const basePath = project.base_path ?? "";
+    const basePath = gitCtx.basePath;
     const files = await fetchManuscriptTree(
-      credential.token,
-      project.repo,
+      gitCtx.token,
+      gitCtx.repo,
       basePath,
     );
     return {
@@ -118,32 +112,19 @@ export async function openManuscriptFile(
     const path = manuscriptFilePathSchema.parse(filePath);
     const supabase = await createClient();
 
-    const { data: project, error } = await supabase
-      .from("projects")
-      .select("id, repo, base_path")
-      .eq("id", pid)
-      .maybeSingle();
-    if (error) throw new AppError("internal", error.message);
-    if (!project)
-      throw new AppError("not_found", "プロジェクトが見つかりません");
-    if (!project.repo)
-      throw new AppError("validation", "リポジトリが設定されていません");
+    const project = await fetchProjectGitFields(supabase, pid);
 
     // base_path 外のパスは拒否（ツリー一覧と同じ範囲に限定する）
-    const basePath = project.base_path ?? "";
-    if (
-      basePath !== "" &&
-      !path.startsWith(`${basePath.replace(/\/$/, "")}/`)
-    ) {
+    const basePath = normalizeBasePath(project.base_path);
+    if (basePath !== "" && !path.startsWith(`${basePath}/`)) {
       throw new AppError("validation", "ファイルパスが不正です");
     }
 
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) throw new AppError("validation", "GitHub PATが未登録です");
+    const { repo, token } = await resolveRepoGit(supabase, project);
 
     const [{ content }, latestSha] = await Promise.all([
-      getFileContent(credential.token, project.repo, path),
-      getLatestCommitSha(credential.token, project.repo, path),
+      getFileContent(token, repo, path),
+      getLatestCommitSha(token, repo, path),
     ]);
 
     // 開いた時点でリンクを自動作成（既存ならそのまま）
@@ -175,9 +156,9 @@ export async function openManuscriptFile(
     try {
       await recordWritingProgress(supabase, {
         projectId: pid,
-        repo: project.repo,
+        repo,
         basePath,
-        token: credential.token,
+        token,
         openedFile: { path, content },
       });
     } catch (progressError) {
@@ -251,14 +232,10 @@ async function resolveLinkForHistory(manuscriptLinkId: string): Promise<{
   if (error) throw new AppError("internal", error.message);
   if (!link || !link.projects)
     throw new AppError("not_found", "原稿リンクが見つかりません");
-  if (!link.projects.repo)
-    throw new AppError("validation", "リポジトリが設定されていません");
   const filePath = manuscriptFilePathSchema.parse(link.file_path);
 
-  const credential = await patCredentialProvider.getCredential(supabase);
-  if (!credential) throw new AppError("validation", "GitHub PATが未登録です");
-
-  return { token: credential.token, repo: link.projects.repo, filePath };
+  const { repo, token } = await resolveRepoGit(supabase, link.projects);
+  return { token, repo, filePath };
 }
 
 /** そのファイルのコミット履歴（新しい順・最大30件。SPEC-manuscript-history §4） */
@@ -344,25 +321,14 @@ export async function refreshWritingProgress(
     const supabase = await createClient();
 
     // RLS越しの取得＝所有確認を兼ねる
-    const { data: project, error } = await supabase
-      .from("projects")
-      .select("id, repo, base_path")
-      .eq("id", pid)
-      .maybeSingle();
-    if (error) throw new AppError("internal", error.message);
-    if (!project)
-      throw new AppError("not_found", "プロジェクトが見つかりません");
-    if (!project.repo)
-      throw new AppError("validation", "リポジトリが設定されていません");
-
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) throw new AppError("validation", "GitHub PATが未登録です");
+    const project = await fetchProjectGitFields(supabase, pid);
+    const { repo, basePath, token } = await resolveRepoGit(supabase, project);
 
     const totalChars = await recordWritingProgress(supabase, {
       projectId: pid,
-      repo: project.repo,
-      basePath: project.base_path ?? "",
-      token: credential.token,
+      repo,
+      basePath,
+      token,
     });
     return { ok: true, data: { totalChars } };
   } catch (error) {
@@ -442,21 +408,15 @@ export async function commitAcceptedSuggestions(
     // DB由来の file_path も再検証する（多層防御。/api/proofread と同じ作法）。
     // 書き込み経路なので base_path 配下であることも読み取り側と対称に確認する
     const filePath = manuscriptFilePathSchema.parse(link.file_path);
-    const basePath = link.projects.base_path ?? "";
-    if (
-      basePath !== "" &&
-      !filePath.startsWith(`${basePath.replace(/\/$/, "")}/`)
-    ) {
+    const basePath = normalizeBasePath(link.projects.base_path);
+    if (basePath !== "" && !filePath.startsWith(`${basePath}/`)) {
       throw new AppError("validation", "ファイルパスが不正です");
     }
 
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) {
-      throw new AppError(
-        "validation",
-        "GitHub PATが未登録です。設定から登録してください",
-      );
-    }
+    const patToken = await requirePatToken(
+      supabase,
+      "GitHub PATが未登録です。設定から登録してください",
+    );
 
     const { data: accepted, error: acceptedError } = await supabase
       .from("revision_suggestions")
@@ -472,7 +432,7 @@ export async function commitAcceptedSuggestions(
 
     // 最新原稿を取得して適用（blob SHA 起点の楽観ロック。リモート更新が挟まると PUT が conflict になる）
     const { content, sha } = await getFileContent(
-      credential.token,
+      patToken,
       link.projects.repo,
       filePath,
     );
@@ -490,7 +450,7 @@ export async function commitAcceptedSuggestions(
 
     const fileName = filePath.split("/").pop() ?? filePath;
     const { commitSha } = await putFileContent(
-      credential.token,
+      patToken,
       link.projects.repo,
       filePath,
       {
@@ -569,21 +529,15 @@ export async function writeBackOnHoldSuggestions(
       throw new AppError("validation", "リポジトリが設定されていません");
     // DB由来の file_path も再検証する（多層防御。commitAcceptedSuggestions と同じ作法）
     const filePath = manuscriptFilePathSchema.parse(link.file_path);
-    const basePath = link.projects.base_path ?? "";
-    if (
-      basePath !== "" &&
-      !filePath.startsWith(`${basePath.replace(/\/$/, "")}/`)
-    ) {
+    const basePath = normalizeBasePath(link.projects.base_path);
+    if (basePath !== "" && !filePath.startsWith(`${basePath}/`)) {
       throw new AppError("validation", "ファイルパスが不正です");
     }
 
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) {
-      throw new AppError(
-        "validation",
-        "GitHub PATが未登録です。設定から登録してください",
-      );
-    }
+    const patToken = await requirePatToken(
+      supabase,
+      "GitHub PATが未登録です。設定から登録してください",
+    );
 
     const { data: onHold, error: onHoldError } = await supabase
       .from("revision_suggestions")
@@ -602,7 +556,7 @@ export async function writeBackOnHoldSuggestions(
 
     // 最新原稿を取得して挿入（blob SHA 起点の楽観ロック。リモート更新が挟まると PUT が conflict になる）
     const { content, sha } = await getFileContent(
-      credential.token,
+      patToken,
       link.projects.repo,
       filePath,
     );
@@ -620,7 +574,7 @@ export async function writeBackOnHoldSuggestions(
 
     const fileName = filePath.split("/").pop() ?? filePath;
     const { commitSha } = await putFileContent(
-      credential.token,
+      patToken,
       link.projects.repo,
       filePath,
       {

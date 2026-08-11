@@ -5,6 +5,7 @@ import { z } from "zod";
 import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
 import { patCredentialProvider } from "@/lib/git/credentials";
+import { resolveRepoGit } from "@/lib/git/project-context";
 import {
   createFileContent,
   getFileContent,
@@ -297,19 +298,13 @@ export async function writeBackCritique(
     }
     const content = session.review_feedbacks[0]?.content;
     if (!content) throw new AppError("not_found", "講評の本文が見つかりません");
-    if (!session.projects.repo)
-      throw new AppError("validation", "リポジトリが設定されていません");
+    const { repo, basePath, token } = await resolveRepoGit(
+      supabase,
+      session.projects,
+      { patMessage: "GitHub PATが未登録です。設定から登録してください" },
+    );
 
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) {
-      throw new AppError(
-        "validation",
-        "GitHub PATが未登録です。設定から登録してください",
-      );
-    }
-
-    const basePath = session.projects.base_path ?? "";
-    const prefix = basePath === "" ? "" : `${basePath.replace(/\/$/, "")}/`;
+    const prefix = basePath === "" ? "" : `${basePath}/`;
     // DB由来の base_path を含むため書き込み先パスも再検証する（多層防御。SPEC-phase4 §5）
     const filePath = manuscriptFilePathSchema.parse(
       `${prefix}${REVIEW_NOTES_FILE}`,
@@ -330,11 +325,7 @@ export async function writeBackCritique(
     // 既存ファイルは末尾に追記、無ければヘッダつきで新規作成（blob SHA 起点の楽観ロック）
     let existing: { content: string; sha: string } | null = null;
     try {
-      existing = await getFileContent(
-        credential.token,
-        session.projects.repo,
-        filePath,
-      );
+      existing = await getFileContent(token, repo, filePath);
     } catch (error) {
       if (!(error instanceof AppError && error.code === "not_found"))
         throw error;
@@ -342,25 +333,15 @@ export async function writeBackCritique(
 
     const message = "講評: レビューメモへ書き戻し（ネコノテAI）";
     const { commitSha } = existing
-      ? await putFileContent(
-          credential.token,
-          session.projects.repo,
-          filePath,
-          {
-            content: `${existing.content.replace(/\n*$/, "\n\n")}${block}`,
-            sha: existing.sha,
-            message,
-          },
-        )
-      : await createFileContent(
-          credential.token,
-          session.projects.repo,
-          filePath,
-          {
-            content: `${REVIEW_NOTES_HEADER}\n${block}`,
-            message,
-          },
-        );
+      ? await putFileContent(token, repo, filePath, {
+          content: `${existing.content.replace(/\n*$/, "\n\n")}${block}`,
+          sha: existing.sha,
+          message,
+        })
+      : await createFileContent(token, repo, filePath, {
+          content: `${REVIEW_NOTES_HEADER}\n${block}`,
+          message,
+        });
 
     return { ok: true, data: { commitSha, filePath } };
   } catch (error) {

@@ -7,7 +7,7 @@ import {
   PROOFREAD_COMMENT_GUIDANCE,
 } from "@/lib/ai/prompts";
 import { AppError, errorResponse } from "@/lib/errors";
-import { patCredentialProvider } from "@/lib/git/credentials";
+import { resolveRepoGit } from "@/lib/git/project-context";
 import { sortByGenrePriority } from "@/lib/genre-priority";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getFileContent, getLatestCommitSha } from "@/lib/git/github";
@@ -60,23 +60,17 @@ export async function POST(req: Request) {
     if (linkError) throw new AppError("internal", linkError.message);
     if (!link || !link.projects)
       throw new AppError("not_found", "原稿リンクが見つかりません");
-    if (!link.projects.repo)
-      throw new AppError("validation", "リポジトリが設定されていません");
     // DB由来の file_path も再検証する（PostgREST直叩きで作られた不正な行への多層防御）
     const filePath = manuscriptFilePathSchema.parse(link.file_path);
 
-    const credential = await patCredentialProvider.getCredential(supabase);
-    if (!credential) {
-      throw new AppError(
-        "validation",
-        "GitHub PATが未登録です。設定から登録してください",
-      );
-    }
+    const { repo, token } = await resolveRepoGit(supabase, link.projects, {
+      patMessage: "GitHub PATが未登録です。設定から登録してください",
+    });
 
     // 画面表示が古くても、その時点の最新原稿を正として校正する
     const [{ content }, latestSha] = await Promise.all([
-      getFileContent(credential.token, link.projects.repo, filePath),
-      getLatestCommitSha(credential.token, link.projects.repo, filePath),
+      getFileContent(token, repo, filePath),
+      getLatestCommitSha(token, repo, filePath),
     ]);
 
     // 選択範囲の校正（SPEC-proofread-selection §4）: 選択テキストが最新原稿に
