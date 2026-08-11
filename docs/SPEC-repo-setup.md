@@ -36,7 +36,7 @@
 注意書きとして明示するもの:
 
 - リポジトリに既にファイルがある場合、**全ファイルが `backup-<日時>/` へ退避**されてからテンプレートが展開される
-- セットアップ完了時に **base_path は `manuscripts` に自動設定**される（別の値を設定していても上書き）
+- セットアップ完了時に **base_path は空（リポジトリルート）に自動設定**される（別の値を設定していても上書き。base_path は「プロジェクトルート＝book.config.js のある階層」を指す規約——SPEC-vertical-editor-phase2 §7。Issue #176 で `manuscripts` 設定がエディタ章一覧を壊すことが判明し修正）
 - PAT に **Workflows: Read and write** 権限が必要
 
 実行中はボタンを無効化し進行中表示。成功したらトースト＋ダイアログを閉じて画面を更新。失敗したら AppError 由来の日本語メッセージを表示する（ダイアログは開いたままにし、再実行できる）。
@@ -50,7 +50,7 @@
 3. `patCredentialProvider`（`lib/git/credentials.ts`）で PAT を復号。未登録なら validation エラー
 4. テンプレートを読み込み・置換（§4.2）
 5. GitHub へ 1 コミットで反映（§4.3）
-6. 成功後、`projects.base_path = 'manuscripts'` に更新し、`revalidatePath`
+6. 成功後、`projects.base_path = ''`（ルート）に更新し、`revalidatePath`
 
 ### 4.2 テンプレート読み込みと置換（`lib/git/template.ts`）
 
