@@ -1,9 +1,13 @@
 import { notFound } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
-import type { ProposalStatus, WritingGenre } from "@/lib/schemas/enums";
 import type { LinkedNote } from "@/lib/actions/projects";
 import { ProposalEditor } from "@/components/projects/proposal-editor";
+import {
+  parseEnum,
+  proposalStatuses,
+  writingGenres,
+} from "@/lib/schemas/enums";
 
 export default async function ProjectPage({
   params,
@@ -38,12 +42,20 @@ export default async function ProjectPage({
     <ProposalEditor
       proposal={{
         id: proposal.id,
-        writing_genre: proposal.writing_genre as WritingGenre,
+        writing_genre: parseEnum(
+          writingGenres,
+          proposal.writing_genre,
+          "proposals.writing_genre",
+        ),
         purpose: proposal.purpose,
         genre: proposal.genre,
         target_audience: proposal.target_audience,
         content: proposal.content,
-        status: proposal.status as ProposalStatus,
+        status: parseEnum(
+          proposalStatuses,
+          proposal.status,
+          "proposals.status",
+        ),
         updated_at: proposal.updated_at,
       }}
       linkedNotes={linkedNotes}

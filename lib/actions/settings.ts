@@ -14,6 +14,7 @@ import { resolveReviewerPersona } from "@/lib/review-validation";
 import {
   aiProviders,
   modelCapabilities,
+  parseEnum,
   type AiCapability,
   type AiProvider,
   type ModelCapability,
@@ -264,7 +265,11 @@ export async function getAiModelSettings(): Promise<
 
     const userRows = new Map(
       (settingsResult.data ?? []).map((row) => [
-        row.capability as ModelCapability,
+        parseEnum(
+          modelCapabilities,
+          row.capability,
+          "ai_model_settings.capability",
+        ),
         row,
       ]),
     );
@@ -272,8 +277,11 @@ export async function getAiModelSettings(): Promise<
       const userRow = userRows.get(capability);
       return {
         capability,
-        provider: (userRow?.provider ??
-          DEFAULT_MODEL_MAP[capability].provider) as AiProvider,
+        provider: parseEnum(
+          aiProviders,
+          userRow?.provider ?? DEFAULT_MODEL_MAP[capability].provider,
+          "ai_model_settings.provider",
+        ),
         modelId: userRow?.model_id ?? DEFAULT_MODEL_MAP[capability].model_id,
         isCustom: Boolean(userRow),
         personaNames: (personasResult.data ?? [])

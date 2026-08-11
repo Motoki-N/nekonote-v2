@@ -5,7 +5,7 @@ import { Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  getManuscriptTree,
+  getManuscriptFiles,
   type ManuscriptTreeData,
 } from "@/lib/actions/manuscripts";
 import { illustrationKinds, type IllustrationKind } from "@/lib/schemas/enums";
@@ -92,7 +92,7 @@ export function RequestFlow({
   useEffect(() => {
     if (kind !== "insert" || tree !== null || !project.hasRepo) return;
     let cancelled = false;
-    void getManuscriptTree(project.id).then((res) => {
+    void getManuscriptFiles(project.id).then((res) => {
       if (cancelled) return;
       setTree(res.ok && res.data ? res.data : { gate: "fetch_failed" });
     });

@@ -11,13 +11,13 @@ import { resolveRepoGit } from "@/lib/git/project-context";
 import { sortByGenrePriority } from "@/lib/genre-priority";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getFileContent, getLatestCommitSha } from "@/lib/git/github";
-import type { AiCapability, WritingGenre } from "@/lib/schemas/enums";
 import {
   manuscriptFilePathSchema,
   proofreadRequestSchema,
   proofreadSuggestionSchema,
 } from "@/lib/schemas/manuscript";
 import { createClient } from "@/lib/supabase/server";
+import { aiCapabilities, parseEnum, writingGenres } from "@/lib/schemas/enums";
 
 // 原稿全文の校正はレビュー文書より提案数が多くなりうるため実行上限を延長
 export const maxDuration = 120;
@@ -92,7 +92,11 @@ export async function POST(req: Request) {
       .eq("project_id", link.projects.id)
       .maybeSingle();
     if (proposalError) throw new AppError("internal", proposalError.message);
-    const writingGenre = (proposal?.writing_genre ?? "novel") as WritingGenre;
+    const writingGenre = parseEnum(
+      writingGenres,
+      proposal?.writing_genre ?? "novel",
+      "proposals.writing_genre",
+    );
 
     const { data: candidates, error: profileError } = await supabase
       .from("review_profiles")
@@ -113,7 +117,11 @@ export async function POST(req: Request) {
 
     const { model, provider, modelId } = await resolveModel(
       supabase,
-      profile.personas.ai_capability as AiCapability,
+      parseEnum(
+        aiCapabilities,
+        profile.personas.ai_capability,
+        "personas.ai_capability",
+      ),
     );
 
     const result = streamObject({

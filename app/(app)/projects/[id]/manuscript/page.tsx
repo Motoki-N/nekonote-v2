@@ -1,4 +1,4 @@
-import { getManuscriptTree } from "@/lib/actions/manuscripts";
+import { getManuscriptFiles } from "@/lib/actions/manuscripts";
 import { ManuscriptWorkspace } from "@/components/manuscript/manuscript-workspace";
 
 /**
@@ -15,7 +15,7 @@ export default async function ManuscriptPage({
 }) {
   const { id } = await params;
   const { file } = await searchParams;
-  const result = await getManuscriptTree(id);
+  const result = await getManuscriptFiles(id);
 
   return (
     <ManuscriptWorkspace

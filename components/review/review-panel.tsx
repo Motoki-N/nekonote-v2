@@ -260,11 +260,20 @@ export function ReviewPanel({
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      let received = "";
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = decoder.decode(value, { stream: true });
+        received += chunk;
         setStreamingText((prev) => (prev ?? "") + chunk);
+      }
+      // 生成が空文字で終わった場合はサーバー側で failed 記録のみ行われ保存されない。
+      // 無音で消えると再実行の判断ができないため明示する（code-review-20260812 P-2）
+      if (received === "") {
+        setError(
+          "レビューを生成できませんでした。時間をおいて再試行してください",
+        );
       }
       // 完了: 保存済みフィードバック（verdict込み）を取り直し、status バッジ等も更新する
       const refreshed = await getReviewSessionState(

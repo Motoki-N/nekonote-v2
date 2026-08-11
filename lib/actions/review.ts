@@ -11,8 +11,9 @@ import {
   resolveProfileForPhase,
   resolveReviewerPersona,
 } from "@/lib/review-validation";
-import type { ReviewVerdict, WritingGenre } from "@/lib/schemas/enums";
+import type { ReviewVerdict } from "@/lib/schemas/enums";
 import { createClient } from "@/lib/supabase/server";
+import { parseEnum, writingGenres } from "@/lib/schemas/enums";
 
 const uuidSchema = z.uuid();
 
@@ -199,8 +200,11 @@ export async function getReviewPanelBootstrap(
     if (proposalResult.error)
       throw new AppError("internal", proposalResult.error.message);
 
-    const genre = (proposalResult.data?.writing_genre ??
-      "novel") as WritingGenre;
+    const genre = parseEnum(
+      writingGenres,
+      proposalResult.data?.writing_genre ?? "novel",
+      "proposals.writing_genre",
+    );
     const sortedProfiles = sortByGenrePriority(
       profilesResult.data ?? [],
       genre,

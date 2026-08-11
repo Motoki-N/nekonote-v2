@@ -26,19 +26,20 @@ import {
   fetchAllManuscriptContents,
 } from "@/lib/manuscript-content";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import type {
-  AiCapability,
-  ReferenceScope,
-  ReviewVerdict,
-  StructureTemplate,
-  WritingGenre,
-} from "@/lib/schemas/enums";
+import type { ReviewVerdict, StructureTemplate } from "@/lib/schemas/enums";
 import {
   CRITIQUE_CONFIRM_CHARS,
   CRITIQUE_MAX_CHARS,
 } from "@/lib/schemas/manuscript";
 import { reviewRequestSchema } from "@/lib/schemas/review";
 import { createClient } from "@/lib/supabase/server";
+import {
+  aiCapabilities,
+  parseEnum,
+  referenceScopes,
+  structureTemplates,
+  writingGenres,
+} from "@/lib/schemas/enums";
 
 // ストリーミング応答のため Vercel Functions の実行上限を延長（レビュー文書は掘り下げ応答より長い）
 export const maxDuration = 120;
@@ -78,7 +79,11 @@ async function fetchProposalContext(
   if (error) throw new AppError("internal", error.message);
   if (!data) throw new AppError("not_found", "企画書が見つかりません");
   return {
-    writingGenre: data.writing_genre as WritingGenre,
+    writingGenre: parseEnum(
+      writingGenres,
+      data.writing_genre,
+      "proposals.writing_genre",
+    ),
     purpose: data.purpose,
     genre: data.genre,
     targetAudience: data.target_audience,
@@ -138,7 +143,11 @@ async function fetchStructureTemplate(
     .maybeSingle();
   if (error) throw new AppError("internal", error.message);
   if (!data) throw new AppError("not_found", "プロジェクトが見つかりません");
-  return data.structure_template as StructureTemplate;
+  return parseEnum(
+    structureTemplates,
+    data.structure_template,
+    "projects.structure_template",
+  );
 }
 
 /** プロジェクトの全シーンを構成順で取得（RLS越し） */
@@ -300,7 +309,11 @@ export async function POST(req: Request) {
         }
         prompt = buildCharacterNoteReviewInput({
           proposal: {
-            writingGenre: proposal.writing_genre as WritingGenre,
+            writingGenre: parseEnum(
+              writingGenres,
+              proposal.writing_genre,
+              "proposals.writing_genre",
+            ),
             purpose: proposal.purpose,
             genre: proposal.genre,
             targetAudience: proposal.target_audience,
@@ -323,7 +336,11 @@ export async function POST(req: Request) {
         }
         prompt = buildProposalReviewInput({
           proposal: {
-            writingGenre: proposal.writing_genre as WritingGenre,
+            writingGenre: parseEnum(
+              writingGenres,
+              proposal.writing_genre,
+              "proposals.writing_genre",
+            ),
             purpose: proposal.purpose,
             genre: proposal.genre,
             targetAudience: proposal.target_audience,
@@ -461,7 +478,11 @@ export async function POST(req: Request) {
       }
 
       // 入力の出し分け＝ペルソナの参照範囲（reference_scope をコードが解釈する初のケース）
-      const scope = session.personas.reference_scope as ReferenceScope;
+      const scope = parseEnum(
+        referenceScopes,
+        session.personas.reference_scope,
+        "personas.reference_scope",
+      );
       let proposalScope: CritiqueProposalScope = "none";
       let proposal: ProposalContext | null = null;
       if (scope === "all") {
@@ -496,7 +517,11 @@ export async function POST(req: Request) {
 
     const { model, provider, modelId } = await resolveModel(
       supabase,
-      session.personas.ai_capability as AiCapability,
+      parseEnum(
+        aiCapabilities,
+        session.personas.ai_capability,
+        "personas.ai_capability",
+      ),
     );
 
     // 講評は読み切り型: 1実行1セッションで、成功時 completed / 失敗・中断時 failed に確定する

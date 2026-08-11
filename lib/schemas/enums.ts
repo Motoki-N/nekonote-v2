@@ -1,3 +1,10 @@
+import { AppError } from "@/lib/errors";
+
+// 規約: lib/schemas 配下の z.infer 型エイリアス（XxxInput / XxxUpdate 等）は、
+// 現時点で未参照でもスキーマとペアで残す（入力契約の自己文書化。
+// 未使用エクスポート検出ツールを導入する場合は ignore 対象とする。
+// code-review-20260812 U-2 の判断）
+
 // 列挙値の一元定義。
 // supabase/migrations/20260712000002_core_schema.sql の CHECK 制約と対応させる。
 // DBの列挙値を変更するときは、マイグレーションと本ファイルを同時に更新すること。
@@ -237,3 +244,26 @@ export type AiProvider = (typeof aiProviders)[number];
 
 export const chatRoles = ["user", "assistant"] as const;
 export type ChatRole = (typeof chatRoles)[number];
+
+/**
+ * DB 由来の文字列を列挙 union として検証して返す（読み取り境界のフェイルクローズ。
+ * SPEC-refactoring-step1 段階3 T-1: \`as\` キャストは不正なDB値を型が隠すため、
+ * サーバーの読み取り境界では本関数で検証する。不正値はデータ破損として internal 扱い）
+ */
+export function parseEnum<T extends readonly string[]>(
+  values: T,
+  value: string,
+  label: string,
+): T[number] {
+  if ((values as readonly string[]).includes(value)) return value as T[number];
+  throw new AppError("internal", `${label} の値が不正です: ${value}`);
+}
+
+/** parseEnum の nullable 版（null はそのまま通す） */
+export function parseEnumOrNull<T extends readonly string[]>(
+  values: T,
+  value: string | null | undefined,
+  label: string,
+): T[number] | null {
+  return value == null ? null : parseEnum(values, value, label);
+}

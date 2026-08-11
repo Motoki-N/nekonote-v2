@@ -23,6 +23,7 @@ import {
 } from "@/lib/constants/outline-template";
 import {
   CHAPTER_PART,
+  parseEnum,
   scenePartsAll,
   structureTemplates,
   type ScenePartAll,
@@ -73,7 +74,13 @@ async function getOwnedProject(
     .maybeSingle();
   if (error) throw new AppError("internal", error.message);
   if (!data) throw new AppError("not_found", "プロジェクトが見つかりません");
-  return { structureTemplate: data.structure_template as StructureTemplate };
+  return {
+    structureTemplate: parseEnum(
+      structureTemplates,
+      data.structure_template,
+      "projects.structure_template",
+    ),
+  };
 }
 
 /** part が「章」またはプロジェクトの現テンプレートのレーンであることの担保

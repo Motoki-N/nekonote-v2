@@ -5,7 +5,6 @@ import { z } from "zod";
 import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import type { StoredIllustrationKind } from "@/lib/schemas/enums";
 import {
   ILLUSTRATION_EXTENSION_BY_MIME,
   ILLUSTRATION_KIND_LABEL,
@@ -14,6 +13,7 @@ import {
   type IllustrationItem,
 } from "@/lib/schemas/illustration";
 import { createClient } from "@/lib/supabase/server";
+import { parseEnum, storedIllustrationKinds } from "@/lib/schemas/enums";
 
 // ギャラリーの取得・タイトル編集・削除（SPEC-illustrator §5.4）＋参照画像のアップロード（Issue #104）。
 // 生成は /api/illustration/*（レートリミット・長時間実行のためAPI Route側）
@@ -78,7 +78,11 @@ export async function listIllustrations(
       return {
         id: row.id,
         projectId: row.project_id,
-        kind: row.kind as StoredIllustrationKind,
+        kind: parseEnum(
+          storedIllustrationKinds,
+          row.kind,
+          "illustrations.kind",
+        ),
         title: row.title,
         prompt: row.prompt,
         referenceIllustrationId: row.reference_illustration_id,
@@ -211,7 +215,7 @@ export async function uploadReferenceImage(
     const item: IllustrationItem = {
       id: row.id,
       projectId: row.project_id,
-      kind: row.kind as StoredIllustrationKind,
+      kind: parseEnum(storedIllustrationKinds, row.kind, "illustrations.kind"),
       title: row.title,
       prompt: row.prompt,
       referenceIllustrationId: row.reference_illustration_id,
