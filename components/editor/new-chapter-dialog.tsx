@@ -60,7 +60,7 @@ function NewChapterForm({
         <DialogTitle>新しい章ファイル</DialogTitle>
         <DialogDescription>
           manuscripts/ 配下に雛形入りで作成し、そのままコミットします。book.config.js の entry
-          への追記は行わないため、章順に載せるには entry を直接編集してください
+          へも自動で追記されます（追記できなかった場合は「entry未登録」として一覧の末尾に表示されます）
         </DialogDescription>
       </DialogHeader>
       <form
