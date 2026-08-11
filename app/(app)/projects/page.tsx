@@ -1,10 +1,15 @@
 import { createClient } from "@/lib/supabase/server";
-import type { ProjectStatus, ProposalStatus } from "@/lib/schemas/enums";
 import {
   ProjectCard,
   type ProjectListItem,
 } from "@/components/projects/project-card";
 import { CreateProjectDialog } from "@/components/projects/project-form-dialog";
+import {
+  parseEnum,
+  parseEnumOrNull,
+  projectStatuses,
+  proposalStatuses,
+} from "@/lib/schemas/enums";
 
 export default async function ProjectsPage() {
   const supabase = await createClient();
@@ -26,13 +31,17 @@ export default async function ProjectsPage() {
   const items: ProjectListItem[] = (projects ?? []).map((p) => ({
     id: p.id,
     title: p.title,
-    status: p.status as ProjectStatus,
+    status: parseEnum(projectStatuses, p.status, "projects.status"),
     event_name: p.event_name,
     deadline: p.deadline,
     target_pages: p.target_pages,
     repo: p.repo,
     base_path: p.base_path,
-    proposalStatus: (p.proposals?.status ?? null) as ProposalStatus | null,
+    proposalStatus: parseEnumOrNull(
+      proposalStatuses,
+      p.proposals?.status ?? null,
+      "proposals.status",
+    ),
   }));
 
   return (

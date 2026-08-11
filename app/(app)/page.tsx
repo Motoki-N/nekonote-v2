@@ -1,7 +1,6 @@
 import Link from "next/link";
 
 import { patCredentialProvider } from "@/lib/git/credentials";
-import type { ProposalStatus } from "@/lib/schemas/enums";
 import { scheduleSchema } from "@/lib/schemas/schedule";
 import { createClient } from "@/lib/supabase/server";
 import { convertTargetPagesToChars } from "@/lib/writing-target";
@@ -15,13 +14,8 @@ import {
   type DashboardProject,
 } from "@/components/dashboard/project-overview-card";
 import type { ProgressPoint } from "@/components/dashboard/progress-line";
-
-/** JST基準の日付（YYYY-MM-DD。サーバーはUTCで動くため明示する） */
-function jstDate(at: Date): string {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
-    at,
-  );
-}
+import { parseEnumOrNull, proposalStatuses } from "@/lib/schemas/enums";
+import { jstDateString } from "@/lib/date";
 
 /** ダッシュボード（SPEC-dashboard-critique-settings §3.1）。進捗＋プロジェクト概況の「作業基地」 */
 export default async function Home({
@@ -72,8 +66,8 @@ export default async function Home({
   }));
 
   const now = new Date();
-  const today = jstDate(now);
-  const cutoff = jstDate(new Date(now.getTime() - 29 * 86_400_000)); // 今日を含む直近30日
+  const today = jstDateString(now);
+  const cutoff = jstDateString(new Date(now.getTime() - 29 * 86_400_000)); // 今日を含む直近30日
 
   // 目標線の字数換算（Issue #60）: 判型・組み設定はリポジトリのテーマCSS由来のため、
   // 目標ページ数×repo×PAT が揃うプロジェクトがあるときだけPATを復号する。
@@ -120,8 +114,11 @@ export default async function Home({
       title: project.title,
       event_name: project.event_name,
       deadline: project.deadline,
-      proposalStatus: (project.proposals?.status ??
-        null) as ProposalStatus | null,
+      proposalStatus: parseEnumOrNull(
+        proposalStatuses,
+        project.proposals?.status ?? null,
+        "proposals.status",
+      ),
       canCollect: Boolean(project.repo) && patRegistered,
       latest: rows.at(-1) ?? null,
       series: rows.filter((row) => row.date >= cutoff),

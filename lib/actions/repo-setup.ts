@@ -23,16 +23,11 @@ import { loadManuscriptTemplate } from "@/lib/git/template";
 import { repoSetupInputSchema } from "@/lib/schemas/projects";
 import type { RepoSetupInput } from "@/lib/schemas/projects";
 import { createClient } from "@/lib/supabase/server";
+import { jstStamp } from "@/lib/date";
 
 const uuidSchema = z.uuid();
 
 const COMMIT_MESSAGE = "原稿リポジトリを初期セットアップ（ネコノテAI）";
-
-// 退避フォルダ名の日時（JST固定。サーバーはUTCのため+9時間して読みやすくする）
-function backupStamp(): string {
-  const jst = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString();
-  return `${jst.slice(0, 10).replaceAll("-", "")}-${jst.slice(11, 19).replaceAll(":", "")}`;
-}
 
 export type RepoSetupResult = {
   /** 既存ファイルを退避した場合、その退避フォルダ名 */
@@ -109,7 +104,7 @@ export async function setupManuscriptRepo(
         // テンプレートが同じパスを書く場合は、同一ツリー内での削除＋追加の衝突を避けるため
         // 削除エントリを出さない（テンプレート側の追加が上書きする）
         const templatePaths = new Set(templateFiles.map((f) => f.path));
-        backupDir = `backup-${backupStamp()}`;
+        backupDir = `backup-${jstStamp(new Date())}`;
         for (const file of existing) {
           entries.push({
             path: `${backupDir}/${file.path}`,

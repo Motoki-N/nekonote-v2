@@ -18,7 +18,6 @@ import {
   fetchAllManuscriptContents,
 } from "@/lib/manuscript-content";
 import { enforceRateLimit } from "@/lib/rate-limit";
-import type { AiCapability, WritingGenre } from "@/lib/schemas/enums";
 import {
   COLOR_MODE_LABEL,
   ILLUSTRATION_KIND_LABEL,
@@ -28,6 +27,7 @@ import {
 } from "@/lib/schemas/illustration";
 import { CRITIQUE_MAX_CHARS } from "@/lib/schemas/manuscript";
 import { createClient } from "@/lib/supabase/server";
+import { aiCapabilities, parseEnum, writingGenres } from "@/lib/schemas/enums";
 
 export const maxDuration = 60;
 
@@ -62,7 +62,11 @@ async function fetchProposalMaterials(
 
   return {
     proposal: {
-      writingGenre: proposal.writing_genre as WritingGenre,
+      writingGenre: parseEnum(
+        writingGenres,
+        proposal.writing_genre,
+        "proposals.writing_genre",
+      ),
       purpose: proposal.purpose,
       genre: proposal.genre,
       targetAudience: proposal.target_audience,
@@ -216,7 +220,11 @@ export async function POST(req: Request) {
 
     const { model, provider, modelId } = await resolveModel(
       supabase,
-      persona.ai_capability as AiCapability,
+      parseEnum(
+        aiCapabilities,
+        persona.ai_capability,
+        "personas.ai_capability",
+      ),
     );
     const { object, usage } = await generateObject({
       model,

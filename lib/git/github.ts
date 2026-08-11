@@ -34,16 +34,24 @@ async function githubFetch(
   path: string,
   accept = "application/vnd.github+json",
 ): Promise<Response> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: accept,
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-    // 原稿は常に最新を正とする（Next.js の fetch キャッシュに乗せない）
-    cache: "no-store",
-  });
-  return res;
+  const doFetch = () =>
+    fetch(`${API_BASE}${path}`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: accept,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+      // 原稿は常に最新を正とする（Next.js の fetch キャッシュに乗せない）
+      cache: "no-store",
+    });
+  try {
+    return await doFetch();
+  } catch {
+    // 長時間稼働プロセスの stale keep-alive で接続確立前に切断されることがある
+    // （UND_ERR_SOCKET。回帰テスト 2026-08-12 で実測・code-review-20260812 P-4）。
+    // 本関数は GET 専用（書き込み系は本関数を経由せず直接 fetch する）のため冪等で、1回だけ再試行する
+    return await doFetch();
+  }
 }
 
 function toGithubError(res: Response, notFoundMessage: string): AppError {

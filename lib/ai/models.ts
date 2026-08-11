@@ -12,6 +12,7 @@ import type {
   ModelCapability,
 } from "@/lib/schemas/enums";
 import type { createClient } from "@/lib/supabase/server";
+import { aiProviders, parseEnum } from "@/lib/schemas/enums";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
@@ -50,8 +51,11 @@ async function resolveModelConfig(
   if (error) throw new AppError("internal", error.message);
 
   // DBの値は CHECK 制約で aiProviders に限定されている
-  const provider = (data?.provider ??
-    DEFAULT_MODEL_MAP[capability].provider) as AiProvider;
+  const provider = parseEnum(
+    aiProviders,
+    data?.provider ?? DEFAULT_MODEL_MAP[capability].provider,
+    "ai_model_settings.provider",
+  );
   const modelId = data?.model_id ?? DEFAULT_MODEL_MAP[capability].model_id;
 
   const apiKey = process.env[PROVIDER_ENV_KEY[provider]];

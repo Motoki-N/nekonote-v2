@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ExternalLink, Trash2 } from "lucide-react";
 
 import {
-  getManuscriptTree,
+  getManuscriptFiles,
   type ManuscriptTreeData,
 } from "@/lib/actions/manuscripts";
 import type { SceneRecord } from "@/lib/board";
@@ -63,7 +63,7 @@ export function OutlineDialog({
 
   useEffect(() => {
     let cancelled = false;
-    void getManuscriptTree(scene.project_id).then((result) => {
+    void getManuscriptFiles(scene.project_id).then((result) => {
       if (cancelled) return;
       // 取得失敗は repo 未設定と同じ誘導文でよい（紐づけ以外の編集は妨げない）
       setTree(result.ok && result.data ? result.data : { gate: "no_repo" });

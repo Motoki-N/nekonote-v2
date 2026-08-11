@@ -1,13 +1,14 @@
 import type { LinkedNote } from "@/lib/actions/projects";
 import { createClient } from "@/lib/supabase/server";
 import type { SceneRecord } from "@/lib/board";
-import type {
-  ApprovalStatus,
-  StructureTemplate,
-  WritingGenre,
-} from "@/lib/schemas/enums";
 import { BeatBoard } from "@/components/board/beat-board";
 import { OutlineBoard } from "@/components/board/outline-board";
+import {
+  approvalStatuses,
+  parseEnum,
+  structureTemplates,
+  writingGenres,
+} from "@/lib/schemas/enums";
 
 /**
  * 構成ボードページ。執筆ジャンルで出し分ける（SPEC-outline-board §3.1）:
@@ -57,11 +58,21 @@ export default async function BoardPage({
       .maybeSingle(),
   ]);
 
-  const genre = (proposal?.writing_genre ?? "novel") as WritingGenre;
-  const structureStatus = (project?.structure_status ??
-    "draft") as ApprovalStatus;
-  const structureTemplate = (project?.structure_template ??
-    "four_part") as StructureTemplate;
+  const genre = parseEnum(
+    writingGenres,
+    proposal?.writing_genre ?? "novel",
+    "proposals.writing_genre",
+  );
+  const structureStatus = parseEnum(
+    approvalStatuses,
+    project?.structure_status ?? "draft",
+    "projects.structure_status",
+  );
+  const structureTemplate = parseEnum(
+    structureTemplates,
+    project?.structure_template ?? "four_part",
+    "projects.structure_template",
+  );
 
   if (genre !== "novel") {
     return (

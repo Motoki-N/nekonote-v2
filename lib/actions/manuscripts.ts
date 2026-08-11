@@ -8,7 +8,7 @@ import {
   getCommitFilePatch,
   getFileContent,
   getLatestCommitSha,
-  getManuscriptTree as fetchManuscriptTree,
+  getManuscriptTree,
   listFileCommits,
   putFileContent,
   type FileCommitEntry,
@@ -25,22 +25,16 @@ import {
   fetchAllManuscriptContents,
 } from "@/lib/manuscript-content";
 import { applySuggestions, writeBackAsComments } from "@/lib/proofread-apply";
-import { suggestionStatuses } from "@/lib/schemas/enums";
+import { parseEnum, suggestionStatuses } from "@/lib/schemas/enums";
 import type { SuggestionStatus } from "@/lib/schemas/enums";
 import {
   commitShaSchema,
   manuscriptFilePathSchema,
 } from "@/lib/schemas/manuscript";
 import { createClient } from "@/lib/supabase/server";
+import { jstDateString } from "@/lib/date";
 
 const uuidSchema = z.uuid();
-
-/** 進捗記録の「当日」はJST基準（サーバーはUTCで動く） */
-function todayInJst(): string {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
-    new Date(),
-  );
-}
 
 /** 原稿タブの前提チェック結果（誘導表示の出し分け用。SPEC-proofreading §3.2） */
 export type ManuscriptTreeData =
@@ -49,7 +43,7 @@ export type ManuscriptTreeData =
   | { gate: "ok"; files: string[]; basePath: string };
 
 /** base_path 配下の原稿ファイル一覧を取得する。前提未達（repo未設定・PAT未登録）は gate で返す */
-export async function getManuscriptTree(
+export async function getManuscriptFiles(
   projectId: string,
 ): Promise<ActionResult<ManuscriptTreeData>> {
   try {
@@ -60,11 +54,7 @@ export async function getManuscriptTree(
     if (gitCtx.gate !== "ok") return { ok: true, data: { gate: gitCtx.gate } };
 
     const basePath = gitCtx.basePath;
-    const files = await fetchManuscriptTree(
-      gitCtx.token,
-      gitCtx.repo,
-      basePath,
-    );
+    const files = await getManuscriptTree(gitCtx.token, gitCtx.repo, basePath);
     return {
       ok: true,
       data: { gate: "ok", files: files.map((f) => f.path), basePath },
@@ -148,7 +138,14 @@ export async function openManuscriptFile(
     if (!link) throw new AppError("internal", "原稿リンクの作成に失敗しました");
 
     const suggestions = (link.revision_suggestions ?? [])
-      .map((s) => ({ ...s, status: s.status as SuggestionStatus }))
+      .map((s) => ({
+        ...s,
+        status: parseEnum(
+          suggestionStatuses,
+          s.status,
+          "revision_suggestions.status",
+        ),
+      }))
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
 
     // 原稿読み込み時に当日の総文字数を進捗として記録する（SPEC-proofreading §3.4）。
@@ -176,37 +173,6 @@ export async function openManuscriptFile(
         lastReviewedCommit: link.last_reviewed_commit,
         suggestions,
       },
-    };
-  } catch (error) {
-    return toActionError(error);
-  }
-}
-
-/** 提案一覧の取り直し（校正完了後の再読込用） */
-export async function getSuggestions(manuscriptLinkId: string): Promise<
-  ActionResult<{
-    suggestions: SuggestionRecord[];
-    lastReviewedCommit: string | null;
-  }>
-> {
-  try {
-    const linkId = uuidSchema.parse(manuscriptLinkId);
-    const supabase = await createClient();
-    const { data: link, error } = await supabase
-      .from("manuscript_links")
-      .select(
-        `id, last_reviewed_commit, revision_suggestions (${SUGGESTION_COLUMNS})`,
-      )
-      .eq("id", linkId)
-      .maybeSingle();
-    if (error) throw new AppError("internal", error.message);
-    if (!link) throw new AppError("not_found", "原稿リンクが見つかりません");
-    const suggestions = (link.revision_suggestions ?? [])
-      .map((s) => ({ ...s, status: s.status as SuggestionStatus }))
-      .sort((a, b) => a.created_at.localeCompare(b.created_at));
-    return {
-      ok: true,
-      data: { suggestions, lastReviewedCommit: link.last_reviewed_commit },
     };
   } catch (error) {
     return toActionError(error);
@@ -300,7 +266,7 @@ async function recordWritingProgress(
   const { error } = await supabase.from("writing_progress").upsert(
     {
       project_id: params.projectId,
-      date: todayInJst(),
+      date: jstDateString(new Date()),
       total_chars: totalChars,
     },
     { onConflict: "project_id,date" },

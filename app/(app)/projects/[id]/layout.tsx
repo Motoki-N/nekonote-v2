@@ -3,12 +3,12 @@ import { notFound } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { createClient } from "@/lib/supabase/server";
-import type { ProjectStatus } from "@/lib/schemas/enums";
 import { Button } from "@/components/ui/button";
 import { ChromeHeader } from "@/components/layout/app-chrome";
 import { EditProjectButton } from "@/components/projects/edit-project-button";
 import { ProjectTabs } from "@/components/projects/project-tabs";
 import { ProjectStatusBadge } from "@/components/projects/status-badges";
+import { parseEnum, projectStatuses } from "@/lib/schemas/enums";
 
 /**
  * プロジェクト配下の共通レイアウト（SPEC-beat-board §3.1）。
@@ -64,12 +64,22 @@ export default async function ProjectLayout({
           <h1 className="min-w-0 truncate text-base font-bold text-foreground">
             {project.title}
           </h1>
-          <ProjectStatusBadge status={project.status as ProjectStatus} />
+          <ProjectStatusBadge
+            status={parseEnum(
+              projectStatuses,
+              project.status,
+              "projects.status",
+            )}
+          />
           <EditProjectButton
             project={{
               id: project.id,
               title: project.title,
-              status: project.status as ProjectStatus,
+              status: parseEnum(
+                projectStatuses,
+                project.status,
+                "projects.status",
+              ),
               event_name: project.event_name,
               deadline: project.deadline,
               target_pages: project.target_pages,

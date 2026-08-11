@@ -23,7 +23,6 @@ import {
 import { AppError, errorResponse } from "@/lib/errors";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { chatRequestSchema } from "@/lib/schemas/chat";
-import type { AiCapability, ProjectStatus } from "@/lib/schemas/enums";
 import {
   saveMemoNoteInputSchema,
   saveScheduleInputSchema,
@@ -34,6 +33,12 @@ import {
 } from "@/lib/schemas/schedule";
 import { createClient } from "@/lib/supabase/server";
 import { deltaSince } from "@/lib/writing-progress";
+import {
+  aiCapabilities,
+  parseEnum,
+  projectStatuses,
+} from "@/lib/schemas/enums";
+import { jstDateString } from "@/lib/date";
 
 // ストリーミング応答のため Vercel Functions の実行上限を延長
 export const maxDuration = 60;
@@ -46,13 +51,6 @@ function textOf(message: UIMessage): string {
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("");
-}
-
-/** JST基準の日付（YYYY-MM-DD。サーバーはUTCで動くため明示する） */
-function jstDate(at: Date): string {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
-    at,
-  );
 }
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
@@ -134,14 +132,14 @@ async function buildScheduleContext(
     totalChars: row.total_chars,
   }));
   const latest = rows.at(-1) ?? null;
-  const today = jstDate(new Date());
+  const today = jstDateString(new Date());
 
   // 保存済みスケジュール（jsonb）は zod を通し、不正データは未保存として扱う
   const savedSchedule = scheduleSchema.safeParse(project.schedule);
 
   return {
     projectTitle: project.title,
-    status: project.status as ProjectStatus,
+    status: parseEnum(projectStatuses, project.status, "projects.status"),
     eventName: project.event_name,
     deadline: project.deadline,
     daysRemaining: project.deadline
@@ -175,7 +173,8 @@ function buildChatTools(
       // 戻り値注釈＝クライアントの結果カードとの共有契約（lib/schemas/schedule.ts）
       execute: async ({ content }): Promise<SaveMemoNoteOutput> => {
         // 先頭行がMarkdown記号のみだと chatTitleFrom が空文字を返すため、日付でフォールバック
-        const title = chatTitleFrom(content) || `メモ ${jstDate(new Date())}`;
+        const title =
+          chatTitleFrom(content) || `メモ ${jstDateString(new Date())}`;
         // user_id は DB デフォルト（auth.uid()）＝本人のノートとしてのみ作られる
         const { data: note, error } = await supabase
           .from("notes")
@@ -328,7 +327,11 @@ export async function POST(req: Request) {
 
     const { model, provider, modelId } = await resolveModel(
       supabase,
-      thread.personas.ai_capability as AiCapability,
+      parseEnum(
+        aiCapabilities,
+        thread.personas.ai_capability,
+        "personas.ai_capability",
+      ),
     );
     const recent = messages.slice(-HISTORY_LIMIT);
 

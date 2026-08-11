@@ -6,6 +6,12 @@ import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
 import type { ReviewVerdict } from "@/lib/schemas/enums";
 import { createClient } from "@/lib/supabase/server";
+import {
+  parseEnum,
+  parseEnumOrNull,
+  reviewSessionStatuses,
+  reviewVerdicts,
+} from "@/lib/schemas/enums";
 
 // レビュー履歴の一覧・閲覧（SPEC-review-history）。
 // review_sessions / review_feedbacks を RLS 越しに読むだけの読み取り専用アクション
@@ -120,11 +126,18 @@ export async function listReviewSessions(
           profileName: session.review_profiles?.name ?? null,
           personaName: session.personas?.name ?? null,
           targetLabel,
-          status: session.status as ReviewSessionSummary["status"],
+          status: parseEnum(
+            reviewSessionStatuses,
+            session.status,
+            "review_sessions.status",
+          ),
           createdAt: session.created_at,
           feedbackCount: feedbacks.length,
-          latestVerdict: (feedbacks.at(-1)?.verdict ??
-            null) as ReviewVerdict | null,
+          latestVerdict: parseEnumOrNull(
+            reviewVerdicts,
+            feedbacks.at(-1)?.verdict ?? null,
+            "review_feedbacks.verdict",
+          ),
         };
       },
     );
@@ -166,7 +179,11 @@ export async function getReviewHistoryFeedbacks(
         id: f.id,
         content: f.content,
         userResponse: f.user_response,
-        verdict: f.verdict as ReviewVerdict | null,
+        verdict: parseEnumOrNull(
+          reviewVerdicts,
+          f.verdict,
+          "review_feedbacks.verdict",
+        ),
         createdAt: f.created_at,
       })),
     };

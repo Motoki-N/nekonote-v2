@@ -110,7 +110,7 @@ export type ProjectGitGate =
   | ({ gate: "ok" } & RepoGitContext & { projectId: string });
 
 /**
- * gate 型の解決（getEditorWorkspace / getManuscriptTree の形）。
+ * gate 型の解決（getEditorWorkspace / getManuscriptFiles の形）。
  * repo 未設定・PAT 未登録はエラーにせず gate で返し、UI 側が誘導表示に使う。
  * 認証チェックは行わない（必要なサイトは従来どおり呼び出し側で行う）
  */

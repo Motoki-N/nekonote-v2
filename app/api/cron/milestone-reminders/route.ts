@@ -9,15 +9,9 @@ import {
   type Schedule,
 } from "@/lib/schemas/schedule";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { jstDateString } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
-
-/** JST基準の今日（YYYY-MM-DD。cron はUTCで動くため明示する） */
-function jstDate(at: Date): string {
-  return new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Tokyo" }).format(
-    at,
-  );
-}
 
 /** 日付文字列（YYYY-MM-DD）同士の差（日数） */
 function daysUntil(dueDate: string, today: string): number {
@@ -56,7 +50,7 @@ export async function GET(request: NextRequest) {
   }
 
   const supabase = createAdminClient();
-  const today = jstDate(new Date());
+  const today = jstDateString(new Date());
 
   const { data: projects, error: projectsError } = await supabase
     .from("projects")

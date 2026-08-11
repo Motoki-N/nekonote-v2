@@ -20,9 +20,11 @@ import {
   resolveProfileForPhase,
   resolveReviewerPersona,
 } from "@/lib/review-validation";
-import type { ReferenceScope, WritingGenre } from "@/lib/schemas/enums";
+import type { ReferenceScope } from "@/lib/schemas/enums";
 import { manuscriptFilePathSchema } from "@/lib/schemas/manuscript";
 import { createClient } from "@/lib/supabase/server";
+import { parseEnum, referenceScopes, writingGenres } from "@/lib/schemas/enums";
+import { jstDateString } from "@/lib/date";
 
 // 講評（作品全体への読み切り型レビュー。SPEC-dashboard-critique-settings §3.3）。
 // review_sessions / review_feedbacks に保存する（新テーブルなし）。target_ref = プロジェクトid
@@ -162,8 +164,11 @@ export async function getCritiqueBootstrap(
     }
 
     // 既定選択の自動適用: UIは一覧先頭を既定にするため、ジャンル優先ソートが既定選択になる（SPEC-genre-profiles）
-    const writingGenre = (proposalResult.data?.writing_genre ??
-      "novel") as WritingGenre;
+    const writingGenre = parseEnum(
+      writingGenres,
+      proposalResult.data?.writing_genre ?? "novel",
+      "proposals.writing_genre",
+    );
     const sortedProfiles = sortByGenrePriority(
       profilesResult.data ?? [],
       writingGenre,
@@ -180,7 +185,11 @@ export async function getCritiqueBootstrap(
         personas: (personasResult.data ?? []).map((p) => ({
           id: p.id,
           name: p.name,
-          referenceScope: p.reference_scope as ReferenceScope,
+          referenceScope: parseEnum(
+            referenceScopes,
+            p.reference_scope,
+            "personas.reference_scope",
+          ),
         })),
         critiques,
         totalChars,
@@ -311,9 +320,7 @@ export async function writeBackCritique(
     );
 
     // 追記ブロック（日付は講評実行日・JST）
-    const date = new Intl.DateTimeFormat("sv-SE", {
-      timeZone: "Asia/Tokyo",
-    }).format(new Date(session.created_at));
+    const date = jstDateString(new Date(session.created_at));
     const persona = session.personas?.name
       ? `（${session.personas.name}）`
       : "";
