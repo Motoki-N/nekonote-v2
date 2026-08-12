@@ -103,6 +103,8 @@ CLAUDE.md は「仕様が存在しない機能は先に仕様策定を提案す�
 | [TESTING.md](TESTING.md) | 全機能の回帰テストチェックリスト |
 | [manual.md](manual.md) | ユーザーマニュアル |
 | [dev-log.md](dev-log.md) | セッション単位の開発記録（**実装経緯の一次資料**） |
+| [第一期・第二期比較.md](第一期・第二期比較.md) | 第一期との定量比較（Step 7 で収集・判定は Step 8 で追記） |
+| [dev-story/](dev-story/README.md) | 開発記録の章単位ドラフト（技術書典21 向け書籍の素材） |
 | [incident-log.md](incident-log.md) | 障害記録（INC採番） |
 | [doc-audit-20260812.md](doc-audit-20260812.md) | ドキュメント突き合わせ結果（Step 3） |
 | security-audit / code-review（日付つき） | セキュリティ監査・コードレビューの記録 |
