@@ -117,7 +117,7 @@ Vercelプレビューデプロイでもログイン可能とする。必要な�
 | `app/login/page.tsx` | ログイン画面（Googleボタン・拒否時エラー表示） |
 | `app/auth/callback/route.ts` | OAuthコールバック（コード交換） |
 | `app/logout/route.ts`（または Server Action） | サインアウト |
-| `supabase/migrations/XXXX_auth_allowlist.sql` | 許可リスト設定＋BEFORE INSERTトリガー |
+| `supabase/migrations/20260712000001_auth_allowlist.sql` | 許可リスト設定＋BEFORE INSERTトリガー |
 | `.env.local.example` | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` / `ALLOWED_EMAILS` の雛形 |
 
 ※ マイグレーション作成はプランモード承認後（CLAUDE.md規約）。migration-guard フックが確認を要求する。

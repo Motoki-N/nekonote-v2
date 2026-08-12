@@ -20,7 +20,7 @@
 
 Phase 2 完了（2026-07-16・PR #12・本番反映済み）により以下が揃っている:
 
-- **エディタ本体**: `app/projects/[id]/editor/`・`components/editor/`（CodeMirror 6 入力ペイン・Vivliostyle プレビューペイン・保存＝コミット・IndexedDB待避・競合マージ・全体プレビュー・新規章作成）
+- **エディタ本体**: `app/(app)/projects/[id]/editor/`・`components/editor/`（CodeMirror 6 入力ペイン・Vivliostyle プレビューペイン・保存＝コミット・IndexedDB待避・競合マージ・全体プレビュー・新規章作成）
 - **HTMLコメントの色付き表示**は Phase 2 で実装済み（本Phaseは一覧・ジャンプ・挿入補助を足す）
 - **Server Actions**: `lib/actions/editor.ts`（`loadEditorContext` による認証＋所有確認＋PAT解決・レート制限の型）
 - **GitHubクライアント**: `lib/git/github.ts`（`getFileContent` / `putFileContent` / `createFileContent` / `getManuscriptTree` / `getDefaultBranch`）。タグ作成・Release取得は本Phaseで追加（§6）

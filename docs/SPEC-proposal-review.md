@@ -2,6 +2,10 @@
 
 作成日: 2026-07-13（インタビュー駆動で策定）
 ステータス: **確定**（2026-07-13 レビュー済み）
+改訂: 2026-07-14 プロファイル・担当ペルソナの選択UIを実装（SPEC-dashboard-critique-settings §3.2。§2「担当ペルソナ変更UI＝デフォルト固定」「§7 プロファイル選択UI」の解除。対象×プロファイルごとにセッション並存）
+改訂: 2026-07-25 企画書のメタ情報を4項目へ拡張（Issue #94・SPEC-genre。執筆ジャンル / 執筆目的 / 内容ジャンル（旧「ジャンル」）/ ターゲット層。§3.2 に反映済み）
+改訂: 2026-07-20 フィードバックの「ノートに転記」を追加（Issue #99・PR #101。`saveFeedbackAsNote`。2026-08-10 に構成レビューへも展開 = Issue #173）
+改訂: 2026-08-09 **企画書の版管理・差分表示**を実装（Issue #64・PR #168。`20260809000001_proposal_versions.sql`。§7 スコープ外項目の昇格）
 
 ## 1. 目的
 
@@ -123,7 +127,7 @@ review_feedbacks に verdict 列を追加:
 
 | ファイル | 役割 |
 |---|---|
-| `supabase/migrations/XXXX_review_gate_and_reviewer_personas.sql` | verdict 列追加＋reviewer 4人＋プロファイル5種シード（プランモード承認後・security-reviewer ゲート対象） |
+| `supabase/migrations/20260713000002_review_gate_and_reviewer_personas.sql` | verdict 列追加＋reviewer 4人＋プロファイル5種シード（プランモード承認後・security-reviewer ゲート対象） |
 | `lib/ai/personas.ts` | reviewer / プロファイルの固定UUID定数を追加 |
 | `lib/ai/prompts.ts` | 企画書レビューのプロンプト組み立てを追加 |
 | `lib/schemas/review.ts` / `lib/schemas/projects.ts` | 入力Zodスキーマ（既存ファイルの拡充） |
@@ -142,7 +146,7 @@ review_feedbacks に verdict 列を追加:
 - 執筆スケジュール支援（AIによるスケジュール提案。R2・アシスタントの領分）
 - projects.repo / base_path の入力UI（Sprint 4 GitHub連携で扱う）
 - レビューセッションの複数並行・過去セッションの一覧画面（履歴データは残る。閲覧UIは必要になったら）
-- 企画書の版管理・差分表示
+- ~~企画書の版管理・差分表示~~ → **実装済み**（Issue #64・PR #168・2026-08-09。`proposal_versions`＋`lib/diff.ts` の行diff。自動保存の上書き前スナップショットとレビュー実行時点の版を保存する）
 - ダッシュボード（selected_project_id の活用。Sprint 5）
 
 ## 8. E2E検証手順（完了条件）

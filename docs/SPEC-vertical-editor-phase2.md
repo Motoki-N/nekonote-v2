@@ -3,6 +3,8 @@
 作成日: 2026-07-16
 ステータス: **確定**（2026-07-16 インタビュー済み。§12 参照）
 親SPEC: [SPEC-vertical-editor.md](SPEC-vertical-editor.md) §5.1 Phase 2
+改訂: 2026-07-23 論点E「デフォルトブランチのみ」を解除（Issue #21・SPEC-vertical-editor-phase5。§11 スコープ外の「ブランチ切替・作成・PR連携」の昇格）
+改訂: 2026-08-12 §9 に生HTML実行の受容判断を追記（security-audit-20260812 M-1）
 
 ## 1. 目的・完了条件
 
@@ -32,7 +34,7 @@ Phase 1 完了（2026-07-16）により以下が揃っている:
 
 ### 3.1 ルーティング
 
-`app/projects/[id]/editor/page.tsx` — プロジェクト配下（board / manuscript と同列のタブ）。repo / base_path の解決がプロジェクト経由で自然につながる（論点Bで確定）。
+`app/(app)/projects/[id]/editor/page.tsx` — プロジェクト配下（board / manuscript と同列のタブ）。repo / base_path の解決がプロジェクト経由で自然につながる（論点Bで確定）。
 
 コンポーネントは `components/editor/`、Server Actions は `lib/actions/editor.ts`、VFM・プレビューのユーティリティは `lib/editor/` に置く。
 
@@ -177,7 +179,7 @@ Phase 2 に含める（論点Cで確定）。
 - 画像アップロード（D&D→コミット＋記法挿入）
 - `book.config.js`・奥付・判型設定のフォームUI（`entry` への章追記の自動化を含む）
 - 入稿ビルドのUI起動（タグ作成代行）
-- ブランチ切替・作成・PR連携（デフォルトブランチのみで開始）
+- ~~ブランチ切替・作成・PR連携（デフォルトブランチのみで開始）~~ → **phase5 で実装済み**（Issue #21・2026-07-23。SPEC-vertical-editor-phase5）
 - テーマCSS・`book.config.js` のアプリ内編集・判型切替UI
 - スマホの入力/プレビュータブ切替（崩れない表示まで）
 - ネコノテのレビュー・校正・進捗機能の変更（回帰しないことのみ確認）

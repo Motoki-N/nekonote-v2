@@ -362,3 +362,41 @@ SPECで意図的にスコープ外へ残置した機能と技術的負債を、*
 *v4（2026-07-16）：縦書きエディタのスコープ内昇格と Phase 1・2 完了（7/15〜16・本番反映済み）を受けて改訂。4連休（7/17〜20）はドッグフーディングより縦書きエディタの実装（Phase 3 以降）を優先し、Sprint 7 を差し替え。ドッグフーディングは Sprint 8（エディタ完了次第）へ後ろ倒し。理由は Claude Fable 5 の利用期限が 7/20 までであること、4連休は仕事が休みでまとまった作業時間を確保できること。*
 
 *v5（2026-07-18）：Claude Fable の Max プラン組み込み（7/20 の利用期限消滅）を受けて改訂。8/11 いっぱいまでをドッグフーディング期間として開発を継続し、この期間にバグの全解消と必要な機能追加・改修の完了を目指す。8/12 以降は運用期間とし、原則コードには手を入れない（要望は随時 GitHub Issue に起票）。*
+
+---
+
+## 8. 後日談：計画と実際（2026-08-12・締めくくり作業 Step 3 で追記）
+
+本文（§1〜§7）は v5 時点の計画のまま据え置く。開発完了後の実状との差を以下に記録する。
+突き合わせの全件は `docs/doc-audit-20260812.md`。
+
+### 8.1 §3 ER図について
+
+**§3 の ER図は 2026-07-11 時点の Draft であり、現行スキーマではない。現行の一次資料は `supabase/migrations/`（29本）とする**（締めくくり作業の判断事項②で「SCHEMA.md 相当は新設しない」と決定済み）。ER図との主な差:
+
+| ER図 | 現行 |
+|---|---|
+| 16テーブル | **24テーブル**（`public` スキーマ・全テーブル RLS 有効） |
+| `personas.persona_type` = review \| dialogue | `reviewer` / `conversational` / **`illustrator`** |
+| `review_profiles.target_phase` = proposal \| character \| structure \| scene \| proofreading | ＋**`manuscript`**（講評） |
+| `scenes.part` = 4値（setup/response/attack/resolution） | 6構成テンプレートの全レーン語彙＋**`chapter`**（目次ボード） |
+| `projects` に repo / base_path まで | ＋`schedule`(jsonb) / `structure_template` / `structure_status` |
+| `proposals` に genre / target_audience | ＋`writing_genre` / `purpose`（汎用執筆支援） |
+| （記載なし） | `chat_threads` / `chat_messages` / `templates` / `illustrations` / `ai_usage_logs` / `note_versions` / `proposal_versions` / `scene_notes` ほか |
+
+### 8.2 §4 画面一覧について
+
+11画面の計画に対し、実際は以下が加わった（いずれも計画策定後にスコープ内へ昇格した機能）:
+
+- **縦書きエディタ**（`/projects/[id]/editor`）— 要求仕様のスコープ外から昇格（§番外・Sprint 7）
+- **レビュー履歴**（`/projects/[id]/reviews`）— Issue #59
+- **アトリエ**（`/atelier`）— Issue #13・イラスト生成
+- **Zenn 投稿**（`/zenn/new`）— Issue #126
+- **スレッド一覧**（`/chats`）— Sprint 6 残置分
+- **目次ボード** — `/projects/[id]/board` を執筆ジャンルで出し分け（技術書・その他）
+
+### 8.3 スケジュールの結果
+
+- Sprint 0〜8 はすべて完了。**全機能が 7/14 に本番へ揃い**（8/11 目標に対し約4週間前倒し）、以降は残置機能の消化・縦書きエディタ・汎用執筆支援・ドッグフーディングでの改修に充てられた
+- **8/11 の開発打ち切り・8/12 からの運用期間移行は予定どおり実行**した（v5 の「期日は延ばさない」を守った）
+- 8/12 以降は `docs/ネコノテAI_第二期_締めくくり作業計画.md` の Step 0〜8 に移行

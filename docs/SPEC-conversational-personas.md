@@ -2,6 +2,8 @@
 
 作成日: 2026-07-14（インタビュー駆動で策定）
 ステータス: **確定**（2026-07-14 レビュー済み）
+改訂: 2026-07-14 **スレッドを複数化**（SPEC-chat-thread-list が正）。§2「ペルソナごとに1本を継続」「スレッド一覧UIは作らない」・§3.1「会話をリセット」・§4.1 の部分ユニークインデックスは、いずれも同SPECで上書きされた——インデックスは `20260714000003` で撤去、リセットは「新しい会話」へ置換、一覧は `/chats` として新設。Server Action も `getOrCreateDashboardThread` → `getLatestDashboardThread` ＋ `createDashboardThread`、`resetThread` → `deleteThread` に置き換わっている
+改訂: 2026-07-14 ツール呼び出しによる**構造化スケジュール保存・メモの自動ノート化**を追加（SPEC-schedule-and-memo-tools。§7 スコープ外項目の昇格）
 
 ## 1. 目的
 
@@ -113,30 +115,30 @@ create unique index chat_threads_user_persona_dashboard_uniq
 ### 5.3 UI コンポーネント
 
 - `components/dashboard/consult-panel.tsx`（仮）: パネル本体（タブ・スレッド状態・useChat）。ペルソナごとの useChat インスタンスを保持し、per-request `body` で context を送る（掘り下げパネルの流儀）
-- ダッシュボード（`app/page.tsx`）はサーバーコンポーネントのまま、パネルのトリガーと初期データ（conversational ペルソナ2人・プロジェクト一覧の最小情報）を渡す。**トリガーのJSXはクライアント側で組み立てる**（セッション⑫の hydration 教訓）
+- ダッシュボード（`app/(app)/page.tsx`）はサーバーコンポーネントのまま、パネルのトリガーと初期データ（conversational ペルソナ2人・プロジェクト一覧の最小情報）を渡す。**トリガーのJSXはクライアント側で組み立てる**（セッション⑫の hydration 教訓）
 - 色はテーマ用CSS変数のみ
 
 ## 6. 対象ファイル
 
 | ファイル | 役割 |
 |---|---|
-| `supabase/migrations/XXXX_dashboard_chat_thread_uniq.sql` | 部分ユニークインデックス追加（プランモード承認後） |
+| `supabase/migrations/20260714000002_dashboard_chat_thread_uniq.sql` | 部分ユニークインデックス追加（プランモード承認後） |
 | `lib/schemas/chat.ts` | context の判別union化（note / dashboard） |
 | `lib/ai/prompts.ts` | `buildDashboardChatPrompt`（スケジュールコンテキスト組み立て） |
 | `app/api/chat/route.ts` | dashboard 分岐（プロジェクト取得・コンテキスト同梱） |
 | `lib/actions/chat.ts` | `getOrCreateDashboardThread` / `saveChatMessageAsNote` |
 | `components/dashboard/consult-panel.tsx` 等 | 相談パネル（タブ・チャット・プロジェクトセレクタ・ノート保存） |
-| `app/page.tsx` | 「相談する」導線＋初期データ |
+| `app/(app)/page.tsx` | 「相談する」導線＋初期データ |
 
 ## 7. スコープ外
 
-- スレッド一覧・複数スレッド・履歴検索（テーブルは対応済み。必要になったらインデックス差し替えで拡張）
-- 構造化スケジュールの保存・ダッシュボード表示（提案はチャット内で完結）
+- ~~スレッド一覧・複数スレッド~~ → **SPEC-chat-thread-list で実装済み**（2026-07-14。`/chats` ページ＋インデックス撤去）。履歴の全文検索は引き続きスコープ外
+- ~~構造化スケジュールの保存・ダッシュボード表示（提案はチャット内で完結）~~ → **SPEC-schedule-and-memo-tools で実装済み**（2026-07-14。`projects.schedule` jsonb ＋ AIツール `saveSchedule`）
 - 掘り下げパネルのペルソナ切替（アシスタント固定のまま）
-- メモ化の自動ノート作成（保存は常にユーザーのボタン操作）
+- ~~メモ化の自動ノート作成（保存は常にユーザーのボタン操作）~~ → **SPEC-schedule-and-memo-tools で実装済み**（2026-07-14。AIツール `saveMemoNote`。手動の「ノートに保存」ボタンも併存）
 - 保存時のタイトル・タグ指定ダイアログ（後からノート側で整理）
 - 会話履歴の要約・トークン最適化・使用量計測
-- キャラクターレビューの実行UI（プロファイル …1002。別途検討のまま）
+- ~~キャラクターレビューの実行UI（プロファイル …1002。別途検討のまま）~~ → **SPEC-character-review で実装済み**（2026-07-14）
 
 ## 8. E2E検証手順（完了条件）
 

@@ -2,6 +2,11 @@
 
 作成日: 2026-07-13（インタビュー駆動で策定）
 ステータス: **確定**（2026-07-13 レビュー済み）
+改訂: 2026-07-14 講評（読者代表・近所の書店員）とプロファイル選択UIを実装（SPEC-dashboard-critique-settings。§7 スコープ外項目の昇格）
+改訂: 2026-07-16 校正の**保留提案をコメントで書き戻す**機能を追加（SPEC-vertical-editor-phase4 §3.2）
+改訂: 2026-07-25 校正プロファイルを**サーバー側ジャンル解決**に変更（Issue #95・SPEC-genre-profiles §5。`PROOFREADING_PROFILE_ID` の固定UUID直引きを廃止し、`target_phase='proofreading'` の標準行をジャンル優先で1件解決。選択UIは追加していない）
+改訂: 2026-07-24 **選択範囲の校正**を追加（Issue #32・SPEC-proofread-selection。§7 スコープ外項目の昇格。長文の自動分割は引き続きスコープ外）
+改訂: 2026-08-09 **コミット履歴表示・差分（diff）ビュー**を追加（Issue #31・SPEC-manuscript-history。§7 スコープ外項目の昇格。ブランチ選択は引き続きスコープ外）
 
 ## 1. 目的
 
@@ -127,16 +132,16 @@
 | `lib/git/github.ts` | GitHub API薄ラッパー（ツリー・取得・コミットSHA） |
 | `lib/actions/settings.ts` | PAT登録（疎通検証込み）・削除 |
 | `lib/actions/manuscripts.ts` | ツリー取得・ファイル読み込み（リンク自動作成） |
-| `lib/schemas/manuscripts.ts` ほか | 入力Zod（repo形式・提案スキーマ） |
+| `lib/schemas/manuscript.ts` ほか | 入力Zod（repo形式・提案スキーマ） |
 | `lib/actions/projects.ts`（既存） | repo / base_path の編集対応 |
 
 ## 7. スコープ外
 
 - 提案の受入/拒否/保留の操作・まとめてコミット・writing_progress 集計（**Sprint 4後半**。§3.4の方針に従う）
-- 担当編集の原稿校閲・読者代表/書店員の講評・プロファイル選択UI（Sprint 5）
+- ~~担当編集の原稿校閲・読者代表/書店員の講評・プロファイル選択UI（Sprint 5）~~ → **実装済み**（SPEC-dashboard-critique-settings・2026-07-14）
 - GitHub App / OAuth 連携（`GitCredentialProvider` の差し替えで将来対応）
-- ブランチ選択（デフォルトブランチ固定）・コミット履歴表示・差分（diff）ビュー
-- 選択範囲の校正・長文の自動分割
+- ブランチ選択（**デフォルトブランチ固定のまま**。縦書きエディタ側のブランチ対応＝phase5 とは独立。理由は SPEC-vertical-editor-phase5 §9）／~~コミット履歴表示・差分（diff）ビュー~~ → **実装済み**（SPEC-manuscript-history・2026-08-09）
+- ~~選択範囲の校正~~ → **実装済み**（SPEC-proofread-selection・2026-07-24）／長文の自動分割は引き続きスコープ外
 - 原稿のアプリ内編集（読み込み専用を堅持）
 - 1MB超ファイル対応（Contents API 制約のまま。エラー表示のみ）
 

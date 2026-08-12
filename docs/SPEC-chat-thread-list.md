@@ -94,19 +94,19 @@ update chat_threads set title = coalesce(title, <今回の user 発言からAI�
 ### 5.3 UI
 
 - `components/dashboard/consult-panel.tsx`: §3.1 の変更（最新スレッド取得・新しい会話・履歴リンク・`initialThreadId` prop）
-- `app/page.tsx`: searchParams から `consult` を読んで ConsultPanel に渡す（サーバーコンポーネントのまま。スレッド取得はクライアント側の Server Action 呼び出しに任せる）
-- `app/chats/page.tsx`: 一覧（サーバーコンポーネントで取得）＋クライアントの行メニュー（リネーム・削除ダイアログ）
+- `app/(app)/page.tsx`: searchParams から `consult` を読んで ConsultPanel に渡す（サーバーコンポーネントのまま。スレッド取得はクライアント側の Server Action 呼び出しに任せる）
+- `app/(app)/chats/page.tsx`: 一覧（サーバーコンポーネントで取得）＋クライアントの行メニュー（リネーム・削除ダイアログ）
 
 ## 6. 対象ファイル
 
 | ファイル | 役割 |
 |---|---|
-| `supabase/migrations/XXXX_chat_thread_list.sql` | インデックス撤去＋title列追加＋バックフィル（プランモード承認後） |
+| `supabase/migrations/20260714000003_chat_thread_list.sql` | インデックス撤去＋title列追加＋バックフィル（プランモード承認後） |
 | `lib/actions/chat.ts` | getLatestDashboardThread / createDashboardThread / getDashboardThreadById / listConsultThreads / renameThread / deleteThread（resetThread改名） |
 | `app/api/chat/route.ts` | onEnd にタイトル自動設定＋updated_at バンプの UPDATE 追加 |
 | `components/dashboard/consult-panel.tsx` | 新しい会話・履歴リンク・initialThreadId 対応 |
-| `app/page.tsx` | `?consult=` の受け渡し |
-| `app/chats/page.tsx` ほか `components/chats/` | スレッド一覧ページ（行・リネーム・削除） |
+| `app/(app)/page.tsx` | `?consult=` の受け渡し |
+| `app/(app)/chats/page.tsx` ほか `components/chats/` | スレッド一覧ページ（行・リネーム・削除） |
 
 ## 7. スコープ外
 

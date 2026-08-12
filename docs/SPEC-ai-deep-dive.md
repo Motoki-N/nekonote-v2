@@ -3,6 +3,10 @@
 作成日: 2026-07-13（インタビュー駆動で策定）
 ステータス: **確定**（2026-07-13 レビュー済み）
 改訂: 2026-07-30（Issue #46・§3.2 関連ノートのコンテキスト投入を追加。§7 から除外）
+改訂: 2026-07-14 独立チャットの場を実装（SPEC-conversational-personas = ダッシュボードの相談パネル／SPEC-chat-thread-list = `/chats` スレッド一覧。§7 スコープ外の「独立チャット画面（R2）」の昇格）
+改訂: 2026-07-14 `ai_model_settings` の設定UIを実装（SPEC-dashboard-critique-settings §3.4。§7 スコープ外項目の昇格）
+改訂: 2026-07-18 **AI使用量の計測**を実装（Issue #45。`ai_usage_logs`＋設定画面の直近30日テーブル。§7 スコープ外の「使用量/コスト計測」の昇格。SPEC は策定していない）
+改訂: 2026-07-23 掘り下げスレッドにも `saveMemoNote` ツールを導入（Issue #50・PR #114。仕様は SPEC-schedule-and-memo-tools §10 が正）
 
 ## 1. 目的
 
@@ -123,7 +127,7 @@ chat_messages:
 
 | ファイル | 役割 |
 |---|---|
-| `supabase/migrations/XXXX_chat_and_conversational_personas.sql` | chat_threads / chat_messages＋RLS＋personas 2行シード（プランモード承認後・security-reviewer ゲート対象） |
+| `supabase/migrations/20260713000001_chat_and_conversational_personas.sql` | chat_threads / chat_messages＋RLS＋personas 2行シード（プランモード承認後・security-reviewer ゲート対象） |
 | `lib/schemas/chat.ts` | チャット入力のZodスキーマ |
 | `lib/ai/models.ts` | capability→実モデル解決＋プロバイダ生成（AI基盤の中核） |
 | `lib/ai/prompts.ts` | 掘り下げ用プロンプト組み立て |
@@ -134,12 +138,12 @@ chat_messages:
 
 ## 7. スコープ外
 
-- 独立チャット画面（画面10・R2）。マスターとの対話・ノートに紐づかない雑談はそちらで
-- ペルソナ切替UI（掘り下げはアシスタント固定）
-- `ai_model_settings` の設定UI（Sprint 5）・サインアップ時の行シード
+- ~~独立チャット画面（画面10・R2）。マスターとの対話・ノートに紐づかない雑談はそちらで~~ → **実装済み**（2026-07-14。独立ページではなくダッシュボード組み込みの相談パネル＋`/chats` 一覧という形に落ち着いた）
+- ペルソナ切替UI（掘り下げはアシスタント固定。**据え置き**）
+- ~~`ai_model_settings` の設定UI（Sprint 5）~~ → **実装済み**（2026-07-14）／サインアップ時の行シードは引き続きしない
 - レビュー系AI呼び出し（担当編集等。Sprint 2。ただし `lib/ai/models.ts` は共用前提で作る）
 - ~~関連ノート（同じ仮タイトル）のコンテキスト投入~~ → Issue #46 で §3.2 に追加（2026-07-30）
-- 会話履歴の要約・トークン数最適化・使用量/コスト計測
+- 会話履歴の要約・トークン数最適化（**据え置き**）／~~使用量・コスト計測~~ → **実装済み**（Issue #45・2026-07-18）
 - チャット履歴の検索・エクスポート
 
 ## 8. E2E検証手順（完了条件）

@@ -2,6 +2,11 @@
 
 作成日: 2026-07-12（インタビュー駆動で策定）
 ステータス: **確定**（2026-07-12 レビュー済み。ごみ箱・Undo/Redoをレビューで追加）
+改訂: 2026-07-19 一覧のソート切替を追加（Issue #85。§3.1 の「更新日時の降順」固定を解除）
+改訂: 2026-07-23 **Markdown一括エクスポート**を実装（Issue #38。`app/api/notes/export/route.ts`。§7 スコープ外項目の昇格）
+改訂: 2026-07-23 **ノートの版履歴**を実装（Issue #111。`20260723000004_note_versions.sql`＋`components/notes/note-history-panel.tsx`。§7 スコープ外項目の昇格）
+改訂: 2026-07-23 キャラクターレビューをノート編集画面から実行可能に（Issue #47。仕様は SPEC-character-review §9 が正）
+改訂: 2026-07-24 表・画像・コードブロック・ファイル添付をスコープ内へ昇格（Issue #35。§3.2 に反映済み）
 
 ## 1. 目的
 
@@ -30,7 +35,7 @@
 
 - 新規作成ボタン: **1クリックで空ノートを作成してエディタへ遷移**（作成の手数最小）
 - 各ノートの表示: タイトル（空なら「無題」）・本文冒頭の抜粋・タグ・更新日時
-- 並び順: 更新日時の降順
+- 並び順: 更新日時の降順（既定）。~~固定~~ → **ソート切替を追加**（Issue #85。更新/作成 × 昇順/降順の4種。選択状態はURLパラメータ `sort` が正で、既定値はURLに付けない。ごみ箱ビューは削除日時降順のまま）
 - 絞り込み: タグチップで絞り込み（category / working_title を区別して表示）。複数タグはAND
 - 検索: タイトル＋本文の部分一致（ILIKE）。MVPでは全文検索インデックスを張らない
 
@@ -120,10 +125,10 @@ templates:
 
 | ファイル | 役割 |
 |---|---|
-| `supabase/migrations/XXXX_templates.sql` | templates テーブル＋RLS＋標準テンプレシード＋notes.deleted_at 追加（プランモード承認後） |
+| `supabase/migrations/20260712000003_notes_trash_and_templates.sql` | templates テーブル＋RLS＋標準テンプレシード＋notes.deleted_at 追加（プランモード承認後） |
 | `lib/schemas/templates.ts` | templates の入力Zodスキーマ |
-| `app/notes/page.tsx` | ノート一覧（検索・タグ絞り込み） |
-| `app/notes/[id]/page.tsx` | ノートエディタ |
+| `app/(app)/notes/page.tsx` | ノート一覧（検索・タグ絞り込み） |
+| `app/(app)/notes/[id]/page.tsx` | ノートエディタ |
 | `components/notes/*` | エディタ本体・タグ入力・テンプレ挿入メニュー・保存インジケータ |
 | `lib/actions/notes.ts` 等 | ノート/タグ/テンプレ挿入の Server Actions |
 | `lib/database.types.ts` | templates 追加後に再生成 |
@@ -136,7 +141,7 @@ templates:
 - 添付の孤児ファイル掃除（本文から参照を消した・ノートを完全削除した際の実体削除）
 - 全文検索の高度化（pg_trgm / FTS。ILIKEで遅くなったら検討）
 - ごみ箱の自動パージ（30日で自動削除等）・notes 以外のエンティティのごみ箱
-- ノートのバージョン履歴・エクスポート
+- ~~ノートのバージョン履歴・エクスポート~~ → **どちらも実装済み**（エクスポート = Issue #38・2026-07-23／版履歴 = Issue #111・2026-07-23。冒頭の改訂行を参照）
 - リアルタイム同期・共同編集（端末間競合は last-write-wins）
 - ノートとプロジェクトの紐づけ（企画書経由の紐づけは SPEC-proposal 側で扱う）
 
