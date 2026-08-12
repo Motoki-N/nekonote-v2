@@ -18,7 +18,10 @@ export type NoteInput = z.infer<typeof noteInputSchema>;
 export type NoteUpdate = z.infer<typeof noteUpdateSchema>;
 
 export const tagInputSchema = z.object({
-  name: z.string().min(1, "タグ名を入力してください"),
+  name: z
+    .string()
+    .min(1, "タグ名を入力してください")
+    .max(100, "タグ名が長すぎます"),
   kind: z.enum(tagKinds),
 });
 export const tagUpdateSchema = tagInputSchema.partial();

@@ -23,6 +23,7 @@ import {
 import { AppError, errorResponse } from "@/lib/errors";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { chatRequestSchema } from "@/lib/schemas/chat";
+import { CRITIQUE_MAX_CHARS } from "@/lib/schemas/manuscript";
 import {
   saveMemoNoteInputSchema,
   saveScheduleInputSchema,
@@ -259,6 +260,19 @@ export async function POST(req: Request) {
       throw new AppError("validation", "リクエストの形式が不正です");
     const { threadId, context } = parsed.data;
     const messages = parsed.data.messages as unknown as UIMessage[];
+
+    // 1メッセージあたりの本文長は zod では検証できない（UIMessage の構造はSDK任せ）ため、
+    // 講評・レビューと同じ合計文字数ガードをここで掛ける（security-audit-20260812 L-1）
+    const chatInputChars = messages.reduce(
+      (total, message) => total + textOf(message).length,
+      0,
+    );
+    if (chatInputChars > CRITIQUE_MAX_CHARS) {
+      throw new AppError(
+        "validation",
+        `会話が約${chatInputChars.toLocaleString("ja-JP")}字あり、送信の上限（${CRITIQUE_MAX_CHARS.toLocaleString("ja-JP")}字）を超えています`,
+      );
+    }
 
     // RLS越しの取得＝所有確認を兼ねる。担当ペルソナとノートのごみ箱状態も同時に引く
     const { data: thread, error: threadError } = await supabase
