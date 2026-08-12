@@ -85,6 +85,8 @@ npm run lint
 - [Claude Code 運用計画](docs/claude-code-operation-plan.md)
 - [開発ログ](docs/dev-log.md)
 - [開発記録（書籍ドラフト）](docs/dev-story/README.md)
+- [第一期・第二期の比較と KPT](docs/第一期・第二期比較.md)
+- [第三期引き継ぎメモ](docs/第三期引き継ぎメモ.md)
 
 ## ライセンス
 
