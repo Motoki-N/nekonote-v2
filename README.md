@@ -54,7 +54,7 @@ cp .env.local.example .env.local
 | `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY`            | Supabase 接続情報                                                  |
 | `ALLOWED_EMAILS`                                                        | ログインを許可するメール（カンマ区切り。DB側許可リストと手動同期） |
 | `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` / `GOOGLE_GENERATIVE_AI_API_KEY` | AIプロバイダのAPIキー（使うものだけでよい）                        |
-| `ENCRYPTION_KEY`                                                        | ノート等の暗号化キー                                               |
+| `ENCRYPTION_KEY`                                                        | GitHub PAT の暗号化キー（32バイトのbase64。再発行不能）            |
 | `SUPABASE_SERVICE_ROLE_KEY`                                             | cron（締切リマインド）用。クライアントへ露出しないこと             |
 | `RESEND_API_KEY` / `REMINDER_FROM_EMAIL` / `CRON_SECRET`                | リマインドメール送信と cron 認証                                   |
 
@@ -77,6 +77,7 @@ npm run lint
 ## ドキュメント
 
 - [ユーザーマニュアル](docs/manual.md)
+- [運用ランブック（RUNBOOK）](docs/RUNBOOK.md)
 - [要求仕様](docs/ネコノテAI_第二期_要求仕様ドキュメント.md)
 - [実装計画](docs/ネコノテAI_第二期_実装計画.md)
 - [機能仕様の索引（SPEC-index.md）](docs/SPEC-index.md)
