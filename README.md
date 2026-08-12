@@ -76,6 +76,7 @@ npm run lint
 
 ## ドキュメント
 
+- [変更履歴（CHANGELOG）](CHANGELOG.md)
 - [ユーザーマニュアル](docs/manual.md)
 - [運用ランブック（RUNBOOK）](docs/RUNBOOK.md)
 - [要求仕様](docs/ネコノテAI_第二期_要求仕様ドキュメント.md)
