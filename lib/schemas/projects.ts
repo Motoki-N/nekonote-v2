@@ -69,7 +69,7 @@ export const repoSetupInputSchema = z.object({
     .max(50, "出力ファイル名は50文字以内で入力してください")
     .regex(
       /^[a-z0-9][a-z0-9-]*$/,
-      "出力ファイル名は小文字英数字とハイフンで入力してください（例: ningyo-no-uta）",
+      "出力ファイル名は小文字英数字とハイフンで入力してください（例: ryu-no-su）",
     ),
 });
 export type RepoSetupInput = z.infer<typeof repoSetupInputSchema>;

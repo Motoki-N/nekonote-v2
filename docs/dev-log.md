@@ -326,7 +326,7 @@
   - lint の `react-hooks/set-state-in-effect` に1回引っかかった→ `?consult=` 変化でのパネル再オープンは「render中のprop派生setState」パターンに書き換えて解消
 - **E2E検証（SPEC §8 全11項目・ブラウザペイン＋DB直接確認）**: 新しい会話でDB行が増えない→送信で作成／同一ペルソナ2本並存（DB確認）／タイトル自動設定（`## ` 除去）・2通目で非上書き・updated_at バンプ／閉じて開き直すと最新スレッド継続／/chats 降順＋バックフィル済みタイトル＋掘り下げ非掲載／行クリック→自動オープン＋マスタータブアクティブ／リネーム→反映＋以降も自動設定に上書きされない／削除→cascade でメッセージ消滅・他スレッド無傷／掘り下げ回帰（履歴表示・リセット健在）／未認証 /chats→307 /login・架空 threadId と掘り下げ threadId の `?consult=` 直打ち→パネル内 not_found／モバイル375px（一覧・メニュー・ダイアログ・パネル自動オープン）
 - **security-reviewer ゲート**: **Critical〜Medium ゼロ・Low 2件**——①デプロイ順序依存（インデックス撤去済みDB×旧コードの maybeSingle が複数行エラー）→**本番が実際にこの状態になったため即デプロイで解消**（マイグレーション先行適用＋E2Eでスレッドが増えた時点で本番パネルが壊れる構図。次回から「本番適用は原則デプロイ直前」を意識）②renameThread の note_id 絞りなし（所有境界内で実害なしの厳密化）→`.is('note_id', null)` 追加済み
-- **本番デプロイ完了**: push→`npx vercel deploy --prod --yes`（dpl_8Zx2bP1VqWpfwEWSFK44rztRYiVS）。本番 /chats が 307→/login（returnTo付き）で新ルート稼働を確認
+- **本番デプロイ完了**: push→`npx vercel deploy --prod --yes`（`dpl_xxx`）。本番 /chats が 307→/login（returnTo付き）で新ルート稼働を確認
 - 次: Sprint 6 残り＝構造化スケジュール保存・メモの自動ノート化 → キャラクターレビュー実行UI（…1002）→ middleware→proxy 移行。R2期日 8/11 まで磨き込み
 
 ### セッション㉒: SPEC-schedule-and-memo-tools インタビュー・策定（Sprint 6 その2 入り口）
