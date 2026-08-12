@@ -6,6 +6,8 @@
 - 素材: `git log` / [dev-log.md](../dev-log.md)（98セッション）/ [incident-log.md](../incident-log.md) /
   [SPEC-index.md](../SPEC-index.md)（28本）/ [Claude Code 運用計画](../claude-code-operation-plan.md) §2 の第一期KPT対応表 /
   [第一期・第二期比較.md](../第一期・第二期比較.md)（定量データ）
+- 補助資料: [00-timeline.md](00-timeline.md)——dev-log の時系列要約（5局面・転換点8回）。
+  章はテーマ別に再構成するため、「実際にどの順で起きたか」はこちらで確認する
 
 ## 本書の主題
 
