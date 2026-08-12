@@ -105,8 +105,11 @@ PR [#185](https://github.com/Motoki-N/nekonote-v2/pull/185)（Low 4件の修正�
   - 再発防止: 本リポジトリのローカル `user.email` を GitHub の noreply アドレスへ切り替え済み（今後のコミットのみ。既存履歴のメタデータは不変）
 - [x] 監査で残した「未確認項目」6件のうち、**CLI で検証できる3件を消化**（本番DB実状態＝マイグレーション29/29適用・全24テーブルRLS有効／allowlistトリガーの本番存在＝有効／Vercel環境変数＝`NEXT_PUBLIC_` への秘密情報の誤登録なし・cron関連はProduction専用を維持）。**この過程でリマインドメールのキー名の誤登録を発見**（INC-1 復旧時のタイプミス。詳細と対処は `docs/security-audit-20260812.md`）
 - [ ] 残る未確認項目3件のダッシュボード確認（Supabase Auth設定・Google OAuth クライアント設定・AIプロバイダのスペンド上限）。Step 4（RUNBOOK）へ引き継ぎ可
-- [ ] GitHub での可視性切り替え: **ユーザー自身が操作**（外部サービスのダッシュボード操作はユーザー実施の流儀に従う）
-- [ ] 公開後の動作確認: Vercel 連携・Issue テンプレート・バッジ等に影響がないこと
+- [x] GitHub での可視性切り替え: **ユーザー自身が操作**（外部サービスのダッシュボード操作はユーザー実施の流儀に従う）。2026-08-12 に public 化完了
+- [x] 公開後の動作確認: CI グリーン・Issue テンプレート2種健在・MIT ライセンス認識・Vercel 連携正常（本番エイリアスは最新デプロイを指す）・README にバッジなし
+- [x] **公開で無料になった GitHub のセキュリティ機能を有効化**: Secret scanning / Push protection / Dependabot security updates。**Secret scanning の全履歴スキャンは検出ゼロ**で、手動走査の結果が独立に裏づけられた。Dependabot のオープン3件（high 1・medium 2）は**いずれも `@vivliostyle/vfm` の推移的依存**で、Step 2 で「上流待ち」と整理した範囲と一致（新規対応なし）
+
+**Step P 完了**（2026-08-12）。この過程でリマインドメールのキー名誤登録という設定不具合を発見・解消した（詳細は `docs/security-audit-20260812.md`）。
 
 ### Step 3: ドキュメント確認・整備
 
