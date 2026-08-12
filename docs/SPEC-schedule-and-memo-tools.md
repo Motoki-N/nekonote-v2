@@ -117,14 +117,14 @@ alter table public.projects add column schedule jsonb;
 
 | ファイル | 役割 |
 |---|---|
-| `supabase/migrations/XXXX_project_schedule.sql` | `projects.schedule` jsonb 追加（プランモード承認後） |
+| `supabase/migrations/20260714000004_project_schedule.sql` | `projects.schedule` jsonb 追加（プランモード承認後） |
 | `lib/schemas/schedule.ts` | schedule / ツール入力の zod スキーマと型 |
 | `lib/ai/prompts.ts` | ツール使用指示＋保存済みスケジュールブロック |
 | `app/api/chat/route.ts` | dashboard 分岐に tools（saveSchedule / saveMemoNote）＋stopWhen |
 | `lib/actions/schedule.ts` | `toggleMilestone` / `deleteSchedule` |
 | `components/dashboard/consult-panel.tsx` | tool part のカード表示 |
 | `components/dashboard/project-overview-card.tsx` | スケジュールブロック（一覧・チェック・削除） |
-| `app/page.tsx` | projects の select に schedule を追加して受け渡し |
+| `app/(app)/page.tsx` | projects の select に schedule を追加して受け渡し |
 | `app/api/cron/milestone-reminders/route.ts` | マイルストーン締切リマインド（§9・Issue #51） |
 | `lib/email.ts` | Resend 経由のリマインドメール送信 |
 | `lib/supabase/admin.ts` | cron 専用の service_role クライアント |

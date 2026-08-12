@@ -123,7 +123,7 @@
 | `components/board/*` | ボード・レーン・シーンカード・境界アンカースロット・編集ダイアログ・感情折れ線 |
 | `components/review/*` | レビューパネルの共通化（企画書ページからの抽出・判定UI の条件表示化） |
 | `lib/actions/scenes.ts` | シーンCRUD・並び替え・アンカー付け替え |
-| `lib/schemas/scenes.ts` | 入力Zodスキーマ |
+| `lib/schemas/projects.ts` | 入力Zodスキーマ |
 | `lib/ai/prompts.ts` | 構成/シーンレビューのプロンプト組み立てを追加 |
 | `app/api/review/route.ts` | レビュー種別の拡張（scene / project の所有確認を含む） |
 | `package.json` | dnd-kit 追加 |

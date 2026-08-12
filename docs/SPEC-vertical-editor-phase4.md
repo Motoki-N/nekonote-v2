@@ -105,8 +105,8 @@ Phase 4 では両者を「原稿ファイルを共通言語」として接続し
   - `lib/actions/critique.ts` … Server Action `writeBackCritique(sessionId)`（RLS所有確認→講評取得→メモファイル取得/新規→追記→PUT）
   - `components/manuscript/proofread-panel.tsx` … 一括ボタン・書き戻し済みバッジ
   - `components/manuscript/critique-panel.tsx` … 書き戻しボタン
-  - `components/manuscript/manuscript-workspace.tsx`／`app/projects/[id]/manuscript/page.tsx` … `?file=` 初期選択・「エディタで開く」リンク
-  - `components/editor/vertical-editor.tsx`（＋ツールバー）／`app/projects/[id]/editor/page.tsx` … `?file=` 初期選択・「ネコノテでレビュー」リンク
+  - `components/manuscript/manuscript-workspace.tsx`／`app/(app)/projects/[id]/manuscript/page.tsx` … `?file=` 初期選択・「エディタで開く」リンク
+  - `components/editor/vertical-editor.tsx`（＋ツールバー）／`app/(app)/projects/[id]/editor/page.tsx` … `?file=` 初期選択・「ネコノテでレビュー」リンク
 - **DB**: スキーマ変更なし。既存列の流用のみ
 - **GitHub書き込み**: 既存の `putFileContent`（PAT・blob SHA 楽観ロック）を流用。トークンスコープの変更なし
 - **エラー処理**: 共通 `AppError`＋`toActionError`。コンフリクト（他所からのpush競合）は既存の日本語メッセージ方針を踏襲

@@ -3,6 +3,11 @@
 Sprint 5（R2・〜8/11）前半の4項目を定義する。対話型ペルソナ（アシスタント・喫茶店のマスターのチャット機能）は性質が大きく異なるため**別SPEC**として後続インタビューで扱う。
 
 ステータス: **確定**（2026-07-14 インタビュー2巡 → ユーザーレビュー）
+改訂: 2026-07-14 キャラクターレビューの実行UIを実装（SPEC-character-review。§7 スコープ外項目の昇格）
+改訂: 2026-07-17 講評プロファイルに**売り込み分析・あらすじ作成・キャッチコピー作成**を追加（`20260717000001`。「読者講評」の相方だった「書店員講評」は「売り込み分析」へ改名）／設定画面のペルソナ一覧に**イラストレーター**が加わる（`20260717000002`）
+改訂: 2026-07-18 設定画面に**AI使用量（直近30日）**セクションを追加（Issue #45。§3.4 のセクション構成は4→6セクションになった。残り1つは Zenn連携）
+改訂: 2026-07-25 一覧に**対象ジャンル**表示と編集項目を追加し、既定選択をジャンル優先ソートに変更（Issue #95・SPEC-genre-profiles §7）
+改訂: 2026-07-25 設定画面に**Zenn連携**セクションを追加（Issue #126・SPEC-zenn-integration §3.1）
 
 ## 1. 目的
 
@@ -92,7 +97,7 @@ Sprint 5（R2・〜8/11）前半の4項目を定義する。対話型ペルソ�
 
 ## 4. データ
 
-マイグレーション `20260714xxxxxx_manuscript_critique_profiles.sql`:
+マイグレーション `20260714000001_manuscript_critique_profiles.sql`:
 
 - `review_profiles.target_phase` のCHECK制約を張り替えて `'manuscript'` を追加
 - 講評プロファイル2種をシード（is_default・user_id null）:
@@ -118,14 +123,14 @@ Sprint 5（R2・〜8/11）前半の4項目を定義する。対話型ペルソ�
 
 ## 6. 対象ファイル
 
-- 新規: `supabase/migrations/20260714…_manuscript_critique_profiles.sql`、`components/dashboard/*`（概況カード・折れ線・集計ボタン）、`components/manuscript/critique-panel.tsx`、`components/settings/`（model-settings / persona-list / profile-list ＋編集ダイアログ）、`lib/actions/critique.ts`（講評専用にする場合）
-- 変更: `app/page.tsx`（ダッシュボード化）、`app/settings/page.tsx`（セクション追加）、`app/api/review/route.ts`（manuscript 分岐・profileId/personaId）、`lib/actions/review.ts`（一般化）、`lib/actions/settings.ts`（CRUD追加）、`lib/actions/manuscripts.ts`（集計関数切り出し）、`components/review/review-panel.tsx`（セレクタ）、`lib/ai/personas.ts`（講評プロファイルID追加）、`lib/schemas/*`（入力スキーマ）
+- 新規: `supabase/migrations/20260714000001_manuscript_critique_profiles.sql`、`components/dashboard/*`（概況カード・折れ線・集計ボタン）、`components/manuscript/critique-panel.tsx`、`components/settings/`（model-settings / persona-list / profile-list ＋編集ダイアログ）、`lib/actions/critique.ts`（講評専用にする場合）
+- 変更: `app/(app)/page.tsx`（ダッシュボード化）、`app/(app)/settings/page.tsx`（セクション追加）、`app/api/review/route.ts`（manuscript 分岐・profileId/personaId）、`lib/actions/review.ts`（一般化）、`lib/actions/settings.ts`（CRUD追加）、`lib/actions/manuscripts.ts`（集計関数切り出し）、`components/review/review-panel.tsx`（セレクタ）、`lib/ai/personas.ts`（講評プロファイルID追加）、`lib/schemas/*`（入力スキーマ）
 - 型再生成: `npm run db:types`
 
 ## 7. スコープ外
 
 - 対話型ペルソナ（アシスタントのスケジュール提案・喫茶店のマスターの壁打ち・メモ化）→ **Sprint 5 後半の別SPEC**
-- キャラクターレビューの実行UI（プロファイル `…1002` はシード済みだが対象画面がない。設定画面には表示される）
+- ~~キャラクターレビューの実行UI（プロファイル `…1002` はシード済みだが対象画面がない。設定画面には表示される）~~ → **SPEC-character-review で実装済み**（2026-07-14。企画書画面の「キャラクター」ボタン。2026-07-23 にノート1枚単位のレビューも追加）
 - 進捗グラフの目標線・target_pages のページ→文字数換算
 - 講評への返答メモ・反復（読み切り型で確定）
 - 講評・校正のプロファイル選択の相互乗り入れ（校正パネルに選択UIは置かない。
