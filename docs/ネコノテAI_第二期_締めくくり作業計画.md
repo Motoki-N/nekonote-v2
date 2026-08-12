@@ -104,7 +104,7 @@ PR [#185](https://github.com/Motoki-N/nekonote-v2/pull/185)（Low 4件の修正�
 - [x] **git 履歴の扱いを判断 → 「許容」を決定**（履歴書き換え／許容／リポジトリ再作成の3択）。決め手は、author メールが全337コミットのメタデータにあり公開リポジトリでは通常公開される情報である以上、部分的な書き換えは成立せず全コミット書き換えになること。その代償（75 PR / 108 Issue のコミットリンク断絶、dev-log 内31箇所の SHA 参照の無効化、Step 7 の開発記録の追跡性低下）が、履歴 diff を掘って初めて見える情報を隠す利益を上回らないと判断した。判断材料の詳細は `docs/security-audit-20260812.md` M-2
   - 再発防止: 本リポジトリのローカル `user.email` を GitHub の noreply アドレスへ切り替え済み（今後のコミットのみ。既存履歴のメタデータは不変）
 - [x] 監査で残した「未確認項目」6件のうち、**CLI で検証できる3件を消化**（本番DB実状態＝マイグレーション29/29適用・全24テーブルRLS有効／allowlistトリガーの本番存在＝有効／Vercel環境変数＝`NEXT_PUBLIC_` への秘密情報の誤登録なし・cron関連はProduction専用を維持）。**この過程でリマインドメールのキー名の誤登録を発見**（INC-1 復旧時のタイプミス。詳細と対処は `docs/security-audit-20260812.md`）
-- [ ] 残る未確認項目3件のダッシュボード確認（Supabase Auth設定・Google OAuth クライアント設定・AIプロバイダのスペンド上限）。Step 4（RUNBOOK）へ引き継ぎ可
+- [x] 残る未確認項目3件のダッシュボード確認（Supabase Auth設定・Google OAuth クライアント設定・AIプロバイダのスペンド上限）→ **Step 4 で決着**。一度きりの確認ではなく `docs/RUNBOOK.md` §8.2 の四半期点検項目として恒久化した
 - [x] GitHub での可視性切り替え: **ユーザー自身が操作**（外部サービスのダッシュボード操作はユーザー実施の流儀に従う）。2026-08-12 に public 化完了
 - [x] 公開後の動作確認: CI グリーン・Issue テンプレート2種健在・MIT ライセンス認識・Vercel 連携正常（本番エイリアスは最新デプロイを指す）・README にバッジなし
 - [x] **公開で無料になった GitHub のセキュリティ機能を有効化**: Secret scanning / Push protection / Dependabot security updates。**Secret scanning の全履歴スキャンは検出ゼロ**で、手動走査の結果が独立に裏づけられた。Dependabot のオープン3件（high 1・medium 2）は**いずれも `@vivliostyle/vfm` の推移的依存**で、Step 2 で「上流待ち」と整理した範囲と一致（新規対応なし）
@@ -142,12 +142,14 @@ PR [#185](https://github.com/Motoki-N/nekonote-v2/pull/185)（Low 4件の修正�
 
 **目的**: 半年後の自分・第三者が運用できる状態にする。
 
-- [ ] API キー再発行手順（AIプロバイダ別: Anthropic / OpenAI / Google）
-- [ ] Fine-grained PAT の更新・失効時対応
-- [ ] Supabase バックアップ・リストア手順
-- [ ] Vercel 環境変数の更新手順（Preview/Production スコープの罠を含む→incident-log 参照）
-- [ ] 障害時の切り分けフロー
-- [ ] ランニングコスト棚卸し: ペルソナ別 API 使用量・単価、Supabase / Vercel 無料枠の消費状況。データ源は実装済みの `ai_usage_logs`＋`ai_usage_summary(days)`（設定画面の直近30日テーブル）
+- [x] API キー再発行手順（AIプロバイダ別: Anthropic / OpenAI / Google）→ RUNBOOK §3.2。加えて `ENCRYPTION_KEY`（§3.3）・Supabase 系（§3.4）・`CRON_SECRET`（§3.5）・`RESEND_API_KEY`（§3.6）も網羅
+- [x] Fine-grained PAT の更新・失効時対応 → RUNBOOK §3.7（必要権限・差し替え手順・失効時の症状表つき）
+- [x] Supabase バックアップ・リストア手順 → RUNBOOK §5
+- [x] Vercel 環境変数の更新手順（Preview/Production スコープの罠を含む→incident-log 参照）→ RUNBOOK §4（削除前チェックリスト・削除後の全量確認）
+- [x] 障害時の切り分けフロー → RUNBOOK §6（最初の3分／全機能停止／機能別／ログイン不可／サイレント障害／切り戻し）
+- [x] ランニングコスト棚卸し: ペルソナ別 API 使用量・単価、Supabase / Vercel 無料枠の消費状況。データ源は実装済みの `ai_usage_logs`＋`ai_usage_summary(days)`（設定画面の直近30日テーブル）→ RUNBOOK §7（棚卸しコマンド＋2026-07-18〜08-12 の実測スナップショット）
+- [x] 【追加】定期点検（月次・四半期）→ RUNBOOK §8。監査が残した未確認項目3件（Supabase Auth設定・Google OAuth・スペンド上限）を恒久的な点検項目として組み込んだ
+- [x] 【追加】保守対応フロー（Issue駆動）→ RUNBOOK §9。Step 5 での manual.md §12 削除に先立って移設済み
 
 **注意**: 公開リポジトリになった後の作成となるため、実値・実識別子は書かない（手順と参照先のみ）。
 
@@ -162,6 +164,14 @@ PR [#185](https://github.com/Motoki-N/nekonote-v2/pull/185)（Low 4件の修正�
   - `.env.local.example` の `ENCRYPTION_KEY` コメント「ノート等の暗号化キー」→ 実態は GitHub PAT のみ
   - README の環境変数表の同項目も同様
   - incident-log INC-1 の重大化シナリオ「暗号化済みデータ（ノート・PAT）」→ 実際の影響は PAT 再登録に留まる（記録の改変ではなく追記形式で訂正する）
+
+**Step 4 完了**（2026-08-12）。`docs/RUNBOOK.md` を新設（全9節）。README のドキュメント一覧にも追加した。
+
+- **執筆時に直した記述ズレ 3件**: `.env.local.example` と README の `ENCRYPTION_KEY` 説明（「ノート等の暗号化キー」→ GitHub PAT のみ・再発行不能である旨を明記）、incident-log INC-1 の重大化シナリオ（元記述は残し、追記形式で訂正）。これで doc-audit の D-9 は解消
+- **執筆中に判明したリスク**: 本番 Supabase は **PITR 無効・物理バックアップ0件**（`supabase backups list` で確認）。プラットフォーム側に復元手段がないため、**自前の `db dump` が唯一の復旧経路**である。RUNBOOK §5.1 に警告として明記し、§8.1 の月次点検に「自前バックアップの取得」を入れた。有償プランへの移行検討はユーザー判断に委ねる
+- **監査の未確認項目3件の決着**: Dashboard でしか確認できない3件（Supabase Auth設定・Google OAuth クライアント設定・AIプロバイダのスペンド上限）は、一度きりの確認ではなく **RUNBOOK §8.2 の四半期点検項目として恒久化**した。運用期間に入る本プロジェクトでは、こちらの形の方が実効性がある
+- **コスト実測（2026-07-18〜08-12・26日間）**: AI 呼び出し 94回・入力 502,755 tok・出力 110,862 tok。Anthropic 分の概算は約 $2.0（リスト価格換算）で、**月額数ドル規模**。DB 14MB・Storage 約9MB で無料枠には十分な余裕があり、先に効く制約は容量ではなくバックアップの不在だった
+- **Step 5 への申し送り**: manual.md §12（保守対応フロー）の内容は **RUNBOOK §9 へ移設済み**。Step 5 の外部向け改訂では manual.md から §12 を削除し、「不具合を見つけたら Issue へ」の導線だけ残せばよい
 
 ### Step 5: 外部向けユーザーマニュアル改訂
 
