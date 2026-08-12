@@ -30,28 +30,14 @@ import {
   getEditorWorkspace,
   openChapter,
   saveChapter,
-  uploadImage,
 } from "@/lib/actions/editor";
 import type { EditorChapter, EditorWorkspaceData } from "@/lib/actions/editor";
-import {
-  openManuscriptFile,
-  updateSuggestionStatus,
-  type ManuscriptFileData,
-} from "@/lib/actions/manuscripts";
-import type { SuggestionStatus } from "@/lib/schemas/enums";
-import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
-import { getSelectedText } from "@/components/editor/codemirror";
 import { extractComments } from "@/lib/editor/comments";
 import type { ManuscriptComment } from "@/lib/editor/comments";
 import { deleteDraft, getDraft } from "@/lib/editor/draft-store";
 import type { Draft } from "@/lib/editor/draft-store";
-import {
-  fileToBase64,
-  illustNotation,
-  sanitizeImageFileName,
-} from "@/lib/editor/image";
 import { buildPreviewHtml } from "@/lib/editor/preview";
 import {
   countManuscriptChars,
@@ -70,7 +56,6 @@ import { EditorPane } from "@/components/editor/editor-pane";
 import { PrCreateDialog } from "@/components/editor/pr-create-dialog";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
 import { ImageUploadDialog } from "@/components/editor/image-upload-dialog";
-import type { IllustKind } from "@/components/editor/image-upload-dialog";
 import { MergePane } from "@/components/editor/merge-pane";
 import { NewChapterDialog } from "@/components/editor/new-chapter-dialog";
 import { PreviewPane } from "@/components/editor/preview-pane";
@@ -85,6 +70,9 @@ import type { OkWorkspace } from "@/components/editor/hooks/use-branch-state";
 import { useDetachedPreview } from "@/components/editor/hooks/use-detached-preview";
 import { useDraftStore } from "@/components/editor/hooks/use-draft-store";
 import { usePaneLayout } from "@/components/editor/hooks/use-pane-layout";
+import { useCommentActions } from "@/components/editor/hooks/use-comment-actions";
+import { useImageUpload } from "@/components/editor/hooks/use-image-upload";
+import { useReviewPanel } from "@/components/editor/hooks/use-review-panel";
 
 // プレビュー再組版のデバウンス（SPEC-vertical-editor-phase2 §5.1）
 const PREVIEW_DEBOUNCE_MS = 3000;
@@ -143,20 +131,6 @@ export function VerticalEditor({
   const [sidebarTab, setSidebarTab] = useState<"chapters" | "comments">(
     "chapters",
   );
-  /** 画像アップロードの対象（D&D またはツールバーから。SPEC-phase3 §6） */
-  const [pendingImage, setPendingImage] = useState<File | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  /** エディタ内レビューパネル（Issue #18。校正は開いている章、講評は作品全体が対象） */
-  const [reviewOpen, setReviewOpen] = useState<"proofread" | "critique" | null>(
-    null,
-  );
-  /** 校正パネルに渡す原稿情報（openManuscriptFile の結果。コミット済み内容が正） */
-  const [reviewFile, setReviewFile] = useState<ManuscriptFileData | null>(null);
-  const [reviewLoading, setReviewLoading] = useState(false);
-  const [reviewError, setReviewError] = useState<string | null>(null);
-  /** エディタの主選択テキスト（選択範囲の校正。SPEC-proofread-selection §3。
-   * 通常の打鍵・選択で再レンダーさせないため、校正パネル表示中のみ追跡する */
-  const [proofreadSelection, setProofreadSelection] = useState("");
 
   const {
     sidebarOpen,
@@ -178,11 +152,6 @@ export function VerticalEditor({
   /** previewHtml と対になる表示名（組版時点で確定。章切替中に古いHTMLへ新タイトルが付くのを防ぐ） */
   const previewTitleRef = useRef("プレビュー");
   const editorViewRef = useRef<EditorView | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  /** 未保存編集ありで校正を押した場合の「保存後に校正パネルを開く」予約 */
-  const pendingProofreadRef = useRef(false);
-  /** レビューパネルを閉じたときに戻すプレビュー表示状態（開く前の値を覚える） */
-  const prevPreviewOpenRef = useRef(true);
 
   /** 版面（行数×字詰め）: テーマCSSから抽出。ページ数概算に使う */
   const kumi = useMemo(
@@ -402,148 +371,31 @@ export function VerticalEditor({
     setSaveDialogOpen(true);
   }, [saving, flushDraft]);
 
-  // ---- エディタ内レビューパネル（Issue #18） ----
-
-  /** レビューパネルを開く（lg以上ではプレビューと入れ替え、閉じたら元の表示状態へ戻す） */
-  const openReviewPanel = useCallback(
-    (panel: "proofread" | "critique") => {
-      if (reviewOpen === null) prevPreviewOpenRef.current = previewOpen;
-      setReviewOpen(panel);
-      setPreviewOpen(false);
-    },
-    [reviewOpen, previewOpen, setPreviewOpen],
-  );
-
-  const closeReviewPanel = useCallback(() => {
-    setReviewOpen(null);
-    setReviewFile(null);
-    setReviewError(null);
-    setProofreadSelection("");
-    // パネル表示中に明示操作（全体プレビュー等）で開き直していた場合は上書きしない
-    setPreviewOpen((open) => open || prevPreviewOpenRef.current);
-  }, [setPreviewOpen]);
-
-  /** エディタの選択変更（校正パネル表示中のみ state に反映。それ以外は無視して再レンダーを避ける） */
-  const handleSelectionChange = useCallback(
-    (text: string) => {
-      if (reviewOpen !== "proofread") return;
-      setProofreadSelection(text);
-    },
-    [reviewOpen],
-  );
-
-  /** 校正パネルを開く。校正はコミット済み内容が対象のため、未保存の編集は先に保存へ誘導する */
-  const openProofread = useCallback(async () => {
-    const current = currentRef.current;
-    if (!current) return;
-    if (contentRef.current !== current.remoteContent) {
-      pendingProofreadRef.current = true;
-      toast.info(
-        "未保存の編集があります。保存（コミット）すると校正パネルを開きます",
-      );
-      requestSave();
-      return;
-    }
-    // 校正はデフォルトブランチのコミット内容が対象のまま（SPEC-phase5 §3.4・論点G。注記のみ）
-    const okNow = okRef.current;
-    if (okNow && okNow.branch !== okNow.defaultBranch) {
-      toast.info(
-        `校正はデフォルトブランチ（${okNow.defaultBranch}）のコミット内容が対象です`,
-      );
-    }
-    openReviewPanel("proofread");
-    // パネルを開いた時点の選択を初期値にする（以後は onSelectionChange が追跡）
-    setProofreadSelection(
-      editorViewRef.current ? getSelectedText(editorViewRef.current) : "",
-    );
-    // 前回開いた章の原稿情報が残っていると、フェッチ完了まで別の章の提案を誤操作できてしまう
-    setReviewFile(null);
-    setReviewLoading(true);
-    setReviewError(null);
-    try {
-      const result = await openManuscriptFile(projectId, current.path);
-      if (!result.ok || !result.data) {
-        setReviewFile(null);
-        setReviewError(
-          result.ok ? "原稿情報の読み込みに失敗しました" : result.error.message,
-        );
-        return;
-      }
-      setReviewFile(result.data);
-    } finally {
-      setReviewLoading(false);
-    }
-  }, [projectId, requestSave, openReviewPanel]);
-
-  /** 提案の受入/拒否/保留（原稿タブと同じ作法で、成功時はローカルの提案一覧のみ差し替える） */
-  const handleUpdateSuggestion = useCallback(
-    async (id: string, status: SuggestionStatus) => {
-      const result = await updateSuggestionStatus(id, status);
-      if (!result.ok) {
-        toast.error(result.error.message);
-        return;
-      }
-      setReviewFile((prev) =>
-        prev
-          ? {
-              ...prev,
-              suggestions: prev.suggestions.map((s) =>
-                s.id === id ? { ...s, status } : s,
-              ),
-            }
-          : prev,
-      );
-    },
-    [],
-  );
-
-  /** 提案カードクリック → エディタの該当箇所を選択してスクロール */
-  const locateInEditor = useCallback((originalText: string) => {
-    const view = editorViewRef.current;
-    if (!view) return;
-    const doc = view.state.doc.toString();
-    const idx = originalText === "" ? -1 : doc.indexOf(originalText);
-    if (idx === -1) {
-      toast.error(
-        "該当箇所がエディタ内に見つかりません（原稿が更新された可能性があります）",
-      );
-      return;
-    }
-    view.dispatch({
-      selection: EditorSelection.range(idx, idx + originalText.length),
-      effects: EditorView.scrollIntoView(idx, { y: "center" }),
-    });
-    view.focus();
-  }, []);
-
-  /**
-   * 校正完了・コミット完了後の取り直し。「まとめてコミット」「保留の書き戻し」はGitHubに
-   * コミットを作るため、エディタが未編集ならリモート最新を開き直して baseSha を進める
-   * （追従しないと次の保存が必ず競合フローに入る）
-   */
-  const refreshReview = useCallback(async () => {
-    const current = currentRef.current;
-    if (!current) return;
-    const result = await openManuscriptFile(projectId, current.path);
-    // 取得待ちの間に章が切り替わっていたら、古い章の情報で上書きしない
-    if (currentRef.current?.path !== current.path) return;
-    if (!result.ok || !result.data) {
-      toast.error(
-        result.ok ? "原稿情報の再取得に失敗しました" : result.error.message,
-      );
-      return;
-    }
-    setReviewFile(result.data);
-    if (result.data.content === current.remoteContent) return;
-    if (contentRef.current !== current.remoteContent) {
-      // パネルを開いたまま編集が進んでいた場合。次の保存で差分の取り込みフローに入る
-      toast.warning(
-        "校正の反映で原稿が更新されました。未保存の編集は保存時に差分の取り込みが必要になります",
-      );
-      return;
-    }
-    await openChapterFlow(current.path);
-  }, [projectId, openChapterFlow]);
+  const {
+    reviewOpen,
+    reviewFile,
+    reviewLoading,
+    reviewError,
+    proofreadSelection,
+    pendingProofreadRef,
+    openReviewPanel,
+    closeReviewPanel,
+    handleSelectionChange,
+    openProofread,
+    handleUpdateSuggestion,
+    locateInEditor,
+    refreshReview,
+  } = useReviewPanel({
+    projectId,
+    currentRef,
+    contentRef,
+    okRef,
+    editorViewRef,
+    previewOpen,
+    setPreviewOpen,
+    requestSave,
+    openChapterFlow,
+  });
 
   /** 保存＝コミット（SPEC §6）。conflict はマージ支援へ（SPEC §8-1） */
   const confirmSave = useCallback(
@@ -608,7 +460,7 @@ export function VerticalEditor({
         setSaving(false);
       }
     },
-    [projectId, keyFor, markDraft, compilePreview, openProofread],
+    [projectId, keyFor, markDraft, compilePreview, openProofread, pendingProofreadRef],
   );
 
   /** マージ結果を編集へ取り込む（リモートSHAが新しい基準になる。SPEC §8） */
@@ -781,108 +633,18 @@ export function VerticalEditor({
     applyWorkspace,
   });
 
-  /**
-   * 画像アップロードの実行（SPEC-phase3 §6・論点C）。
-   * images/ へ即コミット → カーソル位置に挿入記法を追記（本文は通常の保存フロー）
-   */
-  const confirmImageUpload = useCallback(
-    async ({ kind, caption }: { kind: IllustKind; caption: string }) => {
-      const file = pendingImage;
-      if (!file) return;
-      setUploadingImage(true);
-      try {
-        const base64 = await fileToBase64(file);
-        const result = await uploadImage(
-          projectId,
-          sanitizeImageFileName(file.name),
-          base64,
-          okRef.current?.branch,
-        );
-        if (!result.ok || !result.data) {
-          toast.error(
-            result.ok
-              ? "画像のアップロードに失敗しました"
-              : result.error.message,
-          );
-          return;
-        }
-        const view = editorViewRef.current;
-        if (view) {
-          const pos = view.state.selection.main.from;
-          // 挿絵は独立した段落として前後を空行で区切る
-          const insert = `\n\n${illustNotation(result.data.fileName, kind, caption)}\n\n`;
-          view.dispatch({
-            changes: { from: pos, insert },
-            selection: EditorSelection.cursor(pos + insert.length),
-            scrollIntoView: true,
-            userEvent: "input",
-          });
-          view.focus();
-        }
-        setPendingImage(null);
-        toast.success(`画像 ${result.data.fileName} をコミットしました`);
-      } catch {
-        toast.error("画像の読み込みに失敗しました");
-      } finally {
-        setUploadingImage(false);
-      }
-    },
-    [pendingImage, projectId],
-  );
+  const {
+    pendingImage,
+    setPendingImage,
+    uploadingImage,
+    confirmImageUpload,
+    imageInputRef,
+  } = useImageUpload({ projectId, okRef, editorViewRef });
 
-  /** コメント一覧から該当箇所へジャンプ（SPEC-phase3 §3。選択で一時的に目立たせる） */
-  const jumpToComment = useCallback((comment: ManuscriptComment) => {
-    const view = editorViewRef.current;
-    if (!view) return;
-    // 一覧はデバウンス更新のため、直後の編集でオフセットが範囲外になり得る
-    const docLength = view.state.doc.length;
-    const from = Math.min(comment.from, docLength);
-    const to = Math.min(comment.to, docLength);
-    view.dispatch({
-      selection: EditorSelection.range(from, to),
-      effects: EditorView.scrollIntoView(from, { y: "center" }),
-    });
-    view.focus();
-  }, []);
-
-  /** コメント一覧から該当コメントを本文から削除する（Issue #19。Cmd/Ctrl+Z で取り消せる通常の編集） */
-  const deleteComment = useCallback(
-    (comment: ManuscriptComment) => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      const doc = view.state.doc;
-      // 一覧はデバウンス更新のため、直後の編集で位置がずれ得る。今も単一のコメント本体
-      // （途中に終端記号がない）を指しているか検証してから消す
-      const target =
-        comment.to <= doc.length
-          ? doc.sliceString(comment.from, comment.to)
-          : "";
-      if (
-        !target.startsWith("<!--") ||
-        target.indexOf("-->") !== target.length - 3
-      ) {
-        recount();
-        toast.error(
-          "本文が変更されたため削除を中止しました。一覧を更新したのでやり直してください",
-        );
-        return;
-      }
-      // コメントだけの行なら行ごと（末尾の改行含む）削除して空行を残さない
-      const startLine = doc.lineAt(comment.from);
-      const endLine = doc.lineAt(comment.to);
-      const standalone =
-        doc.sliceString(startLine.from, comment.from).trim() === "" &&
-        doc.sliceString(comment.to, endLine.to).trim() === "";
-      view.dispatch({
-        changes: standalone
-          ? { from: startLine.from, to: Math.min(endLine.to + 1, doc.length) }
-          : { from: comment.from, to: comment.to },
-        userEvent: "delete",
-      });
-      recount();
-    },
-    [recount],
-  );
+  const { jumpToComment, deleteComment } = useCommentActions({
+    editorViewRef,
+    recount,
+  });
 
   const { detached, toggleDetachedPreview } = useDetachedPreview({
     projectId,
