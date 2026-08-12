@@ -26,7 +26,6 @@ import { toast } from "sonner";
 
 import {
   createChapter,
-  createEditorBranch,
   getAllChapterContents,
   getEditorWorkspace,
   openChapter,
@@ -46,13 +45,7 @@ import { EditorView } from "@codemirror/view";
 import { getSelectedText } from "@/components/editor/codemirror";
 import { extractComments } from "@/lib/editor/comments";
 import type { ManuscriptComment } from "@/lib/editor/comments";
-import {
-  deleteDraft,
-  draftKey,
-  getDraft,
-  listDraftKeys,
-  setDraft,
-} from "@/lib/editor/draft-store";
+import { deleteDraft, getDraft } from "@/lib/editor/draft-store";
 import type { Draft } from "@/lib/editor/draft-store";
 import {
   fileToBase64,
@@ -61,18 +54,12 @@ import {
 } from "@/lib/editor/image";
 import { buildPreviewHtml } from "@/lib/editor/preview";
 import {
-  detachedPreviewUrl,
-  previewChannelName,
-} from "@/lib/editor/preview-channel";
-import type { PreviewChannelMessage } from "@/lib/editor/preview-channel";
-import {
   countManuscriptChars,
   estimatePages,
   extractKumiSettings,
 } from "@/lib/editor/word-count";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useChrome } from "@/components/layout/app-chrome";
 import { CritiquePanel } from "@/components/manuscript/critique-panel";
 import { ProofreadPanel } from "@/components/manuscript/proofread-panel";
 import { AozoraExportDialog } from "@/components/editor/aozora-export-dialog";
@@ -89,27 +76,20 @@ import { NewChapterDialog } from "@/components/editor/new-chapter-dialog";
 import { PreviewPane } from "@/components/editor/preview-pane";
 import { SaveDialog } from "@/components/editor/save-dialog";
 import { SettingsDialog } from "@/components/editor/settings-dialog";
+import type {
+  CurrentChapter,
+  MergeState,
+} from "@/components/editor/editor-state";
+import { useBranchState } from "@/components/editor/hooks/use-branch-state";
+import type { OkWorkspace } from "@/components/editor/hooks/use-branch-state";
+import { useDetachedPreview } from "@/components/editor/hooks/use-detached-preview";
+import { useDraftStore } from "@/components/editor/hooks/use-draft-store";
+import { usePaneLayout } from "@/components/editor/hooks/use-pane-layout";
 
-// 待避（IndexedDB）とプレビュー再組版のデバウンス（SPEC-vertical-editor-phase2 §5.1・§7）
-const DRAFT_DEBOUNCE_MS = 1000;
+// プレビュー再組版のデバウンス（SPEC-vertical-editor-phase2 §5.1）
 const PREVIEW_DEBOUNCE_MS = 3000;
 // 字数カウントのデバウンス（SPEC-vertical-editor-phase3 §5）
 const COUNT_DEBOUNCE_MS = 500;
-
-/** 開いている章の書き込み基準。打鍵ごとに触るため state ではなく ref で持つ */
-type CurrentChapter = {
-  path: string;
-  /** 楽観ロックの基準 blob SHA（保存成功・マージ取り込みで前進） */
-  baseSha: string;
-  /** 基準SHA時点のリモート本文（未保存判定・待避クリーンアップ用） */
-  remoteContent: string;
-};
-
-type MergeState = {
-  remoteContent: string;
-  remoteSha: string;
-  localContent: string;
-};
 
 /**
  * 縦書きエディタの本体（SPEC-vertical-editor-phase2 §3）。
@@ -140,7 +120,6 @@ export function VerticalEditor({
   /** エディタ作り直し時の初期本文（以後の打鍵は contentRef が正） */
   const [editorDoc, setEditorDoc] = useState("");
   const [dirty, setDirty] = useState(false);
-  const [draftPaths, setDraftPaths] = useState<ReadonlySet<string>>(new Set());
   const [restorePrompt, setRestorePrompt] = useState<Draft | null>(null);
   const [merge, setMerge] = useState<MergeState | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -151,23 +130,10 @@ export function VerticalEditor({
   const [buildOpen, setBuildOpen] = useState(false);
   /** 青空文庫形式の書き出し（SPEC-aozora-export）。source は開いた時点の編集中本文 */
   const [aozoraSource, setAozoraSource] = useState<string | null>(null);
-  /** ブランチ切替・作成・PR（SPEC-vertical-editor-phase5） */
-  const [branchSwitching, setBranchSwitching] = useState(false);
-  const [branchCreateOpen, setBranchCreateOpen] = useState(false);
-  const [branchCreating, setBranchCreating] = useState(false);
-  const [prOpen, setPrOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [typesetting, setTypesetting] = useState(false);
   const [fullPreview, setFullPreview] = useState(false);
   const [fullPreviewLoading, setFullPreviewLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [previewOpen, setPreviewOpen] = useState(true);
-  /** プレビューを別ウィンドウへ分離中か（Issue #72。分離中はインラインのプレビューを畳む） */
-  const [detached, setDetached] = useState(false);
-  /** 分離窓からの ready（初回・リロード）で現在のHTMLを送り直すためのトリガー */
-  const [resendTick, setResendTick] = useState(0);
-  const [ratio, setRatio] = useState(0.5);
-  const [dragging, setDragging] = useState(false);
   /** 本文の字数（コメント・記法除外。SPEC-phase3 §5）。null は章未選択 */
   const [charCount, setCharCount] = useState<number | null>(null);
   /** Vivliostyle が組んだ実ページ数（編集で無効化→概算値へ戻す） */
@@ -180,8 +146,6 @@ export function VerticalEditor({
   /** 画像アップロードの対象（D&D またはツールバーから。SPEC-phase3 §6） */
   const [pendingImage, setPendingImage] = useState<File | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
-  /** 集中モード: 入力ペイン（＋開いていればプレビュー）以外のクロームをすべて隠す */
-  const [focusMode, setFocusMode] = useState(false);
   /** エディタ内レビューパネル（Issue #18。校正は開いている章、講評は作品全体が対象） */
   const [reviewOpen, setReviewOpen] = useState<"proofread" | "critique" | null>(
     null,
@@ -194,32 +158,23 @@ export function VerticalEditor({
    * 通常の打鍵・選択で再レンダーさせないため、校正パネル表示中のみ追跡する */
   const [proofreadSelection, setProofreadSelection] = useState("");
 
-  const { setHidden: setChromeHidden } = useChrome();
-
-  // グローバルナビ＋プロジェクトヘッダーの表示を集中モードに同期（離脱時は必ず復帰させる）
-  useEffect(() => {
-    setChromeHidden(focusMode);
-    return () => setChromeHidden(false);
-  }, [focusMode, setChromeHidden]);
-
-  // Esc で集中モードを解除
-  useEffect(() => {
-    if (!focusMode) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFocusMode(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [focusMode]);
+  const {
+    sidebarOpen,
+    setSidebarOpen,
+    previewOpen,
+    setPreviewOpen,
+    focusMode,
+    setFocusMode,
+    ratio,
+    dragging,
+    splitRef,
+    startDrag,
+  } = usePaneLayout();
 
   const currentRef = useRef<CurrentChapter | null>(null);
   const contentRef = useRef("");
-  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const splitRef = useRef<HTMLDivElement>(null);
-  const popupRef = useRef<Window | null>(null);
-  const channelRef = useRef<BroadcastChannel | null>(null);
   /** previewHtml と対になる表示名（組版時点で確定。章切替中に古いHTMLへ新タイトルが付くのを防ぐ） */
   const previewTitleRef = useRef("プレビュー");
   const editorViewRef = useRef<EditorView | null>(null);
@@ -241,60 +196,19 @@ export function VerticalEditor({
     okRef.current = ok;
   }, [ok]);
 
-  const keyFor = useCallback(
-    (path: string) => (ok ? draftKey(ok.repo, ok.branch, path) : path),
-    [ok],
-  );
-
-  // 未保存待避のある章に印をつける（SPEC §3.3）
-  useEffect(() => {
-    if (!ok) return;
-    const prefix = `${ok.repo}:${ok.branch}:`;
-    listDraftKeys(prefix)
-      .then((keys) =>
-        setDraftPaths(new Set(keys.map((key) => key.slice(prefix.length)))),
-      )
-      .catch(() => {
-        // IndexedDB が使えない環境では印なしで動かす（待避はキャッシュ。正はGitHub）
-      });
-  }, [ok]);
-
-  const markDraft = useCallback((path: string, has: boolean) => {
-    setDraftPaths((prev) => {
-      if (prev.has(path) === has) return prev;
-      const next = new Set(prev);
-      if (has) next.add(path);
-      else next.delete(path);
-      return next;
-    });
-  }, []);
-
-  /** 現在の内容で待避を即時確定する（デバウンス中の分を落とさない） */
-  const persistDraft = useCallback(() => {
-    const current = currentRef.current;
-    if (!current) return;
-    const content = contentRef.current;
-    const key = keyFor(current.path);
-    if (content === current.remoteContent) {
-      deleteDraft(key).catch(() => {});
-      markDraft(current.path, false);
-    } else {
-      setDraft(key, {
-        content,
-        baseSha: current.baseSha,
-        updatedAt: Date.now(),
-      }).catch(() => {});
-      markDraft(current.path, true);
-    }
-  }, [keyFor, markDraft]);
-
-  const flushDraft = useCallback(() => {
-    if (draftTimerRef.current) {
-      clearTimeout(draftTimerRef.current);
-      draftTimerRef.current = null;
-    }
-    persistDraft();
-  }, [persistDraft]);
+  const {
+    draftPaths,
+    keyFor,
+    markDraft,
+    persistDraft,
+    flushDraft,
+    scheduleDraft,
+  } = useDraftStore({
+    repo: ok?.repo ?? null,
+    branch: ok?.branch ?? null,
+    currentRef,
+    contentRef,
+  });
 
   /** リポジトリルートのパス → 画像プロキシURL（SPEC §5.3。base_path 起点の相対に直して渡す） */
   const assetUrl = useCallback(
@@ -355,25 +269,22 @@ export function VerticalEditor({
       setDirty(content !== current.remoteContent);
       // 編集で実ページ数は古くなる → 概算値表示へ戻す（次の組版完了で再取得）
       setActualPages(null);
-      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-      draftTimerRef.current = setTimeout(persistDraft, DRAFT_DEBOUNCE_MS);
+      scheduleDraft();
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
       previewTimerRef.current = setTimeout(compilePreview, PREVIEW_DEBOUNCE_MS);
       if (countTimerRef.current) clearTimeout(countTimerRef.current);
       countTimerRef.current = setTimeout(recount, COUNT_DEBOUNCE_MS);
     },
-    [persistDraft, compilePreview, recount],
+    [scheduleDraft, compilePreview, recount],
   );
 
-  // アンマウント時: タイマーを止め、待避を確定する
+  // アンマウント時: 組版・字数の予約を止める（待避の確定は useDraftStore 側が担う）
   useEffect(() => {
     return () => {
-      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
       if (countTimerRef.current) clearTimeout(countTimerRef.current);
-      persistDraft();
     };
-  }, [persistDraft]);
+  }, []);
 
   /** 章を開く（SPEC §7 復元フロー込み） */
   const openChapterFlow = useCallback(
@@ -500,7 +411,7 @@ export function VerticalEditor({
       setReviewOpen(panel);
       setPreviewOpen(false);
     },
-    [reviewOpen, previewOpen],
+    [reviewOpen, previewOpen, setPreviewOpen],
   );
 
   const closeReviewPanel = useCallback(() => {
@@ -510,7 +421,7 @@ export function VerticalEditor({
     setProofreadSelection("");
     // パネル表示中に明示操作（全体プレビュー等）で開き直していた場合は上書きしない
     setPreviewOpen((open) => open || prevPreviewOpenRef.current);
-  }, []);
+  }, [setPreviewOpen]);
 
   /** エディタの選択変更（校正パネル表示中のみ state に反映。それ以外は無視して再レンダーを避ける） */
   const handleSelectionChange = useCallback(
@@ -714,24 +625,14 @@ export function VerticalEditor({
       const isDirty = merged !== merge.remoteContent;
       setDirty(isDirty);
       refreshDerived(merged);
-      const key = keyFor(current.path);
-      if (isDirty) {
-        setDraft(key, {
-          content: merged,
-          baseSha: merge.remoteSha,
-          updatedAt: Date.now(),
-        }).catch(() => {});
-        markDraft(current.path, true);
-      } else {
-        deleteDraft(key).catch(() => {});
-        markDraft(current.path, false);
-      }
+      // currentRef を新基準に進めた上で待避を確定する（dirty なら保存・同一なら破棄）
+      persistDraft();
       setMerge(null);
       setEditorDoc(merged);
       setEditorEpoch((epoch) => epoch + 1);
       compilePreview();
     },
-    [merge, keyFor, markDraft, compilePreview, refreshDerived],
+    [merge, persistDraft, compilePreview, refreshDerived],
   );
 
   /** ローカル編集を破棄してリモート最新を開き直す */
@@ -779,7 +680,7 @@ export function VerticalEditor({
     } finally {
       setFullPreviewLoading(false);
     }
-  }, [ok, projectId, flushDraft, assetUrl]);
+  }, [ok, projectId, flushDraft, assetUrl, setPreviewOpen]);
 
   /** 新規章の作成＝コミット（SPEC §3.3。entry へは自動追記される。SPEC-phase3 §7-2） */
   const handleCreateChapter = useCallback(
@@ -838,130 +739,47 @@ export function VerticalEditor({
 
   // ---- ブランチ切替・作成・PR（SPEC-vertical-editor-phase5） ----
 
-  /** 選択中ブランチの保持（URLクエリ＋localStorage。デフォルトなら消す。SPEC-phase5 §3.1） */
-  const rememberBranch = useCallback(
-    (branchName: string, defaultBranchName: string) => {
-      const isDefault = branchName === defaultBranchName;
-      try {
-        const key = `nekonote-editor-branch:${projectId}`;
-        if (isDefault) localStorage.removeItem(key);
-        else localStorage.setItem(key, branchName);
-      } catch {
-        // localStorage が使えない環境では URL のみで保持する
-      }
-      const url = new URL(window.location.href);
-      if (isDefault) url.searchParams.delete("branch");
-      else url.searchParams.set("branch", branchName);
-      window.history.replaceState(null, "", url);
-    },
-    [projectId],
-  );
+  /** 新ブランチのワークスペースを反映（章の選択状態・プレビュー等のリセット込み） */
+  const applyWorkspace = useCallback((data: OkWorkspace) => {
+    setSelectedPath(null);
+    currentRef.current = null;
+    contentRef.current = "";
+    setPreviewHtml(null);
+    setFullPreview(false);
+    setMerge(null);
+    setRestorePrompt(null);
+    setDirty(false);
+    setCharCount(null);
+    setActualPages(null);
+    setComments([]);
+    setSidebarTab("chapters");
+    setWs(data);
+    setChapters(data.chapters);
+    okRef.current = data;
+  }, []);
 
-  /**
-   * ブランチ切替（SPEC-phase5 §3.1）。未保存の編集は待避してそのまま切り替える（論点F。
-   * 下書きキーはブランチ別のため、元ブランチへ戻れば復元バナーで拾える）。
-   * 章の選択状態・プレビューはリセットし、新ブランチの章一覧を取得し直す
-   */
-  const switchBranch = useCallback(
-    async (nextBranch: string) => {
-      const okNow = okRef.current;
-      if (!okNow || nextBranch === okNow.branch) return;
-      flushDraft();
-      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-      // 校正パネルは開いていた章に紐づくため切替で閉じる（章切替・モバイル戻ると同じ作法）
-      closeReviewPanel();
-      setBranchSwitching(true);
-      try {
-        const result = await getEditorWorkspace(projectId, nextBranch);
-        if (!result.ok || !result.data || result.data.gate !== "ok") {
-          toast.error(
-            result.ok ? "ブランチの切替に失敗しました" : result.error.message,
-          );
-          return;
-        }
-        const data = result.data;
-        // 章の状態をリセット（モバイルの「章一覧へ戻る」と同じ後片付け＋全体プレビュー解除）
-        setSelectedPath(null);
-        currentRef.current = null;
-        contentRef.current = "";
-        setPreviewHtml(null);
-        setFullPreview(false);
-        setMerge(null);
-        setRestorePrompt(null);
-        setDirty(false);
-        setCharCount(null);
-        setActualPages(null);
-        setComments([]);
-        setSidebarTab("chapters");
-        setWs(data);
-        setChapters(data.chapters);
-        okRef.current = data;
-        rememberBranch(data.branch, data.defaultBranch);
-        if (data.branchFallback) {
-          toast.warning(
-            `ブランチ ${nextBranch} が見つかりません。デフォルトブランチを開きました`,
-          );
-        } else {
-          toast.success(`ブランチ ${data.branch} に切り替えました`);
-        }
-      } finally {
-        setBranchSwitching(false);
-      }
-    },
-    [projectId, flushDraft, rememberBranch, closeReviewPanel],
-  );
+  const clearPreviewTimer = useCallback(() => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+  }, []);
 
-  /** ブランチ作成→即切替（SPEC-phase5 §3.2。起点は常にデフォルトブランチのHEAD） */
-  const handleCreateBranch = useCallback(
-    async (name: string) => {
-      setBranchCreating(true);
-      try {
-        const result = await createEditorBranch(projectId, name);
-        if (!result.ok || !result.data) {
-          toast.error(
-            result.ok ? "ブランチの作成に失敗しました" : result.error.message,
-          );
-          return;
-        }
-        setBranchCreateOpen(false);
-        toast.success(`ブランチ ${result.data.branch} を作成しました`);
-        await switchBranch(result.data.branch);
-      } finally {
-        setBranchCreating(false);
-      }
-    },
-    [projectId, switchBranch],
-  );
-
-  // 初回のブランチ同期（SPEC-phase5 §3.1）: サーバーがフォールバックしたら通知して保存値を
-  // クリア。?branch= がなければ localStorage から復元する（?file= リンク経由の場合は
-  // リンクの意図を優先して復元しない）
-  const branchSyncedRef = useRef(false);
-  useEffect(() => {
-    if (branchSyncedRef.current || !ok) return;
-    branchSyncedRef.current = true;
-    if (ok.branchFallback) {
-      toast.warning(
-        "指定のブランチが見つからないため、デフォルトブランチを開きました",
-      );
-      rememberBranch(ok.branch, ok.defaultBranch);
-      return;
-    }
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("branch")) {
-      // URL指定で開いた場合は localStorage をURLに合わせる
-      rememberBranch(ok.branch, ok.defaultBranch);
-      return;
-    }
-    if (params.get("file")) return;
-    let stored: string | null = null;
-    try {
-      stored = localStorage.getItem(`nekonote-editor-branch:${projectId}`);
-    } catch {
-      stored = null;
-    }
-    if (stored && stored !== ok.branch) void switchBranch(stored);
-  }, [ok, projectId, rememberBranch, switchBranch]);
+  const {
+    branchSwitching,
+    branchCreateOpen,
+    setBranchCreateOpen,
+    branchCreating,
+    prOpen,
+    setPrOpen,
+    switchBranch,
+    handleCreateBranch,
+  } = useBranchState({
+    projectId,
+    ok,
+    okRef,
+    flushDraft,
+    clearPreviewTimer,
+    closeReviewPanel,
+    applyWorkspace,
+  });
 
   /**
    * 画像アップロードの実行（SPEC-phase3 §6・論点C）。
@@ -1066,101 +884,13 @@ export function VerticalEditor({
     [recount],
   );
 
-  /** ペイン比率のドラッグ可変（SPEC §3.2） */
-  const startDrag = useCallback((event: React.PointerEvent) => {
-    event.preventDefault();
-    const container = splitRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    setDragging(true);
-    const onMove = (e: PointerEvent) => {
-      const next = (e.clientX - rect.left) / rect.width;
-      setRatio(Math.min(0.8, Math.max(0.25, next)));
-    };
-    const onUp = () => {
-      setDragging(false);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
-  }, []);
-
-  // ---- プレビューの別ウィンドウ分離（Issue #72） ----
-
-  // 分離窓との通信チャンネル。窓のリロード時の ready も拾えるよう、常時張っておく
-  useEffect(() => {
-    const channel = new BroadcastChannel(previewChannelName(projectId));
-    channelRef.current = channel;
-    channel.onmessage = (event: MessageEvent<PreviewChannelMessage>) => {
-      const message = event.data;
-      if (message.type === "ready") {
-        // 窓側の準備完了（URL直開き・リロード含む）→ 分離モードにして現在のHTMLを送る
-        setDetached(true);
-        setResendTick((tick) => tick + 1);
-      } else if (message.type === "pages") {
-        // 実ページ数は編集章の部分プレビューのみ反映（インライン時と同じ条件）
-        if (!message.full) setActualPages(message.total);
-      } else if (message.type === "closed") {
-        setDetached(false);
-      }
-    };
-    // リロード等で開いたままの分離窓があれば再接続させる（窓が ready を返す）
-    channel.postMessage({ type: "hello" } satisfies PreviewChannelMessage);
-    return () => {
-      channel.close();
-      channelRef.current = null;
-      // エディタを離れたら分離窓も閉じる（宙に浮いた古いプレビューを残さない）
-      popupRef.current?.close();
-      popupRef.current = null;
-    };
-  }, [projectId]);
-
-  // 分離中はプレビューHTMLの更新を窓へ送る（再組版は窓側の Viewer が行う）
-  useEffect(() => {
-    if (!detached || previewHtml === null) return;
-    channelRef.current?.postMessage({
-      type: "document",
-      html: previewHtml,
-      full: fullPreview,
-      title: previewTitleRef.current,
-    } satisfies PreviewChannelMessage);
-  }, [detached, previewHtml, fullPreview, resendTick]);
-
-  // pagehide が飛ばない閉じ方（プロセス終了等）への保険として閉窓をポーリング検知
-  useEffect(() => {
-    if (!detached) return;
-    const timer = setInterval(() => {
-      if (popupRef.current?.closed) {
-        popupRef.current = null;
-        setDetached(false);
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [detached]);
-
-  const toggleDetachedPreview = useCallback(() => {
-    if (detached) {
-      popupRef.current?.close();
-      popupRef.current = null;
-      setDetached(false);
-      return;
-    }
-    // 同名ウィンドウは再利用される（多重に開かない）。popup 指定でタブでなく独立ウィンドウに
-    const popup = window.open(
-      detachedPreviewUrl(projectId),
-      `nekonote-preview-${projectId}`,
-      "popup=yes,width=900,height=1000",
-    );
-    if (!popup) {
-      toast.error(
-        "ポップアップがブロックされました。ブラウザの設定で許可してください",
-      );
-      return;
-    }
-    popupRef.current = popup;
-    setDetached(true);
-  }, [detached, projectId]);
+  const { detached, toggleDetachedPreview } = useDetachedPreview({
+    projectId,
+    previewHtml,
+    fullPreview,
+    previewTitleRef,
+    onPages: setActualPages,
+  });
 
   // ---- 前提未達（repo/PAT）の誘導表示（原稿タブと同じ作法） ----
   if (workspaceError) {
