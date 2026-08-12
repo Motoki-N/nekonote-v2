@@ -128,7 +128,15 @@ export function useReviewPanel({
     } finally {
       setReviewLoading(false);
     }
-  }, [projectId, requestSave, openReviewPanel, currentRef, contentRef, okRef, editorViewRef]);
+  }, [
+    projectId,
+    requestSave,
+    openReviewPanel,
+    currentRef,
+    contentRef,
+    okRef,
+    editorViewRef,
+  ]);
 
   /** 提案の受入/拒否/保留（原稿タブと同じ作法で、成功時はローカルの提案一覧のみ差し替える） */
   const handleUpdateSuggestion = useCallback(
