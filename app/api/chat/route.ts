@@ -48,7 +48,7 @@ export const maxDuration = 60;
 const HISTORY_LIMIT = 20;
 
 function textOf(message: UIMessage): string {
-  return message.parts
+  return (message.parts ?? [])
     .filter((part) => part.type === "text")
     .map((part) => part.text)
     .join("");
@@ -262,8 +262,11 @@ export async function POST(req: Request) {
     const messages = parsed.data.messages as unknown as UIMessage[];
 
     // 1メッセージあたりの本文長は zod では検証できない（UIMessage の構造はSDK任せ）ため、
-    // 講評・レビューと同じ合計文字数ガードをここで掛ける（security-audit-20260812 L-1）
-    const chatInputChars = messages.reduce(
+    // 講評・レビューと同じ合計文字数ガードをここで掛ける（security-audit-20260812 L-1）。
+    // 数えるのはモデルへ実際に渡る直近 HISTORY_LIMIT 件だけ——全件を数えると、
+    // モデルに渡らない古い履歴が上限を押し上げて長寿スレッドが継続不能になる
+    const recent = messages.slice(-HISTORY_LIMIT);
+    const chatInputChars = recent.reduce(
       (total, message) => total + textOf(message).length,
       0,
     );
@@ -347,7 +350,6 @@ export async function POST(req: Request) {
         "personas.ai_capability",
       ),
     );
-    const recent = messages.slice(-HISTORY_LIMIT);
 
     const result = streamText({
       model,

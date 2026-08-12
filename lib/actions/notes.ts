@@ -173,7 +173,7 @@ export async function restoreNoteVersion(
     ) {
       return { ok: true };
     }
-    await insertSnapshot(supabase, noteId, current);
+    await insertSnapshot(supabase, id, current);
 
     const { data, error } = await supabase
       .from("notes")

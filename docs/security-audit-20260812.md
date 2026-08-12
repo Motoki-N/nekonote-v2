@@ -48,7 +48,8 @@
 
 ### M-1. 縦書きエディタの組版プレビューでアプリオリジンの任意JSが実行される
 
-- **状態**: 未対応（対応方針をユーザー判断待ち）
+- **状態**: 対応しない（受容。**2026-08-12 に SPEC-vertical-editor-phase2 §9 へ
+  受容済みリスクとして明記し、再評価トリガーを定義済み**）
 - **該当**: `lib/editor/preview.ts:99-147`（`buildPreviewHtml`）・
   `components/editor/preview-pane.tsx:69-75,103-108`（Blob URL 化と iframe）・
   `app/editor-preview/[projectId]/page.tsx:69-80`（分離窓も同一経路）
@@ -70,12 +71,14 @@
   （PAT実値は返らないが、リポジトリ書き込み・ノート改変は本人権限で可能）。
   phase5 のブランチ切替でPRブランチの原稿もプレビューできるため、将来リポジトリに
   外部コントリビュータが入ると self-XSS では済まなくなる。
-- **修正方針**: 生HTML許容は仕様上必須（`components/editor/codemirror.ts:150-195` の
-  割注 `<span class="warichu">`・改ページ `<div class="page-break">` が生HTMLブロック前提）
+- **修正方針**: 生HTML許容は仕様上必須（`components/editor/codemirror.ts` の
+  `insertWarichuText` / `insertPageBreak` が挿入する割注 `<span class="warichu">`（インライン）・
+  改ページ `<div class="page-break">`（ブロック）が生HTMLの素通しを前提にしている）
   のため、全面サニタイズは非現実的。選択肢は3つ:
-  1. **受容済みリスクとして明文化**（`docs/SPEC-vertical-editor.md` phase2 §5 に追記）。
+  1. **受容済みリスクとして明文化**（`docs/SPEC-vertical-editor-phase2.md` §9 に追記）。
      Zenn側は `docs/SPEC-zenn-integration.md:199` に self-XSS 範囲と明記済みで、
      縦書きプレビューだけ記述がない状態を解消する。コスト最小
+     → **2026-08-12 にこの案を採用し追記済み**
   2. **allowlist サニタイズ**: 割注・改ページ・ルビ等の必要タグのみ許可し、
      `script` とイベントハンドラ属性を落とす。防御としては本命だが実装量あり
   3. **CSP**: `next.config.ts` の `headers()` で `/vivliostyle/viewer/*` に
@@ -86,18 +89,17 @@
 ### M-2. 伏せ字規約に抵触する例示文字列が現存（Step P の前提）
 
 - **状態**: 未対応（Step P の判断事項。**現ファイル差し替えと git 履歴の扱いはセット**）
-- **該当**: 4箇所。`docs/manual.md:231` / `:243`（§8 のリポジトリ名の例示）、
-  `components/projects/repo-setup-dialog.tsx:113`（Input の `title` 属性）、
-  `lib/schemas/projects.ts:69`（zod エラーメッセージの例示）
-- **何が問題か**: CLAUDE.md の公開リポジトリ規約が禁じる「未公開作品の実タイトル」に該当する
-  例示文字列。後者2つは**クライアントバンドルにも乗る**。セッション89 で2箇所は把握済みだったが、
-  `lib/schemas/projects.ts:69` は本監査で新たに判明した箇所（初出コミット `e5f1cae`）。
-- **git 履歴**: 導入は `e5f1cae`（repo-setup 機能）と `4b2dc09`（manual §8 追記）の2コミットのみ
-  （`git log -S` で確定）。**現ファイルを差し替えても履歴には残る**。
-- **あわせて履歴判断の対象**: Vercel チームスラッグが `ffb8874`（SPEC-auth.md）・
-  `ba73c6f`（dev-log.md・incident-log.md）の diff に残存（HEAD では `<team-slug>` に伏せ字化済み）。
-  Deployment Protection 有効のため直接の実害は限定的だが、規約上の「インフラ識別子」に該当。
-- **修正方針**: 現ファイル4箇所を汎用例へ差し替え。git 履歴は
+- **概要**: CLAUDE.md の公開リポジトリ規約が禁じる「未公開作品の実タイトル」に該当する
+  例示文字列が、UIコンポーネント・スキーマのエラーメッセージ・manual の3系統に現存する
+  （**うち2系統はクライアントバンドルにも乗る**）。あわせて、規約上の「インフラ識別子」が
+  過去コミットの diff に残存している（現ファイルでは伏せ字化済み）。
+- **具体的な該当箇所・該当文字列・該当コミットは、公開リポジトリの文書には記載しない**
+  （どの文字列が実タイトルかの対応関係を自ら晒すことになるため。セッション89 で
+  公開Issue化を見送ったのと同じ理由）。実体はリポジトリ外で管理し、Step P の作業時に参照する。
+- **本監査で判明した差分**: セッション89 の把握分に加え、**新たに1系統が判明**した
+  （zod エラーメッセージ経由でクライアントに届く経路）。導入コミットは `git log -S` で
+  2件に特定済み。
+- **修正方針**: 現ファイルを汎用例へ差し替え。git 履歴は
   「履歴書き換え（filter-repo）／許容して公開／リポジトリ作り直し」の3択をユーザーが決定する。
   リポジトリは本監査時点で **PRIVATE のまま**であり、公開前に処理できる状態にある。
 
@@ -107,7 +109,12 @@
 
 ### L-1. `/api/chat` のメッセージ本文にサイズ上限がない
 
-- **状態**: 未対応
+- **状態**: 対応済み（2026-08-12。モデルへ実際に渡る直近20件の合計文字数に
+  `CRITIQUE_MAX_CHARS`（30万字）ガードを追加。全件ではなく直近分を数えるのは、
+  モデルに渡らない古い履歴が上限を押し上げて長寿スレッドを止めないため。
+  なお `textOf` は text パートのみを数えるため、リクエストを偽造して巨大な
+  tool-result / data パートを積む経路は塞がらない——本指摘の目的である
+  コスト事故の抑止には足りると判断した）
 - **該当**: `lib/schemas/chat.ts:24`（`messages: z.array(z.record(z.string(), z.unknown())).min(1).max(100)`）
 - **何が問題か**: 件数（100件）と履歴スライス（直近20件）の制限はあるが、各メッセージの本文長は無検証。
   前回監査 L-3 で入れたサイズ上限（ノート10万字・レビュー30万字ガード）が chat の messages だけ及んでいない。
@@ -119,9 +126,14 @@
 
 ### L-2. 企画書本文ほかに文字数上限がない（前回 L-3 の残存ギャップ）
 
-- **状態**: 未対応
-- **該当**: `lib/schemas/projects.ts:80`（`proposalInputSchema.content`）、同 24行 `title`・28行 `event_name`・
-  77-79行 `purpose`/`genre`/`target_audience`、`lib/schemas/notes.ts:21`（`tagInputSchema.name`）
+- **状態**: 対応済み（2026-08-12。企画書 content 10万字・purpose 2000字・
+  genre / target_audience 各500字・プロジェクトタイトル500字・イベント名200字・
+  タグ名500字を追加。**タグ名はプロジェクトタイトルと同値に揃えた**——レビューの
+  ノート化がプロジェクトタイトルをそのまま仮タイトルタグ名にするため、非対称にすると
+  「作成はできるがノート化だけ必ず失敗するタイトル長」が生まれる）
+- **該当**: `lib/schemas/projects.ts` の `proposalInputSchema` の `content`/`purpose`/`genre`/
+  `target_audience`、`projectInputSchema` の `title`/`event_name`、
+  `lib/schemas/notes.ts` の `tagInputSchema.name`（いずれも修正前は max なし）
 - **何が問題か**: ノート10万字・シーン2万字・Zenn20万字と上限が揃えられた中で、
   企画書本文とこれらのフィールドだけ無上限。企画書は自動保存＋`proposal_versions` の
   10分間引きスナップショットで増幅される。
@@ -132,7 +144,12 @@
 
 ### L-3. `lib/actions/notes.ts` の id 引数だけ uuid 検証を通していない
 
-- **状態**: 未対応
+- **状態**: 対応済み（2026-08-12。9つの入口（実体は7関数。trashNote / restoreNote は
+  setDeletedAt 経由）に `uuidSchema.parse` を追加し他15ファイルと同型に揃えた。
+  **ただしエラーコードの正規化までは達成していない**——ZodError も `toActionError` で
+  `internal` に落ちるため。`validation` で返したい場合は
+  `lib/actions/repo-setup.ts` / `settings.ts` の `safeParse` → `AppError("validation")`
+  パターンへの置き換えが別途必要）
 - **該当**: `lib/actions/notes.ts` の `updateNote`(88)・`listNoteVersions`(128)・`restoreNoteVersion`(146)・
   `trashNote`/`restoreNote`/`setDeletedAt`(187-215)・`deleteNotePermanently`(218)・`attachTag`/`detachTag`(236-290)
 - **何が問題か**: 他15ファイルは全関数で `uuidSchema.parse` しているのに notes.ts だけ欠落。
@@ -142,7 +159,7 @@
 
 ### L-4. `lib/email.ts` に `import "server-only"` がない
 
-- **状態**: 未対応
+- **状態**: 対応済み（2026-08-12。1行目に `import "server-only"` を追加）
 - **該当**: `lib/email.ts:1`（`RESEND_API_KEY` を参照）
 - **何が問題か**: 現状の import 元は cron ルートのみで実害はないが、秘密を扱うモジュールで唯一の
   server-only 未ガード。将来クライアントコンポーネントから誤 import してもビルドで弾けない。

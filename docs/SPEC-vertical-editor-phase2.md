@@ -147,8 +147,10 @@ Phase 2 に含める（論点Cで確定）。
   Vivliostyle Viewer に読ませるため、**原稿に書いた `<script>` やイベントハンドラ属性
   （`onerror` 等）はプレビュー描画時にアプリのオリジンで実行される**（2026-08-12 に実機再現で確認。
   `parent` 経由でアプリ側 window へも到達できる）。
-  生HTMLの許容は仕様上必須で（§4 の割注 `<span class="warichu">`・改ページ
-  `<div class="page-break">` が生HTMLブロック前提）、全面サニタイズはこの機能と両立しない。
+  生HTMLの許容は仕様上必須で（`components/editor/codemirror.ts` の `insertWarichuText` /
+  `insertPageBreak` が挿入する割注 `<span class="warichu">`（インライン）と改ページ
+  `<div class="page-break">`（ブロック）が生HTMLの素通しを前提とする。記法の定義は
+  SPEC-aozora-export §3）、全面サニタイズはこの機能と両立しない。
   単一許可ユーザー制では原稿の書き手＝閲覧者本人のため self-XSS の範囲として受容する。
   **再評価トリガー**: ①複数ユーザー化・原稿の共有機能の導入 ②リポジトリに外部コントリビュータが
   入る運用（phase5 のブランチ切替でPRブランチの原稿もプレビューできるため）。
