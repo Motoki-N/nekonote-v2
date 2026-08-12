@@ -110,7 +110,7 @@ export function RepoSetupDialog({
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               pattern="[a-z0-9][a-z0-9-]*"
-              title="小文字英数字とハイフン（例: ningyo-no-uta）"
+              title="小文字英数字とハイフン（例: ryu-no-su）"
               required
             />
           </label>
