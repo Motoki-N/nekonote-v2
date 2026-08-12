@@ -1186,3 +1186,15 @@
 - 検証: コード変更ゼロ（Markdown のみ）のため typecheck / lint は対象外。改訂内容は SPEC 8本（zenn-integration / outline-board / structure-templates / aozora-export / manuscript-history / proofread-selection / review-history / genre）＋マイグレーションのシード＋実コンポーネント（project-tabs・settings/page・build-dialog・scene-dialog・beat-board ほか）に当たって事実確認したうえで執筆した
 - 残作業（手作業）: 撮影用デモデータ（架空作品1件）の用意とキャプチャ撮影・差し込み。**未公開作品の実データは撮影に使わない**（公開リポジトリ規約）
 - 次: Step 6（リリース確定——CHANGELOG 新規作成・package.json 0.1.0→0.2.0・`v0.2.0` タグ・GitHub Release）
+
+### セッション98: 締めくくり作業 Step 6——リリース確定（CHANGELOG 新設・v0.2.0 タグ・Release 公開）（8/12）
+
+- **`CHANGELOG.md` を新設**（本リポジトリ初。Keep a Changelog 準拠・日本語）。v0.2.0 を「第二期リポジトリの初回リリース」として、冒頭に**第一期からの設計3転換**（手帳→プロットモデル / AIのペルソナ化 / 原稿のGit移管）を置き、機能を**11領域**に分けて列挙した。`package.json` / `package-lock.json` を 0.1.0 → 0.2.0 へ更新し、README のドキュメント一覧にも追加（PR [#191](https://github.com/Motoki-N/nekonote-v2/pull/191)）
+- **書き方の判断: コミット単位ではなく機能単位**。349コミット・79PR を羅列しても読めないため、機能を領域でまとめて詳細は manual.md / SPEC-index.md / dev-log へリンクする形にした。**Step 3 で作った SPEC-index.md が CHANGELOG の下書きとしてほぼそのまま使えた**——索引を作った副作用として、リリースノートの粒度（＝機能の単位）が既に決まっていた
+- **意図的に書かなかったこと: 第一期の問題点6件の解消判定**。これは Step 8 観点A の成果物であり、リリースノートで先取りすると **Step 8 の判定基準そのものが動く**。同じ理由で Step 3 では要求仕様の本文を据え置いて追補節に回している。**「後の工程が判定する材料を、前の工程が結論として書いてしまわない」**という一貫した扱いにした
+- **`package-lock.json` の再生成は使わなかった**。`npm install --package-lock-only` はバージョン行だけでなく、無関係な bundled optional 依存（`@tailwindcss/oxide-wasm32-wasi` 配下）を68行書き足した。運用期間の「原則コード凍結」に照らして revert し、**バージョン行2箇所のみを直接編集**。リリースの差分に依存関係の変更が混ざるのは、後から「このリリースで何が変わったか」を追うときに最も邪魔になる
+- **タグとリリース**: マージ後の main（`17941c5`）に注釈付きタグ `v0.2.0` を作成して push し、GitHub Release を公開。**本リポジトリ2つ目のタグ**（1つ目は Step 0 の基準線 `v0.2.0-rc`）で、リファクタリング前の凍結点と完成版が同じ履歴上に並んだ形になった
+- **Release ノートは CHANGELOG の v0.2.0 節を機械抽出**（`awk` で見出し〜区切り線）して流用し、冒頭にマニュアル・RUNBOOK・SPEC索引への案内を追加。**ドキュメントへの相対リンクは `blob/v0.2.0` 固定の絶対URLへ変換**した——Release ページは相対リンクでも解決されるが、リンク先の内容は今後改訂されるため、リリース時点のスナップショットに固定した方が「このバージョンの説明」として正しい
+- 検証: `npm run typecheck`（`nekonote-v2@0.2.0` として実行されることも確認）・`npm run format:check` 通過。差分に依存関係の変更なし。公開リポジトリ規約の観点で差分を確認し検出ゼロ
+- **実測値（CHANGELOG に記載）**: 開発期間 2026-07-12〜08-12・349コミット・79 PR・108 Issue・TS/TSX 210ファイル 37,380行・マイグレーション29本・SPEC 28本・dev-log 97セッション。**これらは Step 8 の第一期比較の実測ベースラインの更新値でもある**（計画書 §2 Step 8 の表は 8/7 時点の値のため、比較レポート作成時はこちらを使う）
+- 次: Step 7（開発記録の章単位ドラフト）。着手前に Step 8 の定量データ収集を前倒しする方針（計画書 Step 8「着手タイミングの補足」）

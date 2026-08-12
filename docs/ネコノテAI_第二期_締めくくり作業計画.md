@@ -207,8 +207,14 @@ PR [#185](https://github.com/Motoki-N/nekonote-v2/pull/185)（Low 4件の修正�
 
 - [x] `CHANGELOG.md` **新規作成**（本リポジトリ初。以後のリリースで更新していく起点）
 - [x] package.json のバージョンを 0.1.0 → 0.2.0 へ更新
-- [ ] `v0.2.0` タグ付け
-- [ ] GitHub Release 作成（Step P 完了済みのため公開状態で見える）
+- [x] `v0.2.0` タグ付け（注釈付きタグ。main の `17941c5` へ。本リポジトリ2つ目のタグ——1つ目は Step 0 の `v0.2.0-rc`）
+- [x] GitHub Release 作成（Step P 完了済みのため公開状態で見える）→ [v0.2.0](https://github.com/Motoki-N/nekonote-v2/releases/tag/v0.2.0)
+
+**Step 6 完了**（2026-08-12）。PR [#191](https://github.com/Motoki-N/nekonote-v2/pull/191) をマージ後、タグと Release を main の HEAD に対して作成した。
+
+- **Release ノートは CHANGELOG の v0.2.0 節をそのまま流用**し、冒頭にマニュアル・RUNBOOK・SPEC索引への案内を足した。
+  ドキュメントへの相対リンクは **`blob/v0.2.0` 固定の絶対URLへ変換**している（Release ページはリポジトリのルート基準で解決されるため相対リンクでも表示はできるが、
+  後の改訂で内容がズレないよう**リリース時点のスナップショットへ固定**した）
 
 **CHANGELOG の方針**（2026-08-12）: Keep a Changelog 準拠・日本語。v0.2.0 は**第二期リポジトリの初回リリース**として、
 第一期からの3転換（手帳→プロットモデル / AIのペルソナ化 / 原稿のGit移管）＋機能を11領域に分けて列挙する構成にした。
