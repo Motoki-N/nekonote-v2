@@ -423,6 +423,22 @@ next 本体の high 9件と、同梱の `postcss`・`sharp`。**前回監査 L-4
 6. ~~**auth.users トリガーの本番存在確認**~~ → **確認済み（2026-08-12・グリーン）**。
    `check_email_allowlist_before_insert` が `auth.users` に存在し、有効（`tgenabled = 'O'`）
 
+### Dependabot の更新ジョブが失敗し続ける件（想定内・対応不要）
+
+Step P で Dependabot security updates を有効化したため、Actions の一覧に
+**Dependabot の更新ジョブの失敗が定期的に現れる**が、これは**プロジェクトの CI の失敗ではない**。
+オープンなアラート3件（`trim` high / `prismjs` `valibot` medium）は**すべて `@vivliostyle/vfm` の
+推移的依存**で、vfm が古いバージョンをピン留めしているため Dependabot が自動更新PRを作れず、
+ジョブがエラー終了する（PRは作成されない）。Dependabot 自身の説明も
+「`@vivliostyle/vfm` を非脆弱な prismjs に依存するリリースへ更新するか、override で固定せよ」で、
+Step 2 の「上流待ち」判断と一致する。
+
+回避策として `package.json` の `overrides` で固定する手はあるが、
+①8/12 以降は運用期間でコードを凍結している ②override は縦書きエディタのプレビュー
+（vfm → refractor 経由の記法処理）を壊すリスクがある ③prismjs の DOM Clobbering は
+**利用者が自分の原稿に悪意あるコードブロックを書いた場合にしか成立しない**ため実質的な
+リスクがない、の3点から**現時点では対応しない**。vfm の上流更新時に再評価する。
+
 ### Step P で発見した設定不具合: リマインドメールのキー名が誤登録
 
 - **状態**: 未対応（Vercel 側の設定作業のためユーザー実施。値は Resend でしか取得できない）
