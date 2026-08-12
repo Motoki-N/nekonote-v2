@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, Info, Loader2, Settings } from "lucide-react";
+import { ArrowLeft, Info, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -52,6 +51,7 @@ import { usePaneLayout } from "@/components/editor/hooks/use-pane-layout";
 import { useCommentActions } from "@/components/editor/hooks/use-comment-actions";
 import { useImageUpload } from "@/components/editor/hooks/use-image-upload";
 import { useReviewPanel } from "@/components/editor/hooks/use-review-panel";
+import { EditorGuidance } from "@/components/editor/editor-guidance";
 import { EditorSidebar } from "@/components/editor/editor-sidebar";
 import { EditorTopBar } from "@/components/editor/editor-top-bar";
 
@@ -666,51 +666,13 @@ export function VerticalEditor({
 
   // ---- 前提未達（repo/PAT）の誘導表示（原稿タブと同じ作法） ----
   if (workspaceError) {
-    return (
-      <GuidanceCard>
-        <p className="text-sm text-destructive">{workspaceError}</p>
-        <p className="text-sm text-muted-foreground">
-          PATの有効期限・対象リポジトリ設定と、プロジェクトのリポジトリ名を確認してください。
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          nativeButton={false}
-          render={<Link href="/settings">設定をひらく</Link>}
-        />
-      </GuidanceCard>
-    );
+    return <EditorGuidance kind="error" message={workspaceError} />;
   }
   if (!ws || ws.gate === "no_pat") {
-    return (
-      <GuidanceCard>
-        <p className="text-sm text-foreground">
-          エディタでの執筆には GitHub PAT の登録が必要です。
-        </p>
-        <Button
-          size="sm"
-          nativeButton={false}
-          render={
-            <Link href="/settings">
-              <Settings data-icon="inline-start" />
-              設定でPATを登録する
-            </Link>
-          }
-        />
-      </GuidanceCard>
-    );
+    return <EditorGuidance kind="no_pat" />;
   }
   if (ws.gate === "no_repo") {
-    return (
-      <GuidanceCard>
-        <p className="text-sm text-foreground">
-          原稿リポジトリが設定されていません。
-        </p>
-        <p className="text-sm text-muted-foreground">
-          ヘッダーの編集ボタン（鉛筆アイコン）から「原稿リポジトリ（owner/repo）」を設定してください。
-        </p>
-      </GuidanceCard>
-    );
+    return <EditorGuidance kind="no_repo" />;
   }
 
   // ここまでのガードで gate は 'ok' に絞り込まれている（JSX用の非null別名）
@@ -1077,16 +1039,6 @@ export function VerticalEditor({
           event.target.value = "";
         }}
       />
-    </div>
-  );
-}
-
-function GuidanceCard({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex flex-1 items-start justify-center p-6">
-      <div className="flex w-full max-w-md flex-col items-start gap-3 rounded-lg border border-border bg-card p-4">
-        {children}
-      </div>
     </div>
   );
 }
