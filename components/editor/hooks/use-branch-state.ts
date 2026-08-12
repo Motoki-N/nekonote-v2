@@ -163,7 +163,6 @@ export function useBranchState({
     branchCreating,
     prOpen,
     setPrOpen,
-    rememberBranch,
     switchBranch,
     handleCreateBranch,
   };

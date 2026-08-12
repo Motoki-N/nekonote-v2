@@ -5,7 +5,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   deleteDraft,
   draftKey,
-  getDraft,
   listDraftKeys,
   setDraft,
 } from "@/lib/editor/draft-store";
@@ -111,8 +110,5 @@ export function useDraftStore({
     persistDraft,
     flushDraft,
     scheduleDraft,
-    /** 復元フローで待避を読む（keyFor と対で使う） */
-    getDraft,
-    deleteDraft,
   };
 }
