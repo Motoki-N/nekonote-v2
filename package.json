@@ -1,6 +1,6 @@
 {
   "name": "nekonote-v2",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "小説執筆支援アプリ。AIがネタ出し・レビュー・校正で伴走し、原稿はGitHubリポジトリで管理する",
   "license": "MIT",

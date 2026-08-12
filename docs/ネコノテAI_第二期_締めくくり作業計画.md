@@ -205,10 +205,20 @@ PR [#185](https://github.com/Motoki-N/nekonote-v2/pull/185)（Low 4件の修正�
 
 ### Step 6: リリース確定
 
-- [ ] `CHANGELOG.md` **新規作成**（本リポジトリ初。以後のリリースで更新していく起点）
-- [ ] package.json のバージョンを 0.1.0 → 0.2.0 へ更新
+- [x] `CHANGELOG.md` **新規作成**（本リポジトリ初。以後のリリースで更新していく起点）
+- [x] package.json のバージョンを 0.1.0 → 0.2.0 へ更新
 - [ ] `v0.2.0` タグ付け
 - [ ] GitHub Release 作成（Step P 完了済みのため公開状態で見える）
+
+**CHANGELOG の方針**（2026-08-12）: Keep a Changelog 準拠・日本語。v0.2.0 は**第二期リポジトリの初回リリース**として、
+第一期からの3転換（手帳→プロットモデル / AIのペルソナ化 / 原稿のGit移管）＋機能を11領域に分けて列挙する構成にした。
+コミット単位ではなく**機能単位**でまとめ、詳細は manual.md・SPEC-index.md・dev-log へリンクする
+（349コミット・79PR を羅列しても読めないため）。第一期の問題点6件が解消されたかの**判定は書かない**——
+それは Step 8 観点A の成果物であり、リリースノートで先取りすると Step 8 の判定基準が動くため。
+
+- `package-lock.json` は `npm install --package-lock-only` だと無関係な bundled optional 依存
+  （`@tailwindcss/oxide-wasm32-wasi` 配下）まで書き足されたため revert し、**バージョン行2箇所のみ**を直接編集した
+  （運用期間の「原則コード凍結」に沿ってリリース差分をノイズなしに保つ）
 
 ### Step 7: 開発記録の作成
 
