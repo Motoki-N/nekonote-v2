@@ -1,115 +1,64 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
-import {
-  ArrowLeft,
-  BookOpen,
-  BookOpenText,
-  ExternalLink,
-  FileDown,
-  FilePlus2,
-  FileText,
-  Info,
-  Loader2,
-  Maximize2,
-  Minimize2,
-  PanelLeft,
-  PanelRight,
-  PictureInPicture2,
-  Save,
-  Settings,
-  SpellCheck,
-  Trash2,
-} from "lucide-react";
+import { ArrowLeft, Info, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   createChapter,
-  createEditorBranch,
   getAllChapterContents,
   getEditorWorkspace,
   openChapter,
   saveChapter,
-  uploadImage,
 } from "@/lib/actions/editor";
 import type { EditorChapter, EditorWorkspaceData } from "@/lib/actions/editor";
-import {
-  openManuscriptFile,
-  updateSuggestionStatus,
-  type ManuscriptFileData,
-} from "@/lib/actions/manuscripts";
-import type { SuggestionStatus } from "@/lib/schemas/enums";
-import { EditorSelection } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 
-import { getSelectedText } from "@/components/editor/codemirror";
 import { extractComments } from "@/lib/editor/comments";
 import type { ManuscriptComment } from "@/lib/editor/comments";
-import {
-  deleteDraft,
-  draftKey,
-  getDraft,
-  listDraftKeys,
-  setDraft,
-} from "@/lib/editor/draft-store";
+import { deleteDraft, getDraft } from "@/lib/editor/draft-store";
 import type { Draft } from "@/lib/editor/draft-store";
-import {
-  fileToBase64,
-  illustNotation,
-  sanitizeImageFileName,
-} from "@/lib/editor/image";
 import { buildPreviewHtml } from "@/lib/editor/preview";
 import {
-  detachedPreviewUrl,
-  previewChannelName,
-} from "@/lib/editor/preview-channel";
-import type { PreviewChannelMessage } from "@/lib/editor/preview-channel";
-import {
   countManuscriptChars,
-  estimatePages,
   extractKumiSettings,
 } from "@/lib/editor/word-count";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useChrome } from "@/components/layout/app-chrome";
 import { CritiquePanel } from "@/components/manuscript/critique-panel";
 import { ProofreadPanel } from "@/components/manuscript/proofread-panel";
 import { AozoraExportDialog } from "@/components/editor/aozora-export-dialog";
 import { BranchCreateDialog } from "@/components/editor/branch-create-dialog";
-import { BranchMenu } from "@/components/editor/branch-menu";
 import { BuildDialog } from "@/components/editor/build-dialog";
 import { EditorPane } from "@/components/editor/editor-pane";
 import { PrCreateDialog } from "@/components/editor/pr-create-dialog";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
 import { ImageUploadDialog } from "@/components/editor/image-upload-dialog";
-import type { IllustKind } from "@/components/editor/image-upload-dialog";
 import { MergePane } from "@/components/editor/merge-pane";
 import { NewChapterDialog } from "@/components/editor/new-chapter-dialog";
 import { PreviewPane } from "@/components/editor/preview-pane";
 import { SaveDialog } from "@/components/editor/save-dialog";
 import { SettingsDialog } from "@/components/editor/settings-dialog";
+import type {
+  CurrentChapter,
+  MergeState,
+} from "@/components/editor/editor-state";
+import { useBranchState } from "@/components/editor/hooks/use-branch-state";
+import type { OkWorkspace } from "@/components/editor/hooks/use-branch-state";
+import { useDetachedPreview } from "@/components/editor/hooks/use-detached-preview";
+import { useDraftStore } from "@/components/editor/hooks/use-draft-store";
+import { usePaneLayout } from "@/components/editor/hooks/use-pane-layout";
+import { useCommentActions } from "@/components/editor/hooks/use-comment-actions";
+import { useImageUpload } from "@/components/editor/hooks/use-image-upload";
+import { useReviewPanel } from "@/components/editor/hooks/use-review-panel";
+import { EditorGuidance } from "@/components/editor/editor-guidance";
+import { EditorSidebar } from "@/components/editor/editor-sidebar";
+import { EditorTopBar } from "@/components/editor/editor-top-bar";
 
-// 待避（IndexedDB）とプレビュー再組版のデバウンス（SPEC-vertical-editor-phase2 §5.1・§7）
-const DRAFT_DEBOUNCE_MS = 1000;
+// プレビュー再組版のデバウンス（SPEC-vertical-editor-phase2 §5.1）
 const PREVIEW_DEBOUNCE_MS = 3000;
 // 字数カウントのデバウンス（SPEC-vertical-editor-phase3 §5）
 const COUNT_DEBOUNCE_MS = 500;
-
-/** 開いている章の書き込み基準。打鍵ごとに触るため state ではなく ref で持つ */
-type CurrentChapter = {
-  path: string;
-  /** 楽観ロックの基準 blob SHA（保存成功・マージ取り込みで前進） */
-  baseSha: string;
-  /** 基準SHA時点のリモート本文（未保存判定・待避クリーンアップ用） */
-  remoteContent: string;
-};
-
-type MergeState = {
-  remoteContent: string;
-  remoteSha: string;
-  localContent: string;
-};
 
 /**
  * 縦書きエディタの本体（SPEC-vertical-editor-phase2 §3）。
@@ -140,7 +89,6 @@ export function VerticalEditor({
   /** エディタ作り直し時の初期本文（以後の打鍵は contentRef が正） */
   const [editorDoc, setEditorDoc] = useState("");
   const [dirty, setDirty] = useState(false);
-  const [draftPaths, setDraftPaths] = useState<ReadonlySet<string>>(new Set());
   const [restorePrompt, setRestorePrompt] = useState<Draft | null>(null);
   const [merge, setMerge] = useState<MergeState | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
@@ -151,23 +99,10 @@ export function VerticalEditor({
   const [buildOpen, setBuildOpen] = useState(false);
   /** 青空文庫形式の書き出し（SPEC-aozora-export）。source は開いた時点の編集中本文 */
   const [aozoraSource, setAozoraSource] = useState<string | null>(null);
-  /** ブランチ切替・作成・PR（SPEC-vertical-editor-phase5） */
-  const [branchSwitching, setBranchSwitching] = useState(false);
-  const [branchCreateOpen, setBranchCreateOpen] = useState(false);
-  const [branchCreating, setBranchCreating] = useState(false);
-  const [prOpen, setPrOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [typesetting, setTypesetting] = useState(false);
   const [fullPreview, setFullPreview] = useState(false);
   const [fullPreviewLoading, setFullPreviewLoading] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [previewOpen, setPreviewOpen] = useState(true);
-  /** プレビューを別ウィンドウへ分離中か（Issue #72。分離中はインラインのプレビューを畳む） */
-  const [detached, setDetached] = useState(false);
-  /** 分離窓からの ready（初回・リロード）で現在のHTMLを送り直すためのトリガー */
-  const [resendTick, setResendTick] = useState(0);
-  const [ratio, setRatio] = useState(0.5);
-  const [dragging, setDragging] = useState(false);
   /** 本文の字数（コメント・記法除外。SPEC-phase3 §5）。null は章未選択 */
   const [charCount, setCharCount] = useState<number | null>(null);
   /** Vivliostyle が組んだ実ページ数（編集で無効化→概算値へ戻す） */
@@ -177,57 +112,27 @@ export function VerticalEditor({
   const [sidebarTab, setSidebarTab] = useState<"chapters" | "comments">(
     "chapters",
   );
-  /** 画像アップロードの対象（D&D またはツールバーから。SPEC-phase3 §6） */
-  const [pendingImage, setPendingImage] = useState<File | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  /** 集中モード: 入力ペイン（＋開いていればプレビュー）以外のクロームをすべて隠す */
-  const [focusMode, setFocusMode] = useState(false);
-  /** エディタ内レビューパネル（Issue #18。校正は開いている章、講評は作品全体が対象） */
-  const [reviewOpen, setReviewOpen] = useState<"proofread" | "critique" | null>(
-    null,
-  );
-  /** 校正パネルに渡す原稿情報（openManuscriptFile の結果。コミット済み内容が正） */
-  const [reviewFile, setReviewFile] = useState<ManuscriptFileData | null>(null);
-  const [reviewLoading, setReviewLoading] = useState(false);
-  const [reviewError, setReviewError] = useState<string | null>(null);
-  /** エディタの主選択テキスト（選択範囲の校正。SPEC-proofread-selection §3。
-   * 通常の打鍵・選択で再レンダーさせないため、校正パネル表示中のみ追跡する */
-  const [proofreadSelection, setProofreadSelection] = useState("");
 
-  const { setHidden: setChromeHidden } = useChrome();
-
-  // グローバルナビ＋プロジェクトヘッダーの表示を集中モードに同期（離脱時は必ず復帰させる）
-  useEffect(() => {
-    setChromeHidden(focusMode);
-    return () => setChromeHidden(false);
-  }, [focusMode, setChromeHidden]);
-
-  // Esc で集中モードを解除
-  useEffect(() => {
-    if (!focusMode) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setFocusMode(false);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [focusMode]);
+  const {
+    sidebarOpen,
+    setSidebarOpen,
+    previewOpen,
+    setPreviewOpen,
+    focusMode,
+    setFocusMode,
+    ratio,
+    dragging,
+    splitRef,
+    startDrag,
+  } = usePaneLayout();
 
   const currentRef = useRef<CurrentChapter | null>(null);
   const contentRef = useRef("");
-  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const previewTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const splitRef = useRef<HTMLDivElement>(null);
-  const popupRef = useRef<Window | null>(null);
-  const channelRef = useRef<BroadcastChannel | null>(null);
   /** previewHtml と対になる表示名（組版時点で確定。章切替中に古いHTMLへ新タイトルが付くのを防ぐ） */
   const previewTitleRef = useRef("プレビュー");
   const editorViewRef = useRef<EditorView | null>(null);
-  const imageInputRef = useRef<HTMLInputElement>(null);
-  /** 未保存編集ありで校正を押した場合の「保存後に校正パネルを開く」予約 */
-  const pendingProofreadRef = useRef(false);
-  /** レビューパネルを閉じたときに戻すプレビュー表示状態（開く前の値を覚える） */
-  const prevPreviewOpenRef = useRef(true);
 
   /** 版面（行数×字詰め）: テーマCSSから抽出。ページ数概算に使う */
   const kumi = useMemo(
@@ -241,60 +146,19 @@ export function VerticalEditor({
     okRef.current = ok;
   }, [ok]);
 
-  const keyFor = useCallback(
-    (path: string) => (ok ? draftKey(ok.repo, ok.branch, path) : path),
-    [ok],
-  );
-
-  // 未保存待避のある章に印をつける（SPEC §3.3）
-  useEffect(() => {
-    if (!ok) return;
-    const prefix = `${ok.repo}:${ok.branch}:`;
-    listDraftKeys(prefix)
-      .then((keys) =>
-        setDraftPaths(new Set(keys.map((key) => key.slice(prefix.length)))),
-      )
-      .catch(() => {
-        // IndexedDB が使えない環境では印なしで動かす（待避はキャッシュ。正はGitHub）
-      });
-  }, [ok]);
-
-  const markDraft = useCallback((path: string, has: boolean) => {
-    setDraftPaths((prev) => {
-      if (prev.has(path) === has) return prev;
-      const next = new Set(prev);
-      if (has) next.add(path);
-      else next.delete(path);
-      return next;
-    });
-  }, []);
-
-  /** 現在の内容で待避を即時確定する（デバウンス中の分を落とさない） */
-  const persistDraft = useCallback(() => {
-    const current = currentRef.current;
-    if (!current) return;
-    const content = contentRef.current;
-    const key = keyFor(current.path);
-    if (content === current.remoteContent) {
-      deleteDraft(key).catch(() => {});
-      markDraft(current.path, false);
-    } else {
-      setDraft(key, {
-        content,
-        baseSha: current.baseSha,
-        updatedAt: Date.now(),
-      }).catch(() => {});
-      markDraft(current.path, true);
-    }
-  }, [keyFor, markDraft]);
-
-  const flushDraft = useCallback(() => {
-    if (draftTimerRef.current) {
-      clearTimeout(draftTimerRef.current);
-      draftTimerRef.current = null;
-    }
-    persistDraft();
-  }, [persistDraft]);
+  const {
+    draftPaths,
+    keyFor,
+    markDraft,
+    persistDraft,
+    flushDraft,
+    scheduleDraft,
+  } = useDraftStore({
+    repo: ok?.repo ?? null,
+    branch: ok?.branch ?? null,
+    currentRef,
+    contentRef,
+  });
 
   /** リポジトリルートのパス → 画像プロキシURL（SPEC §5.3。base_path 起点の相対に直して渡す） */
   const assetUrl = useCallback(
@@ -355,25 +219,22 @@ export function VerticalEditor({
       setDirty(content !== current.remoteContent);
       // 編集で実ページ数は古くなる → 概算値表示へ戻す（次の組版完了で再取得）
       setActualPages(null);
-      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-      draftTimerRef.current = setTimeout(persistDraft, DRAFT_DEBOUNCE_MS);
+      scheduleDraft();
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
       previewTimerRef.current = setTimeout(compilePreview, PREVIEW_DEBOUNCE_MS);
       if (countTimerRef.current) clearTimeout(countTimerRef.current);
       countTimerRef.current = setTimeout(recount, COUNT_DEBOUNCE_MS);
     },
-    [persistDraft, compilePreview, recount],
+    [scheduleDraft, compilePreview, recount],
   );
 
-  // アンマウント時: タイマーを止め、待避を確定する
+  // アンマウント時: 組版・字数の予約を止める（待避の確定は useDraftStore 側が担う）
   useEffect(() => {
     return () => {
-      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
       if (countTimerRef.current) clearTimeout(countTimerRef.current);
-      persistDraft();
     };
-  }, [persistDraft]);
+  }, []);
 
   /** 章を開く（SPEC §7 復元フロー込み） */
   const openChapterFlow = useCallback(
@@ -491,148 +352,31 @@ export function VerticalEditor({
     setSaveDialogOpen(true);
   }, [saving, flushDraft]);
 
-  // ---- エディタ内レビューパネル（Issue #18） ----
-
-  /** レビューパネルを開く（lg以上ではプレビューと入れ替え、閉じたら元の表示状態へ戻す） */
-  const openReviewPanel = useCallback(
-    (panel: "proofread" | "critique") => {
-      if (reviewOpen === null) prevPreviewOpenRef.current = previewOpen;
-      setReviewOpen(panel);
-      setPreviewOpen(false);
-    },
-    [reviewOpen, previewOpen],
-  );
-
-  const closeReviewPanel = useCallback(() => {
-    setReviewOpen(null);
-    setReviewFile(null);
-    setReviewError(null);
-    setProofreadSelection("");
-    // パネル表示中に明示操作（全体プレビュー等）で開き直していた場合は上書きしない
-    setPreviewOpen((open) => open || prevPreviewOpenRef.current);
-  }, []);
-
-  /** エディタの選択変更（校正パネル表示中のみ state に反映。それ以外は無視して再レンダーを避ける） */
-  const handleSelectionChange = useCallback(
-    (text: string) => {
-      if (reviewOpen !== "proofread") return;
-      setProofreadSelection(text);
-    },
-    [reviewOpen],
-  );
-
-  /** 校正パネルを開く。校正はコミット済み内容が対象のため、未保存の編集は先に保存へ誘導する */
-  const openProofread = useCallback(async () => {
-    const current = currentRef.current;
-    if (!current) return;
-    if (contentRef.current !== current.remoteContent) {
-      pendingProofreadRef.current = true;
-      toast.info(
-        "未保存の編集があります。保存（コミット）すると校正パネルを開きます",
-      );
-      requestSave();
-      return;
-    }
-    // 校正はデフォルトブランチのコミット内容が対象のまま（SPEC-phase5 §3.4・論点G。注記のみ）
-    const okNow = okRef.current;
-    if (okNow && okNow.branch !== okNow.defaultBranch) {
-      toast.info(
-        `校正はデフォルトブランチ（${okNow.defaultBranch}）のコミット内容が対象です`,
-      );
-    }
-    openReviewPanel("proofread");
-    // パネルを開いた時点の選択を初期値にする（以後は onSelectionChange が追跡）
-    setProofreadSelection(
-      editorViewRef.current ? getSelectedText(editorViewRef.current) : "",
-    );
-    // 前回開いた章の原稿情報が残っていると、フェッチ完了まで別の章の提案を誤操作できてしまう
-    setReviewFile(null);
-    setReviewLoading(true);
-    setReviewError(null);
-    try {
-      const result = await openManuscriptFile(projectId, current.path);
-      if (!result.ok || !result.data) {
-        setReviewFile(null);
-        setReviewError(
-          result.ok ? "原稿情報の読み込みに失敗しました" : result.error.message,
-        );
-        return;
-      }
-      setReviewFile(result.data);
-    } finally {
-      setReviewLoading(false);
-    }
-  }, [projectId, requestSave, openReviewPanel]);
-
-  /** 提案の受入/拒否/保留（原稿タブと同じ作法で、成功時はローカルの提案一覧のみ差し替える） */
-  const handleUpdateSuggestion = useCallback(
-    async (id: string, status: SuggestionStatus) => {
-      const result = await updateSuggestionStatus(id, status);
-      if (!result.ok) {
-        toast.error(result.error.message);
-        return;
-      }
-      setReviewFile((prev) =>
-        prev
-          ? {
-              ...prev,
-              suggestions: prev.suggestions.map((s) =>
-                s.id === id ? { ...s, status } : s,
-              ),
-            }
-          : prev,
-      );
-    },
-    [],
-  );
-
-  /** 提案カードクリック → エディタの該当箇所を選択してスクロール */
-  const locateInEditor = useCallback((originalText: string) => {
-    const view = editorViewRef.current;
-    if (!view) return;
-    const doc = view.state.doc.toString();
-    const idx = originalText === "" ? -1 : doc.indexOf(originalText);
-    if (idx === -1) {
-      toast.error(
-        "該当箇所がエディタ内に見つかりません（原稿が更新された可能性があります）",
-      );
-      return;
-    }
-    view.dispatch({
-      selection: EditorSelection.range(idx, idx + originalText.length),
-      effects: EditorView.scrollIntoView(idx, { y: "center" }),
-    });
-    view.focus();
-  }, []);
-
-  /**
-   * 校正完了・コミット完了後の取り直し。「まとめてコミット」「保留の書き戻し」はGitHubに
-   * コミットを作るため、エディタが未編集ならリモート最新を開き直して baseSha を進める
-   * （追従しないと次の保存が必ず競合フローに入る）
-   */
-  const refreshReview = useCallback(async () => {
-    const current = currentRef.current;
-    if (!current) return;
-    const result = await openManuscriptFile(projectId, current.path);
-    // 取得待ちの間に章が切り替わっていたら、古い章の情報で上書きしない
-    if (currentRef.current?.path !== current.path) return;
-    if (!result.ok || !result.data) {
-      toast.error(
-        result.ok ? "原稿情報の再取得に失敗しました" : result.error.message,
-      );
-      return;
-    }
-    setReviewFile(result.data);
-    if (result.data.content === current.remoteContent) return;
-    if (contentRef.current !== current.remoteContent) {
-      // パネルを開いたまま編集が進んでいた場合。次の保存で差分の取り込みフローに入る
-      toast.warning(
-        "校正の反映で原稿が更新されました。未保存の編集は保存時に差分の取り込みが必要になります",
-      );
-      return;
-    }
-    await openChapterFlow(current.path);
-  }, [projectId, openChapterFlow]);
+  const {
+    reviewOpen,
+    reviewFile,
+    reviewLoading,
+    reviewError,
+    proofreadSelection,
+    pendingProofreadRef,
+    openReviewPanel,
+    closeReviewPanel,
+    handleSelectionChange,
+    openProofread,
+    handleUpdateSuggestion,
+    locateInEditor,
+    refreshReview,
+  } = useReviewPanel({
+    projectId,
+    currentRef,
+    contentRef,
+    okRef,
+    editorViewRef,
+    previewOpen,
+    setPreviewOpen,
+    requestSave,
+    openChapterFlow,
+  });
 
   /** 保存＝コミット（SPEC §6）。conflict はマージ支援へ（SPEC §8-1） */
   const confirmSave = useCallback(
@@ -697,7 +441,14 @@ export function VerticalEditor({
         setSaving(false);
       }
     },
-    [projectId, keyFor, markDraft, compilePreview, openProofread],
+    [
+      projectId,
+      keyFor,
+      markDraft,
+      compilePreview,
+      openProofread,
+      pendingProofreadRef,
+    ],
   );
 
   /** マージ結果を編集へ取り込む（リモートSHAが新しい基準になる。SPEC §8） */
@@ -714,24 +465,14 @@ export function VerticalEditor({
       const isDirty = merged !== merge.remoteContent;
       setDirty(isDirty);
       refreshDerived(merged);
-      const key = keyFor(current.path);
-      if (isDirty) {
-        setDraft(key, {
-          content: merged,
-          baseSha: merge.remoteSha,
-          updatedAt: Date.now(),
-        }).catch(() => {});
-        markDraft(current.path, true);
-      } else {
-        deleteDraft(key).catch(() => {});
-        markDraft(current.path, false);
-      }
+      // currentRef を新基準に進めた上で待避を確定する（dirty なら保存・同一なら破棄）
+      persistDraft();
       setMerge(null);
       setEditorDoc(merged);
       setEditorEpoch((epoch) => epoch + 1);
       compilePreview();
     },
-    [merge, keyFor, markDraft, compilePreview, refreshDerived],
+    [merge, persistDraft, compilePreview, refreshDerived],
   );
 
   /** ローカル編集を破棄してリモート最新を開き直す */
@@ -779,7 +520,7 @@ export function VerticalEditor({
     } finally {
       setFullPreviewLoading(false);
     }
-  }, [ok, projectId, flushDraft, assetUrl]);
+  }, [ok, projectId, flushDraft, assetUrl, setPreviewOpen]);
 
   /** 新規章の作成＝コミット（SPEC §3.3。entry へは自動追記される。SPEC-phase3 §7-2） */
   const handleCreateChapter = useCallback(
@@ -838,377 +579,100 @@ export function VerticalEditor({
 
   // ---- ブランチ切替・作成・PR（SPEC-vertical-editor-phase5） ----
 
-  /** 選択中ブランチの保持（URLクエリ＋localStorage。デフォルトなら消す。SPEC-phase5 §3.1） */
-  const rememberBranch = useCallback(
-    (branchName: string, defaultBranchName: string) => {
-      const isDefault = branchName === defaultBranchName;
-      try {
-        const key = `nekonote-editor-branch:${projectId}`;
-        if (isDefault) localStorage.removeItem(key);
-        else localStorage.setItem(key, branchName);
-      } catch {
-        // localStorage が使えない環境では URL のみで保持する
-      }
-      const url = new URL(window.location.href);
-      if (isDefault) url.searchParams.delete("branch");
-      else url.searchParams.set("branch", branchName);
-      window.history.replaceState(null, "", url);
-    },
-    [projectId],
-  );
-
-  /**
-   * ブランチ切替（SPEC-phase5 §3.1）。未保存の編集は待避してそのまま切り替える（論点F。
-   * 下書きキーはブランチ別のため、元ブランチへ戻れば復元バナーで拾える）。
-   * 章の選択状態・プレビューはリセットし、新ブランチの章一覧を取得し直す
-   */
-  const switchBranch = useCallback(
-    async (nextBranch: string) => {
-      const okNow = okRef.current;
-      if (!okNow || nextBranch === okNow.branch) return;
-      flushDraft();
-      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-      // 校正パネルは開いていた章に紐づくため切替で閉じる（章切替・モバイル戻ると同じ作法）
-      closeReviewPanel();
-      setBranchSwitching(true);
-      try {
-        const result = await getEditorWorkspace(projectId, nextBranch);
-        if (!result.ok || !result.data || result.data.gate !== "ok") {
-          toast.error(
-            result.ok ? "ブランチの切替に失敗しました" : result.error.message,
-          );
-          return;
-        }
-        const data = result.data;
-        // 章の状態をリセット（モバイルの「章一覧へ戻る」と同じ後片付け＋全体プレビュー解除）
-        setSelectedPath(null);
-        currentRef.current = null;
-        contentRef.current = "";
-        setPreviewHtml(null);
-        setFullPreview(false);
-        setMerge(null);
-        setRestorePrompt(null);
-        setDirty(false);
-        setCharCount(null);
-        setActualPages(null);
-        setComments([]);
-        setSidebarTab("chapters");
-        setWs(data);
-        setChapters(data.chapters);
-        okRef.current = data;
-        rememberBranch(data.branch, data.defaultBranch);
-        if (data.branchFallback) {
-          toast.warning(
-            `ブランチ ${nextBranch} が見つかりません。デフォルトブランチを開きました`,
-          );
-        } else {
-          toast.success(`ブランチ ${data.branch} に切り替えました`);
-        }
-      } finally {
-        setBranchSwitching(false);
-      }
-    },
-    [projectId, flushDraft, rememberBranch, closeReviewPanel],
-  );
-
-  /** ブランチ作成→即切替（SPEC-phase5 §3.2。起点は常にデフォルトブランチのHEAD） */
-  const handleCreateBranch = useCallback(
-    async (name: string) => {
-      setBranchCreating(true);
-      try {
-        const result = await createEditorBranch(projectId, name);
-        if (!result.ok || !result.data) {
-          toast.error(
-            result.ok ? "ブランチの作成に失敗しました" : result.error.message,
-          );
-          return;
-        }
-        setBranchCreateOpen(false);
-        toast.success(`ブランチ ${result.data.branch} を作成しました`);
-        await switchBranch(result.data.branch);
-      } finally {
-        setBranchCreating(false);
-      }
-    },
-    [projectId, switchBranch],
-  );
-
-  // 初回のブランチ同期（SPEC-phase5 §3.1）: サーバーがフォールバックしたら通知して保存値を
-  // クリア。?branch= がなければ localStorage から復元する（?file= リンク経由の場合は
-  // リンクの意図を優先して復元しない）
-  const branchSyncedRef = useRef(false);
-  useEffect(() => {
-    if (branchSyncedRef.current || !ok) return;
-    branchSyncedRef.current = true;
-    if (ok.branchFallback) {
-      toast.warning(
-        "指定のブランチが見つからないため、デフォルトブランチを開きました",
-      );
-      rememberBranch(ok.branch, ok.defaultBranch);
-      return;
-    }
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("branch")) {
-      // URL指定で開いた場合は localStorage をURLに合わせる
-      rememberBranch(ok.branch, ok.defaultBranch);
-      return;
-    }
-    if (params.get("file")) return;
-    let stored: string | null = null;
-    try {
-      stored = localStorage.getItem(`nekonote-editor-branch:${projectId}`);
-    } catch {
-      stored = null;
-    }
-    if (stored && stored !== ok.branch) void switchBranch(stored);
-  }, [ok, projectId, rememberBranch, switchBranch]);
-
-  /**
-   * 画像アップロードの実行（SPEC-phase3 §6・論点C）。
-   * images/ へ即コミット → カーソル位置に挿入記法を追記（本文は通常の保存フロー）
-   */
-  const confirmImageUpload = useCallback(
-    async ({ kind, caption }: { kind: IllustKind; caption: string }) => {
-      const file = pendingImage;
-      if (!file) return;
-      setUploadingImage(true);
-      try {
-        const base64 = await fileToBase64(file);
-        const result = await uploadImage(
-          projectId,
-          sanitizeImageFileName(file.name),
-          base64,
-          okRef.current?.branch,
-        );
-        if (!result.ok || !result.data) {
-          toast.error(
-            result.ok
-              ? "画像のアップロードに失敗しました"
-              : result.error.message,
-          );
-          return;
-        }
-        const view = editorViewRef.current;
-        if (view) {
-          const pos = view.state.selection.main.from;
-          // 挿絵は独立した段落として前後を空行で区切る
-          const insert = `\n\n${illustNotation(result.data.fileName, kind, caption)}\n\n`;
-          view.dispatch({
-            changes: { from: pos, insert },
-            selection: EditorSelection.cursor(pos + insert.length),
-            scrollIntoView: true,
-            userEvent: "input",
-          });
-          view.focus();
-        }
-        setPendingImage(null);
-        toast.success(`画像 ${result.data.fileName} をコミットしました`);
-      } catch {
-        toast.error("画像の読み込みに失敗しました");
-      } finally {
-        setUploadingImage(false);
-      }
-    },
-    [pendingImage, projectId],
-  );
-
-  /** コメント一覧から該当箇所へジャンプ（SPEC-phase3 §3。選択で一時的に目立たせる） */
-  const jumpToComment = useCallback((comment: ManuscriptComment) => {
-    const view = editorViewRef.current;
-    if (!view) return;
-    // 一覧はデバウンス更新のため、直後の編集でオフセットが範囲外になり得る
-    const docLength = view.state.doc.length;
-    const from = Math.min(comment.from, docLength);
-    const to = Math.min(comment.to, docLength);
-    view.dispatch({
-      selection: EditorSelection.range(from, to),
-      effects: EditorView.scrollIntoView(from, { y: "center" }),
-    });
-    view.focus();
+  /** 新ブランチのワークスペースを反映（章の選択状態・プレビュー等のリセット込み） */
+  const applyWorkspace = useCallback((data: OkWorkspace) => {
+    setSelectedPath(null);
+    currentRef.current = null;
+    contentRef.current = "";
+    setPreviewHtml(null);
+    setFullPreview(false);
+    setMerge(null);
+    setRestorePrompt(null);
+    setDirty(false);
+    setCharCount(null);
+    setActualPages(null);
+    setComments([]);
+    setSidebarTab("chapters");
+    setWs(data);
+    setChapters(data.chapters);
+    okRef.current = data;
   }, []);
 
-  /** コメント一覧から該当コメントを本文から削除する（Issue #19。Cmd/Ctrl+Z で取り消せる通常の編集） */
-  const deleteComment = useCallback(
-    (comment: ManuscriptComment) => {
-      const view = editorViewRef.current;
-      if (!view) return;
-      const doc = view.state.doc;
-      // 一覧はデバウンス更新のため、直後の編集で位置がずれ得る。今も単一のコメント本体
-      // （途中に終端記号がない）を指しているか検証してから消す
-      const target =
-        comment.to <= doc.length
-          ? doc.sliceString(comment.from, comment.to)
-          : "";
-      if (
-        !target.startsWith("<!--") ||
-        target.indexOf("-->") !== target.length - 3
-      ) {
-        recount();
-        toast.error(
-          "本文が変更されたため削除を中止しました。一覧を更新したのでやり直してください",
-        );
-        return;
-      }
-      // コメントだけの行なら行ごと（末尾の改行含む）削除して空行を残さない
-      const startLine = doc.lineAt(comment.from);
-      const endLine = doc.lineAt(comment.to);
-      const standalone =
-        doc.sliceString(startLine.from, comment.from).trim() === "" &&
-        doc.sliceString(comment.to, endLine.to).trim() === "";
-      view.dispatch({
-        changes: standalone
-          ? { from: startLine.from, to: Math.min(endLine.to + 1, doc.length) }
-          : { from: comment.from, to: comment.to },
-        userEvent: "delete",
-      });
-      recount();
-    },
-    [recount],
-  );
-
-  /** ペイン比率のドラッグ可変（SPEC §3.2） */
-  const startDrag = useCallback((event: React.PointerEvent) => {
-    event.preventDefault();
-    const container = splitRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    setDragging(true);
-    const onMove = (e: PointerEvent) => {
-      const next = (e.clientX - rect.left) / rect.width;
-      setRatio(Math.min(0.8, Math.max(0.25, next)));
-    };
-    const onUp = () => {
-      setDragging(false);
-      window.removeEventListener("pointermove", onMove);
-      window.removeEventListener("pointerup", onUp);
-    };
-    window.addEventListener("pointermove", onMove);
-    window.addEventListener("pointerup", onUp);
+  const clearPreviewTimer = useCallback(() => {
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
   }, []);
 
-  // ---- プレビューの別ウィンドウ分離（Issue #72） ----
+  const {
+    branchSwitching,
+    branchCreateOpen,
+    setBranchCreateOpen,
+    branchCreating,
+    prOpen,
+    setPrOpen,
+    switchBranch,
+    handleCreateBranch,
+  } = useBranchState({
+    projectId,
+    ok,
+    okRef,
+    flushDraft,
+    clearPreviewTimer,
+    closeReviewPanel,
+    applyWorkspace,
+  });
 
-  // 分離窓との通信チャンネル。窓のリロード時の ready も拾えるよう、常時張っておく
-  useEffect(() => {
-    const channel = new BroadcastChannel(previewChannelName(projectId));
-    channelRef.current = channel;
-    channel.onmessage = (event: MessageEvent<PreviewChannelMessage>) => {
-      const message = event.data;
-      if (message.type === "ready") {
-        // 窓側の準備完了（URL直開き・リロード含む）→ 分離モードにして現在のHTMLを送る
-        setDetached(true);
-        setResendTick((tick) => tick + 1);
-      } else if (message.type === "pages") {
-        // 実ページ数は編集章の部分プレビューのみ反映（インライン時と同じ条件）
-        if (!message.full) setActualPages(message.total);
-      } else if (message.type === "closed") {
-        setDetached(false);
-      }
-    };
-    // リロード等で開いたままの分離窓があれば再接続させる（窓が ready を返す）
-    channel.postMessage({ type: "hello" } satisfies PreviewChannelMessage);
-    return () => {
-      channel.close();
-      channelRef.current = null;
-      // エディタを離れたら分離窓も閉じる（宙に浮いた古いプレビューを残さない）
-      popupRef.current?.close();
-      popupRef.current = null;
-    };
-  }, [projectId]);
+  const {
+    pendingImage,
+    setPendingImage,
+    uploadingImage,
+    confirmImageUpload,
+    imageInputRef,
+  } = useImageUpload({ projectId, okRef, editorViewRef });
 
-  // 分離中はプレビューHTMLの更新を窓へ送る（再組版は窓側の Viewer が行う）
-  useEffect(() => {
-    if (!detached || previewHtml === null) return;
-    channelRef.current?.postMessage({
-      type: "document",
-      html: previewHtml,
-      full: fullPreview,
-      title: previewTitleRef.current,
-    } satisfies PreviewChannelMessage);
-  }, [detached, previewHtml, fullPreview, resendTick]);
+  const { jumpToComment, deleteComment } = useCommentActions({
+    editorViewRef,
+    recount,
+  });
 
-  // pagehide が飛ばない閉じ方（プロセス終了等）への保険として閉窓をポーリング検知
-  useEffect(() => {
-    if (!detached) return;
-    const timer = setInterval(() => {
-      if (popupRef.current?.closed) {
-        popupRef.current = null;
-        setDetached(false);
-      }
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [detached]);
-
-  const toggleDetachedPreview = useCallback(() => {
-    if (detached) {
-      popupRef.current?.close();
-      popupRef.current = null;
-      setDetached(false);
-      return;
-    }
-    // 同名ウィンドウは再利用される（多重に開かない）。popup 指定でタブでなく独立ウィンドウに
-    const popup = window.open(
-      detachedPreviewUrl(projectId),
-      `nekonote-preview-${projectId}`,
-      "popup=yes,width=900,height=1000",
-    );
-    if (!popup) {
-      toast.error(
-        "ポップアップがブロックされました。ブラウザの設定で許可してください",
+  /** 講評パネルを開く（デフォルトブランチが対象のまま。SPEC-phase5 §3.4・論点G。注記のみ） */
+  const openCritique = useCallback(() => {
+    const okNow = okRef.current;
+    if (okNow && okNow.branch !== okNow.defaultBranch) {
+      toast.info(
+        `講評はデフォルトブランチ（${okNow.defaultBranch}）のコミット内容が対象です`,
       );
-      return;
     }
-    popupRef.current = popup;
-    setDetached(true);
-  }, [detached, projectId]);
+    openReviewPanel("critique");
+  }, [openReviewPanel]);
+
+  /** 章の選択（校正パネルは開いていた章に紐づくため、章の切替で閉じる。講評は作品全体なので維持） */
+  const handleSelectChapter = useCallback(
+    (path: string) => {
+      if (path !== selectedPath && reviewOpen === "proofread") {
+        closeReviewPanel();
+      }
+      void openChapterFlow(path);
+    },
+    [selectedPath, reviewOpen, closeReviewPanel, openChapterFlow],
+  );
+
+  const { detached, toggleDetachedPreview } = useDetachedPreview({
+    projectId,
+    previewHtml,
+    fullPreview,
+    previewTitleRef,
+    onPages: setActualPages,
+  });
 
   // ---- 前提未達（repo/PAT）の誘導表示（原稿タブと同じ作法） ----
   if (workspaceError) {
-    return (
-      <GuidanceCard>
-        <p className="text-sm text-destructive">{workspaceError}</p>
-        <p className="text-sm text-muted-foreground">
-          PATの有効期限・対象リポジトリ設定と、プロジェクトのリポジトリ名を確認してください。
-        </p>
-        <Button
-          variant="outline"
-          size="sm"
-          nativeButton={false}
-          render={<Link href="/settings">設定をひらく</Link>}
-        />
-      </GuidanceCard>
-    );
+    return <EditorGuidance kind="error" message={workspaceError} />;
   }
   if (!ws || ws.gate === "no_pat") {
-    return (
-      <GuidanceCard>
-        <p className="text-sm text-foreground">
-          エディタでの執筆には GitHub PAT の登録が必要です。
-        </p>
-        <Button
-          size="sm"
-          nativeButton={false}
-          render={
-            <Link href="/settings">
-              <Settings data-icon="inline-start" />
-              設定でPATを登録する
-            </Link>
-          }
-        />
-      </GuidanceCard>
-    );
+    return <EditorGuidance kind="no_pat" />;
   }
   if (ws.gate === "no_repo") {
-    return (
-      <GuidanceCard>
-        <p className="text-sm text-foreground">
-          原稿リポジトリが設定されていません。
-        </p>
-        <p className="text-sm text-muted-foreground">
-          ヘッダーの編集ボタン（鉛筆アイコン）から「原稿リポジトリ（owner/repo）」を設定してください。
-        </p>
-      </GuidanceCard>
-    );
+    return <EditorGuidance kind="no_repo" />;
   }
 
   // ここまでのガードで gate は 'ok' に絞り込まれている（JSX用の非null別名）
@@ -1217,384 +681,61 @@ export function VerticalEditor({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col">
-      {/* 集中モード中のフローティング操作（半透明。Escでも解除できる） */}
-      {focusMode && (
-        <div className="absolute right-3 top-3 z-40 flex items-center gap-1.5 rounded-md border border-border bg-background/80 p-1 shadow-sm backdrop-blur">
-          {dirty && (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={!selectedPath || saving || merge !== null}
-              onClick={requestSave}
-            >
-              <Save data-icon="inline-start" />
-              保存
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="集中モードを終了（Esc）"
-            title="集中モードを終了（Esc）"
-            className="text-muted-foreground"
-            onClick={() => setFocusMode(false)}
-          >
-            <Minimize2 />
-          </Button>
-        </div>
-      )}
-      {/* エディタツールバー */}
-      <div
-        className={cn(
-          "flex flex-wrap items-center gap-2 border-b border-border px-3 py-1.5",
-          focusMode && "hidden",
-        )}
-      >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={sidebarOpen ? "章一覧を隠す" : "章一覧を表示"}
-          className="text-muted-foreground"
-          onClick={() => setSidebarOpen((open) => !open)}
-        >
-          <PanelLeft />
-        </Button>
-        {selectedName ? (
-          <span className="flex min-w-0 items-center gap-1.5 text-sm font-medium text-foreground">
-            <span className="min-w-0 break-all">{selectedName}</span>
-            {dirty && (
-              <span
-                className="size-2 shrink-0 rounded-full bg-primary"
-                role="status"
-                aria-label="未保存の編集があります"
-                title="未保存の編集があります"
-              />
-            )}
-            {charCount !== null && (
-              <span
-                className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground"
-                title={
-                  actualPages !== null
-                    ? "ページ数はプレビューの組版結果（実測）です"
-                    : "ページ数は版面（行数×字詰め）からの概算です。プレビュー完了で実測値に置き換わります"
-                }
-              >
-                {charCount.toLocaleString("ja-JP")}字・
-                {actualPages !== null
-                  ? `${actualPages}ページ`
-                  : `約${estimatePages(charCount, kumi)}ページ`}
-              </span>
-            )}
-          </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">
-            章を選んで執筆をはじめてください（保存するとコミットされます）
-          </span>
-        )}
-        <div className="ml-auto flex items-center gap-1.5">
-          {/* エディタ内から校正・講評を直接起動（Issue #18。校正は開いている章が対象） */}
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={!selectedPath || chapterLoading || merge !== null}
-            onClick={() => void openProofread()}
-          >
-            <SpellCheck data-icon="inline-start" />
-            校正
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={chapters.length === 0}
-            onClick={() => {
-              // 講評もデフォルトブランチが対象のまま（SPEC-phase5 §3.4・論点G。注記のみ）
-              if (okWs.branch !== okWs.defaultBranch) {
-                toast.info(
-                  `講評はデフォルトブランチ（${okWs.defaultBranch}）のコミット内容が対象です`,
-                );
-              }
-              openReviewPanel("critique");
-            }}
-          >
-            <BookOpenText data-icon="inline-start" />
-            講評
-          </Button>
-          {/* 原稿タブ（校正・講評）への相互リンク（編集中の章を開いたまま遷移。SPEC-phase4 §3.1） */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="原稿レビュー画面をひらく"
-            title="原稿レビュー画面をひらく（編集中の章を開いたまま遷移）"
-            className="text-muted-foreground"
-            nativeButton={false}
-            render={
-              <Link
-                href={`/projects/${projectId}/manuscript${
-                  selectedPath
-                    ? `?file=${encodeURIComponent(selectedPath)}`
-                    : ""
-                }`}
-              >
-                <ExternalLink />
-              </Link>
-            }
-          />
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="書籍設定"
-            title="書籍設定（書誌・章構成・組み設定・奥付）"
-            className="text-muted-foreground"
-            onClick={() => setSettingsOpen(true)}
-          >
-            <Settings />
-          </Button>
-          {/* 投稿サイト用の書き出し（SPEC-aozora-export。開いている章の編集中の内容が対象） */}
-          <Button
-            size="sm"
-            variant="outline"
-            title="投稿サイト用に書き出し（青空文庫・カクヨム・なろう）"
-            disabled={!selectedPath || chapterLoading}
-            onClick={() => setAozoraSource(contentRef.current)}
-          >
-            <FileDown data-icon="inline-start" />
-            書き出し
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setBuildOpen(true)}
-          >
-            ビルド
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={fullPreviewLoading || chapters.length === 0}
-            onClick={() => void startFullPreview()}
-          >
-            {fullPreviewLoading ? (
-              <Loader2 data-icon="inline-start" className="animate-spin" />
-            ) : (
-              <BookOpen data-icon="inline-start" />
-            )}
-            全体プレビュー
-          </Button>
-          {/* プレビューの別ウィンドウ分離（Issue #72）。狭い画面＋外部ディスプレイの
-              使い方が主目的なので、インラインプレビューと違い lg 未満でも出す */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={
-              detached
-                ? "プレビューをこのウィンドウに戻す"
-                : "プレビューを別ウィンドウで開く"
-            }
-            title={
-              detached
-                ? "プレビューをこのウィンドウに戻す"
-                : "プレビューを別ウィンドウで開く"
-            }
-            className={cn("text-muted-foreground", detached && "text-primary")}
-            onClick={toggleDetachedPreview}
-          >
-            <PictureInPicture2 />
-          </Button>
-          {!detached && (
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label={previewOpen ? "プレビューを隠す" : "プレビューを表示"}
-              className="hidden text-muted-foreground lg:inline-flex"
-              onClick={() => setPreviewOpen((open) => !open)}
-            >
-              <PanelRight />
-            </Button>
-          )}
-          {/* 集中モード: ナビ・ヘッダー・章一覧・ツールバーを隠して執筆に専念する */}
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="集中モード（入力ペインのみを表示）"
-            title="集中モード（Escで解除）"
-            className="text-muted-foreground"
-            disabled={selectedPath === null}
-            onClick={() => setFocusMode(true)}
-          >
-            <Maximize2 />
-          </Button>
-          <Button
-            size="sm"
-            disabled={!selectedPath || !dirty || saving || merge !== null}
-            onClick={requestSave}
-          >
-            <Save data-icon="inline-start" />
-            保存
-          </Button>
-        </div>
-      </div>
+      <EditorTopBar
+        focusMode={focusMode}
+        sidebarOpen={sidebarOpen}
+        selectedName={selectedName}
+        selectedPath={selectedPath}
+        dirty={dirty}
+        saving={saving}
+        merging={merge !== null}
+        chapterLoading={chapterLoading}
+        charCount={charCount}
+        actualPages={actualPages}
+        kumi={kumi}
+        chaptersCount={chapters.length}
+        projectId={projectId}
+        fullPreviewLoading={fullPreviewLoading}
+        detached={detached}
+        previewOpen={previewOpen}
+        onToggleSidebar={() => setSidebarOpen((open) => !open)}
+        onRequestSave={requestSave}
+        onOpenProofread={() => void openProofread()}
+        onOpenCritique={openCritique}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onExportAozora={() => setAozoraSource(contentRef.current)}
+        onOpenBuild={() => setBuildOpen(true)}
+        onStartFullPreview={() => void startFullPreview()}
+        onToggleDetached={toggleDetachedPreview}
+        onTogglePreview={() => setPreviewOpen((open) => !open)}
+        onEnterFocus={() => setFocusMode(true)}
+        onExitFocus={() => setFocusMode(false)}
+      />
 
       <div className="flex min-h-0 flex-1">
         {/* 章一覧サイドバー（SPEC §3.3。集中モード中は隠す） */}
         {sidebarOpen && !focusMode && (
-          <nav
-            aria-label="章一覧"
-            className={cn(
-              "flex w-full shrink-0 flex-col overflow-y-auto border-border p-2 lg:flex lg:w-60 lg:border-r",
-              selectedPath !== null && "hidden",
-            )}
-          >
-            {/* ブランチセレクタ（SPEC-phase5 §3.1。切替・作成・PRの入口） */}
-            <div className="mb-1.5">
-              <BranchMenu
-                projectId={projectId}
-                branch={okWs.branch}
-                defaultBranch={okWs.defaultBranch}
-                switching={branchSwitching}
-                onSwitch={(name) => void switchBranch(name)}
-                onCreateRequest={() => setBranchCreateOpen(true)}
-                onPrRequest={() => setPrOpen(true)}
-              />
-            </div>
-            {/* 章一覧／コメント一覧の切替タブ（SPEC-phase3 §3。コメントは章を開いているときのみ） */}
-            {selectedPath !== null && (
-              <div className="mb-1.5 grid grid-cols-2 gap-1 rounded-md bg-muted p-0.5">
-                {(
-                  [
-                    { key: "chapters", label: "章" },
-                    {
-                      key: "comments",
-                      label: `コメント${comments.length > 0 ? ` ${comments.length}` : ""}`,
-                    },
-                  ] as const
-                ).map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    aria-pressed={sidebarTab === tab.key}
-                    onClick={() => setSidebarTab(tab.key)}
-                    className={cn(
-                      "rounded px-2 py-1 text-xs transition-colors",
-                      sidebarTab === tab.key
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {sidebarTab === "comments" && selectedPath !== null ? (
-              comments.length === 0 ? (
-                <p className="p-2 text-sm text-muted-foreground">
-                  この章にコメントはありません（Cmd/Ctrl+/ で挿入できます）
-                </p>
-              ) : (
-                <ul className="flex flex-col gap-0.5" aria-label="コメント一覧">
-                  {comments.map((comment) => (
-                    <li
-                      key={`${comment.from}:${comment.to}`}
-                      className="flex items-start gap-0.5"
-                    >
-                      <button
-                        type="button"
-                        onClick={() => jumpToComment(comment)}
-                        className="flex min-w-0 flex-1 items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-secondary/50"
-                      >
-                        <span className="shrink-0 pt-px text-[10px] tabular-nums leading-4 text-muted-foreground">
-                          L{comment.line}
-                        </span>
-                        <span className="min-w-0 break-all">
-                          {comment.summary}
-                        </span>
-                      </button>
-                      {/* 消化済みコメントのワンタッチ削除（Issue #19。Cmd/Ctrl+Z で取り消せる） */}
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label={`L${comment.line} のコメントを削除`}
-                        className="shrink-0 text-muted-foreground hover:text-destructive"
-                        onClick={() => deleteComment(comment)}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )
-            ) : (
-              <>
-                <div className="mb-1 flex items-center justify-between px-2">
-                  <span className="text-xs text-muted-foreground">
-                    全{chapters.length}章
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="新しい章ファイルを作成"
-                    className="text-muted-foreground"
-                    onClick={() => setNewChapterOpen(true)}
-                  >
-                    <FilePlus2 />
-                  </Button>
-                </div>
-                {chapters.length === 0 ? (
-                  <p className="p-2 text-sm text-muted-foreground">
-                    manuscripts/ 配下に章ファイル（.md）が見つかりません
-                  </p>
-                ) : (
-                  <ul className="flex flex-col gap-0.5">
-                    {chapters.map((chapter) => (
-                      <li key={chapter.path}>
-                        <button
-                          type="button"
-                          // ブランチ切替中は無効化（切替前後の内容取り違え防止。SPEC-phase5 §3.1）
-                          disabled={branchSwitching}
-                          onClick={() => {
-                            // 校正パネルは開いていた章に紐づくため、章の切替で閉じる（講評は作品全体なので維持）
-                            if (
-                              chapter.path !== selectedPath &&
-                              reviewOpen === "proofread"
-                            ) {
-                              closeReviewPanel();
-                            }
-                            void openChapterFlow(chapter.path);
-                          }}
-                          aria-current={
-                            selectedPath === chapter.path ? "true" : undefined
-                          }
-                          className={cn(
-                            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-                            selectedPath === chapter.path
-                              ? "bg-secondary text-secondary-foreground"
-                              : "text-foreground hover:bg-secondary/50",
-                          )}
-                        >
-                          <FileText className="size-4 shrink-0 text-muted-foreground" />
-                          <span className="min-w-0 break-all">
-                            {fileName(chapter.path)}
-                          </span>
-                          {(draftPaths.has(chapter.path) ||
-                            (chapter.path === selectedPath && dirty)) && (
-                            <span
-                              className="size-1.5 shrink-0 rounded-full bg-primary"
-                              title="未保存の待避があります"
-                            />
-                          )}
-                          {!chapter.inEntry && (
-                            <span className="ml-auto shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
-                              entry未登録
-                            </span>
-                          )}
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </>
-            )}
-          </nav>
+          <EditorSidebar
+            projectId={projectId}
+            branch={okWs.branch}
+            defaultBranch={okWs.defaultBranch}
+            branchSwitching={branchSwitching}
+            selectedPath={selectedPath}
+            chapters={chapters}
+            draftPaths={draftPaths}
+            dirty={dirty}
+            comments={comments}
+            sidebarTab={sidebarTab}
+            onSidebarTabChange={setSidebarTab}
+            onSwitchBranch={(name) => void switchBranch(name)}
+            onCreateBranchRequest={() => setBranchCreateOpen(true)}
+            onPrRequest={() => setPrOpen(true)}
+            onSelectChapter={handleSelectChapter}
+            onNewChapter={() => setNewChapterOpen(true)}
+            onJumpToComment={jumpToComment}
+            onDeleteComment={deleteComment}
+            fileName={fileName}
+          />
         )}
 
         {/* 入力＋プレビュー（SPEC §3.2） */}
@@ -1898,16 +1039,6 @@ export function VerticalEditor({
           event.target.value = "";
         }}
       />
-    </div>
-  );
-}
-
-function GuidanceCard({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex flex-1 items-start justify-center p-6">
-      <div className="flex w-full max-w-md flex-col items-start gap-3 rounded-lg border border-border bg-card p-4">
-        {children}
-      </div>
     </div>
   );
 }
