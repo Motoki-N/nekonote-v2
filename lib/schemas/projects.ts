@@ -21,11 +21,14 @@ export const repoSchema = z
   );
 
 export const projectInputSchema = z.object({
-  title: z.string().min(1, "タイトルを入力してください"),
+  title: z
+    .string()
+    .min(1, "タイトルを入力してください")
+    .max(500, "タイトルが長すぎます"),
   status: z.enum(projectStatuses).default("planning"),
   target_pages: z.number().int().positive().nullish(),
   deadline: z.iso.date().nullish(),
-  event_name: z.string().nullish(),
+  event_name: z.string().max(200, "イベント名が長すぎます").nullish(),
   // 原稿リポジトリと配下の原稿フォルダ（空=ルート。SPEC-proofreading §4）
   repo: repoSchema.nullish(),
   base_path: z
@@ -74,10 +77,15 @@ export type RepoSetupInput = z.infer<typeof repoSetupInputSchema>;
 export const proposalInputSchema = z.object({
   project_id: z.uuid(),
   writing_genre: z.enum(writingGenres).default("novel"), // 執筆ジャンル（SPEC-genre）
-  purpose: z.string().nullish(), // 執筆目的（自由記述）
-  genre: z.string().nullish(), // 内容ジャンル（自由記述）
-  target_audience: z.string().nullish(),
-  content: z.string().default(""), // Markdown（初期本文は執筆ジャンル別テンプレ）
+  purpose: z.string().max(2_000, "執筆目的が長すぎます").nullish(), // 執筆目的（自由記述）
+  genre: z.string().max(500, "内容ジャンルが長すぎます").nullish(), // 内容ジャンル（自由記述）
+  target_audience: z.string().max(500, "想定読者が長すぎます").nullish(),
+  // Markdown（初期本文は執筆ジャンル別テンプレ）。上限はノート本文と同じ10万字
+  // （自動保存＋proposal_versions のスナップショットで増幅されるため無上限にしない）
+  content: z
+    .string()
+    .max(100_000, "企画書が長すぎます（上限10万字）")
+    .default(""),
   status: z.enum(proposalStatuses).default("draft"),
 });
 // status は承認ゲートの検証を通る経路（/api/review の onFinish・approveProposal）でのみ遷移させる

@@ -18,7 +18,13 @@ export type NoteInput = z.infer<typeof noteInputSchema>;
 export type NoteUpdate = z.infer<typeof noteUpdateSchema>;
 
 export const tagInputSchema = z.object({
-  name: z.string().min(1, "タグ名を入力してください"),
+  // 上限はプロジェクトタイトルと同値。レビューのノート化（saveFeedbackAsNote）が
+  // プロジェクトタイトルをそのまま仮タイトルタグ名にするため、非対称にすると
+  // 「作成はできるがノート化だけ必ず失敗するタイトル長」が生まれる
+  name: z
+    .string()
+    .min(1, "タグ名を入力してください")
+    .max(500, "タグ名が長すぎます"),
   kind: z.enum(tagKinds),
 });
 export const tagUpdateSchema = tagInputSchema.partial();

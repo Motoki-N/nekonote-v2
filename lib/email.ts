@@ -1,3 +1,5 @@
+import "server-only";
+
 import { Resend } from "resend";
 
 const DEFAULT_FROM = "ネコノテAI <onboarding@resend.dev>";

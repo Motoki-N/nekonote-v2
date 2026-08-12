@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
@@ -9,6 +10,8 @@ import { noteUpdateSchema, tagInputSchema } from "@/lib/schemas/notes";
 import type { TagInput } from "@/lib/schemas/notes";
 
 export type { ActionResult } from "@/lib/errors";
+
+const uuidSchema = z.uuid();
 
 /** 1クリック新規作成: 空ノートを作ってエディタへ遷移する */
 export async function createNote(): Promise<never> {
@@ -90,9 +93,10 @@ export async function updateNote(
   input: { title?: string; content?: string },
 ): Promise<ActionResult> {
   try {
+    const noteId = uuidSchema.parse(id);
     const parsed = noteUpdateSchema.parse(input);
     const supabase = await createClient();
-    const current = await fetchNoteSnapshot(supabase, id);
+    const current = await fetchNoteSnapshot(supabase, noteId);
     // 内容が変わらない保存（復元直後のフラッシュ等）は更新もスナップショットもしない
     if (
       (parsed.title ?? current.title) === current.title &&
@@ -101,11 +105,11 @@ export async function updateNote(
       return { ok: true };
     }
     // 「上書き前の状態」を残す: 編集セッション開始前の行が必ず1つ版に残る（Issue #111）
-    await snapshotIfStale(supabase, id, current);
+    await snapshotIfStale(supabase, noteId, current);
     const { data, error } = await supabase
       .from("notes")
       .update(parsed)
-      .eq("id", id)
+      .eq("id", noteId)
       .select("id");
     if (error) throw new AppError("internal", error.message);
     if (!data || data.length === 0)
@@ -129,11 +133,12 @@ export async function listNoteVersions(
   noteId: string,
 ): Promise<ActionResult<NoteVersion[]>> {
   try {
+    const id = uuidSchema.parse(noteId);
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("note_versions")
       .select("id, title, content, created_at")
-      .eq("note_id", noteId)
+      .eq("note_id", id)
       .order("created_at", { ascending: false });
     if (error) throw new AppError("internal", error.message);
     return { ok: true, data: data ?? [] };
@@ -148,17 +153,19 @@ export async function restoreNoteVersion(
   versionId: string,
 ): Promise<ActionResult> {
   try {
+    const id = uuidSchema.parse(noteId);
+    const targetVersionId = uuidSchema.parse(versionId);
     const supabase = await createClient();
     const { data: version, error: versionError } = await supabase
       .from("note_versions")
       .select("title, content")
-      .eq("id", versionId)
-      .eq("note_id", noteId)
+      .eq("id", targetVersionId)
+      .eq("note_id", id)
       .maybeSingle();
     if (versionError) throw new AppError("internal", versionError.message);
     if (!version) throw new AppError("not_found", "バージョンが見つかりません");
 
-    const current = await fetchNoteSnapshot(supabase, noteId);
+    const current = await fetchNoteSnapshot(supabase, id);
     // 現在と同一内容への復元は何もしない（無駄な版を作らない）
     if (
       version.title === current.title &&
@@ -166,12 +173,12 @@ export async function restoreNoteVersion(
     ) {
       return { ok: true };
     }
-    await insertSnapshot(supabase, noteId, current);
+    await insertSnapshot(supabase, id, current);
 
     const { data, error } = await supabase
       .from("notes")
       .update({ title: version.title, content: version.content })
-      .eq("id", noteId)
+      .eq("id", id)
       .select("id");
     if (error) throw new AppError("internal", error.message);
     if (!data || data.length === 0)
@@ -198,11 +205,12 @@ async function setDeletedAt(
   deletedAt: string | null,
 ): Promise<ActionResult> {
   try {
+    const noteId = uuidSchema.parse(id);
     const supabase = await createClient();
     const { data, error } = await supabase
       .from("notes")
       .update({ deleted_at: deletedAt })
-      .eq("id", id)
+      .eq("id", noteId)
       .select("id");
     if (error) throw new AppError("internal", error.message);
     if (!data || data.length === 0)
@@ -217,8 +225,9 @@ async function setDeletedAt(
 /** 完全削除（物理DELETE。note_tags は cascade で外れ、タグ自体は残る） */
 export async function deleteNotePermanently(id: string): Promise<ActionResult> {
   try {
+    const noteId = uuidSchema.parse(id);
     const supabase = await createClient();
-    const { error } = await supabase.from("notes").delete().eq("id", id);
+    const { error } = await supabase.from("notes").delete().eq("id", noteId);
     if (error) throw new AppError("internal", error.message);
     revalidatePath("/notes");
     return { ok: true };
@@ -238,6 +247,7 @@ export async function attachTag(
   input: TagInput,
 ): Promise<ActionResult<AttachedTag>> {
   try {
+    const id = uuidSchema.parse(noteId);
     const parsed = tagInputSchema.parse(input);
     const supabase = await createClient();
 
@@ -259,7 +269,7 @@ export async function attachTag(
     // 既に付与済みなら成功扱い（テンプレ再挿入などで重複しうる）
     const { error: linkError } = await supabase
       .from("note_tags")
-      .upsert({ note_id: noteId, tag_id: tag.id }, { ignoreDuplicates: true });
+      .upsert({ note_id: id, tag_id: tag.id }, { ignoreDuplicates: true });
     if (linkError) throw new AppError("internal", linkError.message);
 
     revalidatePath("/notes");
@@ -275,12 +285,14 @@ export async function detachTag(
   tagId: string,
 ): Promise<ActionResult> {
   try {
+    const id = uuidSchema.parse(noteId);
+    const targetTagId = uuidSchema.parse(tagId);
     const supabase = await createClient();
     const { error } = await supabase
       .from("note_tags")
       .delete()
-      .eq("note_id", noteId)
-      .eq("tag_id", tagId);
+      .eq("note_id", id)
+      .eq("tag_id", targetTagId);
     if (error) throw new AppError("internal", error.message);
     revalidatePath("/notes");
     return { ok: true };
