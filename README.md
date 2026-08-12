@@ -84,6 +84,7 @@ npm run lint
 - [機能仕様の索引（SPEC-index.md）](docs/SPEC-index.md)
 - [Claude Code 運用計画](docs/claude-code-operation-plan.md)
 - [開発ログ](docs/dev-log.md)
+- [開発記録（書籍ドラフト）](docs/dev-story/README.md)
 
 ## ライセンス
 
