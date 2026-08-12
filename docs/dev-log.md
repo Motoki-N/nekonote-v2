@@ -1102,3 +1102,17 @@
 - **結果: Critical相当ゼロ・指摘13件**（重複3・命名2・責務3・型1・未使用3・分類外の堅牢性/パフォーマンス4観察を正式収載）。総評は「個別バグではなく成長痕」——①Gitコンテキスト解決（認証→プロジェクト→PAT復号）が11ファイル19箇所に別実装 ②vertical-editor.tsx 1,757行 / actions/editor.ts 1,079行への機能集積 ③jstDate の3ファイル同一実装 ④DB文字列列→union型の as キャスト横断 ⑤getManuscriptTree が2層で同名別関数、など
 - **健全だった点**: `as any`・`@ts-ignore`・TODO/FIXME 完全ゼロ・toActionError/AppError の規約逸脱なし・境界防御の一貫性維持
 - **次**: ユーザーが対象を取捨選択→SPEC化→段階実施（構造整理→重複統合→型→パフォーマンス）。提案 Top 3 は R-2（editor.ts分割・低リスク）→ D-1（コンテキスト共通化・Step 2 の監査面縮小を兼ねる）→ 型・小粒まとめ。R-1（vertical-editor分割）と N-2（フォーマッタ導入）はリスク・判断事項としてユーザー判断待ち
+
+### セッション92: 締めくくり作業 Step 1 後半——リファクタリング段階0〜4 完遂（PR #180〜#184 全マージ・本番反映）（8/12）
+
+- **スコープ決定→SPEC化→段階実施の3層で Step 1 を完遂**: セッション91のレビュー13件からユーザーが「全部入り」（Top 3＝R-2/D-1/型小粒＋R-1 vertical-editor分割＋N-2 フォーマッタ）を選択。`docs/SPEC-refactoring-step1.md` に段階0〜4を定義（1段階=1ブランチ=1PR=人間のマージ承認、**挙動変更ゼロ原則**、各段階後に回帰確認）し、その順で5PRすべてマージ
+- **段階0（PR #180）**: prettier をデフォルト設定で導入し一括適用＋`.git-blame-ignore-revs` 登録。`docs/` は除外（CJK表組みで整形が非冪等になる実測＋手書き追記の dev-log を保護）
+- **段階1（PR #181）**: `lib/actions/editor.ts`（1,079行）を責務別7モジュール（context/workspace/chapters/book-settings/assets/build/branch）へ分割し、既存 import 互換の再エクスポートファサードを維持。死んでいた `getSuggestions` を削除、2層同名の `getManuscriptTree` は `getManuscriptFiles` へ改名
+- **段階2（PR #182）**: 11ファイル19箇所に散在していた「プロジェクト取得→repoゲート→PAT復号→base_path正規化」を `lib/git/project-context.ts` の6関数へ共通化（D-1/D-2）。認証の有無・エラー文言など呼び出し側ごとの差異はパラメータ化して挙動維持。認証境界に触れるため security-reviewer を起用し、Low 3件（`server-only` import・"/" 縮退コメント・base_path select漏れ警告）を反映
+- **段階3（PR #183）**: `parseEnum`/`parseEnumOrNull` 導入で DB文字列→union の `as` キャストを排除、`jstDateString`/`jstStamp` を `lib/date.ts` へ統合（3ファイル重複解消）、`githubFetch` に GET限定1回リトライ（UND_ERR_SOCKET 対策）、P-2（レビューストリーム空応答の無音失敗）修正。**subagent 自己レビューが enum キャスト残存3箇所＋未使用 import 20件を検出**→全て修正してからPR
+- **段階4（PR #184）**: `vertical-editor.tsx` 1,913行→**1,044行**。7フック（draft-store/branch-state/detached-preview/pane-layout/review-panel/image-upload/comment-actions）＋3コンポーネント（EditorTopBar/EditorSidebar/EditorGuidance）＋共有型 `editor-state.ts` を抽出。共有 ref を引数で渡し「状態は親・子は表示と発火のみ」で統一。**SPECからの乖離2点をPRに明記**——①1〜2抽出ごとPRの想定を依存の密さから単一PR（コミット5個で粒度維持）に変更 ②800行目安に対し1,044行で停止（残部は章オープン・保存・競合マージ・プレビューの相互参照中核。以上の分割は props/ref 中継増で可読性が逆に低下と判断）
+- **段階4の検証は TESTING.md §8 フル回帰でオールグリーン**: 復元バナー（devサーバー死亡またぎの実地復元）・競合→マージビュー→取り込み再保存・画像挿入（`images/` コミット＋同名 `-2` 連番）・全体プレビュー（17章74ページ通しノンブル）・新規章作成（雛形＋entry自動追記）・書籍設定差分・入稿ビルド（タグ自動提案→Actions起動）・青空/カクヨム/なろう切替・ブランチ一式（作成即切替・ブランチ保存で main 不変・マージ後フォールバック）。検証リポジトリ・タグ・リリース・検証プロジェクトは全て原状復帰済み
+- **段階4の subagent 全差分レビュー: ブロッカーなし**。「挙動変更ゼロ」の厳密解釈で残る差分2件（同一ブランチのワークスペース差し替え時にタイマー掃除・未保存印再列挙が走らない——いずれも冪等でUI非影響）はPRに記録の上で許容。軽微な消し忘れ（未使用の返り値2件）は追いコミットで修正
+- **INC-2 A が再発（2回目・段階3スポットチェック時）**: 「新しい会話」クリックが `if(nb)` フォールバックで握りつぶされ、検証メッセージが実スレッドへ混入。正直に報告の上、TESTING.md §10 に「クリック後に空状態を確認してから送信」の対策を明文化
+- **環境知見の追加**: CDP自動化では clipboard API が document 非フォーカスで拒否される（青空「コピー」は自動検証不可・失敗フォールバック表示は確認）。ペインの window.open はポップアップブロック→ブロック時トースト経路が実機で検証できた。ref クリックはネイティブ寸法（797x453）以外でズレる
+- **これで Step 1（コードレビュー＆リファクタリング）完了**。次: Step 2（セキュリティレビュー＋npm audit 約20件の依存関係更新）
