@@ -279,6 +279,144 @@ export async function attachTag(
   }
 }
 
+/** タグ名は一覧とノート編集画面の両方に出るため、両ルートを revalidate する */
+function revalidateNotePaths(): void {
+  revalidatePath("/notes");
+  revalidatePath("/notes/[id]", "page");
+}
+
+/**
+ * 統合: from のノート紐づけを to へ付け替えて from を削除する。
+ * 付け替え済みの古い紐づけは tags 削除の cascade で外れる
+ */
+async function mergeTagInto(
+  supabase: SupabaseServerClient,
+  fromTagId: string,
+  toTagId: string,
+): Promise<void> {
+  // PostgREST の max_rows で暗黙に打ち切られると、付け替え漏れのまま元タグを削除して
+  // cascade でタグ付けが消える。取りこぼさないようページングする
+  const PAGE_SIZE = 500;
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data: links, error } = await supabase
+      .from("note_tags")
+      .select("note_id")
+      // ページ境界を安定させるための並び（付け替え先は tag_id が異なるため対象集合は動かない）
+      .order("note_id")
+      .range(from, from + PAGE_SIZE - 1)
+      .eq("tag_id", fromTagId);
+    if (error) throw new AppError("internal", error.message);
+    if (!links || links.length === 0) break;
+    // 統合先が既に付いているノートもあるため重複は無視する
+    const { error: linkError } = await supabase.from("note_tags").upsert(
+      links.map((link) => ({ note_id: link.note_id, tag_id: toTagId })),
+      { ignoreDuplicates: true },
+    );
+    if (linkError) throw new AppError("internal", linkError.message);
+    if (links.length < PAGE_SIZE) break;
+  }
+  const { error: deleteError } = await supabase
+    .from("tags")
+    .delete()
+    .eq("id", fromTagId);
+  if (deleteError) throw new AppError("internal", deleteError.message);
+}
+
+export type RenamedTag = {
+  /** 統合された場合は統合先のタグID（呼び出し元のタグIDは消える） */
+  id: string;
+  name: string;
+  kind: string;
+  merged: boolean;
+};
+
+/**
+ * タグ名を変更する（Issue #200）。同じ種類に同名のタグが既にある場合は、
+ * `allowMerge` が指定されていればそのタグへ統合し、そうでなければ conflict を返す。
+ * 統合は元タグを消す取り消せない操作のため、確認を経た呼び出しだけが実行できるようにする
+ */
+export async function renameTag(
+  tagId: string,
+  name: string,
+  options?: { allowMerge?: boolean },
+): Promise<ActionResult<RenamedTag>> {
+  try {
+    const id = uuidSchema.parse(tagId);
+    // ZodError は toActionError で internal（固定文言）になるため、入力起因はここで validation に変換する
+    const nameResult = tagInputSchema.shape.name.safeParse(
+      typeof name === "string" ? name.trim() : name,
+    );
+    if (!nameResult.success)
+      throw new AppError(
+        "validation",
+        nameResult.error.issues[0]?.message ?? "タグ名が不正です",
+      );
+    const newName = nameResult.data;
+    const supabase = await createClient();
+
+    const { data: tag, error: tagError } = await supabase
+      .from("tags")
+      .select("id, name, kind")
+      .eq("id", id)
+      .maybeSingle();
+    if (tagError) throw new AppError("internal", tagError.message);
+    if (!tag) throw new AppError("not_found", "タグが見つかりません");
+    if (tag.name === newName)
+      return { ok: true, data: { ...tag, merged: false } };
+
+    const { data: existing, error: existingError } = await supabase
+      .from("tags")
+      .select("id")
+      .eq("kind", tag.kind)
+      .eq("name", newName)
+      .neq("id", id)
+      .maybeSingle();
+    if (existingError) throw new AppError("internal", existingError.message);
+
+    if (existing) {
+      // 統合の意思表示がない衝突は実行せず、呼び出し側に確認させる
+      if (!options?.allowMerge)
+        throw new AppError("conflict", `同じ種類に「${newName}」があります`);
+      await mergeTagInto(supabase, id, existing.id);
+      revalidateNotePaths();
+      return {
+        ok: true,
+        data: { id: existing.id, name: newName, kind: tag.kind, merged: true },
+      };
+    }
+
+    const { data, error } = await supabase
+      .from("tags")
+      .update({ name: newName })
+      .eq("id", id)
+      .select("id");
+    if (error) throw new AppError("internal", error.message);
+    if (!data || data.length === 0)
+      throw new AppError("not_found", "タグが見つかりません");
+    revalidateNotePaths();
+    return {
+      ok: true,
+      data: { id, name: newName, kind: tag.kind, merged: false },
+    };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/** タグを削除する（note_tags は cascade で外れ、ノート自体は残る。Issue #200） */
+export async function deleteTag(tagId: string): Promise<ActionResult> {
+  try {
+    const id = uuidSchema.parse(tagId);
+    const supabase = await createClient();
+    const { error } = await supabase.from("tags").delete().eq("id", id);
+    if (error) throw new AppError("internal", error.message);
+    revalidateNotePaths();
+    return { ok: true };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 /** ノートからタグを外す（タグ自体は残す） */
 export async function detachTag(
   noteId: string,
