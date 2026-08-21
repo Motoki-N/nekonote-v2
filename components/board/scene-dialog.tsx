@@ -325,8 +325,11 @@ export function SceneDialog({
 
   return (
     <Dialog open onOpenChange={(open) => !open && void handleClose()}>
-      {/* 低い画面でもフッターの操作に届くよう、ダイアログ全体を画面内に収めてスクロール（Issue #151） */}
-      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
+      {/* 低い画面でもフッターの操作に届くよう、ダイアログ全体を画面内に収めてスクロール（Issue #151）。
+          幅は記入欄を広く取るため既定より広げている（Issue #201。ピーク表示の実装までの暫定対応）。
+          min() で余白分を引くのは、sm 以上では基底の max-w-[calc(100%-2rem)] を上書きしてしまい、
+          画面幅が 56rem 未満だと左右の余白が消えるため */}
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-[min(56rem,calc(100%-2rem))]">
         <DialogHeader>
           <DialogTitle>シーンを編集</DialogTitle>
           <DialogDescription className="sr-only">
@@ -495,7 +498,7 @@ export function SceneDialog({
           </div>
         </div>
 
-        {/* ボタン5個は max-w-lg に収まらないことがあるため折り返しを許可（Issue #171） */}
+        {/* ボタン5個は中くらいの画面幅では1行に収まらないことがあるため折り返しを許可（Issue #171） */}
         <DialogFooter className="sm:flex-wrap sm:justify-between">
           <div className="flex gap-2">
             <AlertDialog>
