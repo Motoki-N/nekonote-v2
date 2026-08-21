@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
+import { TagManageDialog } from "@/components/notes/tag-manage-dialog";
 import { DEFAULT_SORT, type SortValue } from "@/components/notes/sort-options";
 
 type Tag = { id: string; name: string; kind: string };
@@ -65,6 +66,12 @@ export function TagFilter({
           絞り込み解除
         </Link>
       )}
+      <TagManageDialog
+        tags={tags}
+        selectedTagIds={selectedTagIds}
+        q={q}
+        sort={sort}
+      />
     </div>
   );
 }
