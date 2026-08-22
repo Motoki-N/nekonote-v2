@@ -163,10 +163,11 @@ export const sceneAnchors = [
 ] as const;
 export type SceneAnchor = (typeof sceneAnchors)[number];
 
-// 感情の強度: -5〜+5の11段階整数（0=中立)。null=未設定（emotion_start/emotion_end列）。
-// 20260723000002 の CHECK 制約（between -5 and 5）と対応
-export const EMOTION_MIN = -5;
-export const EMOTION_MAX = 5;
+// 感情の変化量: -9〜+9の整数（0=変化なし）。null=未設定（scenes.emotion_delta列）。
+// 20260822000001 の CHECK 制約（between -9 and 9）と対応（Issue #205）。
+// 同じレンジが感情の起伏グラフ（変化量の累積値）の上下限としても使われる
+export const EMOTION_MIN = -9;
+export const EMOTION_MAX = 9;
 export type Emotion = number;
 
 export const aiCapabilities = ["high", "medium", "low"] as const;

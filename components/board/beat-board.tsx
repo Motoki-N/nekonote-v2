@@ -33,6 +33,7 @@ import {
 } from "@/lib/actions/scenes";
 import {
   BOUNDARY_ANCHOR_BY_PART,
+  computeEmotionArc,
   findTurningPointOrderViolation,
   isBoundaryAnchor,
   normalizeAnchor,
@@ -143,6 +144,17 @@ export function BeatBoard({
   const novelScenes = useMemo(
     () => scenes.filter((s) => s.part !== "chapter"),
     [scenes],
+  );
+
+  // 感情の起伏が上下限に達し、変化量を反映しきれないシーン（Issue #205。カードで赤字警告）
+  const emotionClampedIds = useMemo(
+    () =>
+      new Set(
+        computeEmotionArc(novelScenes)
+          .filter((point) => point.clamped)
+          .map((point) => point.sceneId),
+      ),
+    [novelScenes],
   );
 
   const noteCounts = useMemo(
@@ -477,6 +489,7 @@ export function BeatBoard({
                       : undefined
                   }
                   noteCounts={noteCounts}
+                  emotionClampedIds={emotionClampedIds}
                   adding={adding}
                   onAdd={(p) => void handleAdd(p)}
                   onEdit={setEditing}
@@ -489,6 +502,7 @@ export function BeatBoard({
               <SceneCardContent
                 scene={activeScene}
                 noteCount={noteCounts[activeScene.id]}
+                emotionClamped={emotionClampedIds.has(activeScene.id)}
               />
             ) : null}
           </DragOverlay>

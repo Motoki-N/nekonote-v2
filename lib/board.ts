@@ -10,7 +10,7 @@ import type {
   ScenePartAll,
   StructureTemplate,
 } from "@/lib/schemas/enums";
-import { scenePartsAll } from "@/lib/schemas/enums";
+import { EMOTION_MAX, EMOTION_MIN, scenePartsAll } from "@/lib/schemas/enums";
 
 export type SceneRecord = {
   id: string;
@@ -21,8 +21,8 @@ export type SceneRecord = {
   order_index: number;
   title: string;
   content: string;
-  emotion_start: Emotion | null;
-  emotion_end: Emotion | null;
+  /** そのシーンを通した感情の変化量（-9〜+9。0=変化なし、null=未設定。Issue #205） */
+  emotion_delta: Emotion | null;
   /** シーンレビューのゲート状態（Issue #57。「通す」で approved になる） */
   status: ApprovalStatus;
   /** 紐づく原稿ファイルのパス（Issue #56。null = 未紐づけ） */
@@ -70,10 +70,37 @@ export const SCENE_CONTENT_TEMPLATE = [
   "・葛藤",
 ].join("\n");
 
-/** 感情の強度の表示用テキスト（null=未設定、0=0、それ以外は符号付き数値） */
+/** 感情の変化量の表示用テキスト（null=未設定、0=±0、それ以外は符号付き数値） */
 export function formatEmotion(value: Emotion | null): string {
   if (value === null) return "未設定";
+  if (value === 0) return "±0";
   return value > 0 ? `+${value}` : `${value}`;
+}
+
+/** 感情の起伏の1点（computeEmotionArc の結果） */
+export type EmotionArcPoint = {
+  sceneId: string;
+  /** 先頭を0として変化量を積み上げた到達値（EMOTION_MIN〜EMOTION_MAX にクランプ済み） */
+  value: number;
+  /** 上下限に達して変化量を反映しきれなかった（UIで赤字警告する。Issue #205） */
+  clamped: boolean;
+};
+
+/**
+ * 各シーンの変化量から感情の起伏を積み上げる（SPEC-beat-board §3.2。Issue #205）。
+ * 先頭を0とし、構成順に emotion_delta を足し込む。未設定シーンは変化なし（累積を維持）。
+ * 上下限（±9）を超える分は切り捨て、そのシーンに clamped を立てる。
+ * scenes はビートボードの表示順（章カードを除く正準順序）で渡すこと
+ */
+export function computeEmotionArc(scenes: SceneRecord[]): EmotionArcPoint[] {
+  let current = 0;
+  return scenes.map((scene) => {
+    const raw = current + (scene.emotion_delta ?? 0);
+    const next = Math.min(EMOTION_MAX, Math.max(EMOTION_MIN, raw));
+    const clamped = scene.emotion_delta !== null && raw !== next;
+    current = next;
+    return { sceneId: scene.id, value: next, clamped };
+  });
 }
 
 /** アンカーが属するパート（pp1⇔setup 等の整合はこの対応表が正） */
