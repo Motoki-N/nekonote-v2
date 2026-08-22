@@ -3,45 +3,63 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, FileText, MoveRight, StickyNote } from "lucide-react";
+import {
+  BadgeCheck,
+  FileText,
+  Minus,
+  StickyNote,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 
 import { ANCHOR_BADGE, formatEmotion, type SceneRecord } from "@/lib/board";
 import type { Emotion } from "@/lib/schemas/enums";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-function EmotionIcon({ emotion }: { emotion: Emotion | null }) {
-  if (emotion === null) {
-    return (
-      <span
-        className="text-[10px] leading-none text-muted-foreground"
-        aria-label="未設定"
-      >
-        ・
-      </span>
-    );
-  }
+/**
+ * 感情の変化バッジ（Issue #205。そのシーンでの増減を単一値で表す）。
+ * 色はテーマ変数のみ。起伏の上下限に達して変化を反映しきれない場合は警告色にする
+ */
+function EmotionBadge({
+  emotion,
+  clamped,
+}: {
+  emotion: Emotion | null;
+  clamped: boolean;
+}) {
+  if (emotion === null) return null;
+  const text = formatEmotion(emotion);
+  // 増減の向きは色に頼らずアイコンでも示す（テーマ非依存のアクセシビリティ配慮）
+  const Icon = emotion > 0 ? TrendingUp : emotion < 0 ? TrendingDown : Minus;
   return (
-    <span
-      className={cn(
-        "text-[11px] leading-none font-medium tabular-nums",
-        emotion > 0 ? "text-primary" : "text-muted-foreground",
-      )}
-      aria-label={`感情 ${formatEmotion(emotion)}`}
+    <Badge
+      variant="outline"
+      className={cn("gap-0.5", clamped && "border-destructive")}
+      aria-label={
+        clamped
+          ? `感情の変化 ${text}（感情の起伏が上下限に達しているため反映されません）`
+          : `感情の変化 ${text}`
+      }
+      title={
+        clamped
+          ? "感情の起伏が上下限に達しているため、この変化は反映されません"
+          : undefined
+      }
     >
-      {formatEmotion(emotion)}
-    </span>
-  );
-}
-
-/** 感情バッジ（起点 → 終点。色ではなく ＋/− アイコンで表現し、色はテーマ変数のみ） */
-function EmotionBadge({ scene }: { scene: SceneRecord }) {
-  if (scene.emotion_start === null && scene.emotion_end === null) return null;
-  return (
-    <Badge variant="outline" className="gap-0.5" aria-label="感情の起伏">
-      <EmotionIcon emotion={scene.emotion_start} />
-      <MoveRight className="size-3 text-muted-foreground" aria-hidden />
-      <EmotionIcon emotion={scene.emotion_end} />
+      <Icon className="size-3 text-muted-foreground" aria-hidden />
+      <span
+        className={cn(
+          "text-[11px] leading-none font-medium tabular-nums",
+          clamped
+            ? "text-destructive"
+            : emotion > 0
+              ? "text-primary"
+              : "text-muted-foreground",
+        )}
+      >
+        {text}
+      </span>
     </Badge>
   );
 }
@@ -80,11 +98,14 @@ function ManuscriptBadge({ scene }: { scene: SceneRecord }) {
 export function SceneCardContent({
   scene,
   noteCount = 0,
+  emotionClamped = false,
   onClick,
 }: {
   scene: SceneRecord;
   /** 紐づけノート件数（Issue #56） */
   noteCount?: number;
+  /** 感情の起伏が上下限に達し、このシーンの変化量を反映しきれない（Issue #205） */
+  emotionClamped?: boolean;
   onClick?: () => void;
 }) {
   return (
@@ -103,8 +124,7 @@ export function SceneCardContent({
         </p>
       )}
       {(scene.anchor !== null ||
-        scene.emotion_start !== null ||
-        scene.emotion_end !== null ||
+        scene.emotion_delta !== null ||
         scene.status === "approved" ||
         scene.manuscript_path !== null ||
         noteCount > 0) && (
@@ -112,7 +132,10 @@ export function SceneCardContent({
           {scene.anchor !== null && (
             <Badge variant="secondary">{ANCHOR_BADGE[scene.anchor]}</Badge>
           )}
-          <EmotionBadge scene={scene} />
+          <EmotionBadge
+            emotion={scene.emotion_delta}
+            clamped={emotionClamped}
+          />
           {/* シーンレビューのゲート状態（Issue #57） */}
           {scene.status === "approved" && (
             <Badge variant="outline" aria-label="シーンレビュー承認済み">
@@ -138,10 +161,12 @@ export function SceneCardContent({
 export function SortableSceneCard({
   scene,
   noteCount,
+  emotionClamped,
   onEdit,
 }: {
   scene: SceneRecord;
   noteCount?: number;
+  emotionClamped?: boolean;
   onEdit: (scene: SceneRecord) => void;
 }) {
   const {
@@ -166,6 +191,7 @@ export function SortableSceneCard({
       <SceneCardContent
         scene={scene}
         noteCount={noteCount}
+        emotionClamped={emotionClamped}
         onClick={() => onEdit(scene)}
       />
     </div>

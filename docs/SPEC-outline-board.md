@@ -43,7 +43,7 @@
 
 - 章タイトル・内容メモ・原稿ファイル select（scene-dialog と同じ getManuscriptTree 遅延取得・
   エディタが開ける章のみ表示・消えたパスの現在値温存・「エディタで開く」リンク）・削除（確認→物理削除）
-- 保存は `updateScene` に `part:'chapter'・anchor:null・emotion null` を固定で送る
+- 保存は `updateScene` に `part:'chapter'・anchor:null・emotion_delta:null` を固定で送る
 
 ### 3.4 定番構成テンプレ（lib/constants/outline-template.ts）
 

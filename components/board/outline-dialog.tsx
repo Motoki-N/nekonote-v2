@@ -93,8 +93,7 @@ export function OutlineDialog({
         // 章カードの固定値（アンカー・感情は目次ボードでは使わない。SPEC-outline-board §4）
         part: "chapter",
         anchor: null,
-        emotion_start: null,
-        emotion_end: null,
+        emotion_delta: null,
         manuscript_path: manuscriptPath,
       });
       if (ok) onClose();

@@ -27,6 +27,7 @@ export function Lane({
   scenes,
   boundaryScene,
   noteCounts,
+  emotionClampedIds,
   adding,
   onAdd,
   onEdit,
@@ -38,6 +39,8 @@ export function Lane({
   boundaryScene: SceneRecord | undefined;
   /** シーンごとの紐づけノート件数（Issue #56） */
   noteCounts: Record<string, number>;
+  /** 感情の起伏が上下限に達し、変化量を反映しきれないシーンのid（Issue #205） */
+  emotionClampedIds: ReadonlySet<string>;
   adding: boolean;
   onAdd: (part: ScenePart) => void;
   onEdit: (scene: SceneRecord) => void;
@@ -70,6 +73,7 @@ export function Lane({
               key={scene.id}
               scene={scene}
               noteCount={noteCounts[scene.id]}
+              emotionClamped={emotionClampedIds.has(scene.id)}
               onEdit={onEdit}
             />
           ))}
@@ -92,6 +96,9 @@ export function Lane({
           anchor={boundary}
           scene={boundaryScene}
           noteCount={boundaryScene ? noteCounts[boundaryScene.id] : undefined}
+          emotionClamped={
+            boundaryScene ? emotionClampedIds.has(boundaryScene.id) : false
+          }
           onEdit={onEdit}
         />
       )}

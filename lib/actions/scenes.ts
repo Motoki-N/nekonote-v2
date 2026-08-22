@@ -43,7 +43,7 @@ const outlineTemplateKeySchema = z.enum(outlineTemplateKeys);
 const structureTemplateSchema = z.enum(structureTemplates);
 
 const SCENE_COLUMNS =
-  "id, project_id, part, anchor, order_index, title, content, emotion_start, emotion_end, status, manuscript_path";
+  "id, project_id, part, anchor, order_index, title, content, emotion_delta, status, manuscript_path";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -125,8 +125,7 @@ async function persistChanges(
       prev.order_index !== scene.order_index ||
       prev.title !== scene.title ||
       prev.content !== scene.content ||
-      prev.emotion_start !== scene.emotion_start ||
-      prev.emotion_end !== scene.emotion_end ||
+      prev.emotion_delta !== scene.emotion_delta ||
       prev.manuscript_path !== scene.manuscript_path
     );
   });
@@ -141,8 +140,7 @@ async function persistChanges(
     order_index: scene.order_index,
     title: scene.title,
     content: scene.content,
-    emotion_start: scene.emotion_start,
-    emotion_end: scene.emotion_end,
+    emotion_delta: scene.emotion_delta,
     manuscript_path: scene.manuscript_path,
   }));
   const { error } = await supabase.from("scenes").upsert(payload);
@@ -175,8 +173,7 @@ export async function createScene(
       title: "",
       // 小説シーンは4観点テンプレを初期値として残す（Issue #155。章カードは対象外）
       content: targetPart === CHAPTER_PART ? "" : SCENE_CONTENT_TEMPLATE,
-      emotion_start: null,
-      emotion_end: null,
+      emotion_delta: null,
       status: "draft",
       manuscript_path: null,
     };
@@ -222,8 +219,7 @@ export async function duplicateScene(
       // sceneEditSchema の max(200) を超えると複製後に保存できなくなるため付加後に切り詰める
       title: source.title === "" ? "" : `${source.title}のコピー`.slice(0, 200),
       content: source.content,
-      emotion_start: source.emotion_start,
-      emotion_end: source.emotion_end,
+      emotion_delta: source.emotion_delta,
       status: "draft",
       manuscript_path: null,
     };
@@ -268,8 +264,7 @@ export async function applyOutlineTemplate(
         order_index: scenes.length + index, // 仮値。toCanonicalOrder で確定する
         title,
         content: "",
-        emotion_start: null,
-        emotion_end: null,
+        emotion_delta: null,
         status: "draft",
         manuscript_path: null,
       }),

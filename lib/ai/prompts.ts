@@ -105,9 +105,9 @@ function historySection(history: FeedbackHistoryItem[]): string[] {
   return lines;
 }
 
-function emotionArc(start: Emotion | null, end: Emotion | null): string {
-  if (start === null && end === null) return "（未設定）";
-  return `${formatEmotion(start)} → ${formatEmotion(end)}`;
+/** 感情の変化量の表示（Issue #205。null=未設定） */
+function emotionDelta(value: Emotion | null): string {
+  return value === null ? "（未設定）" : formatEmotion(value);
 }
 
 function anchorLabel(anchor: SceneAnchor | null): string {
@@ -161,7 +161,7 @@ function templateSection(template: StructureTemplate): string[] {
 /**
  * 構成レビューの user 入力（SPEC-beat-board §3.5。紐づけノート全文はIssue #58）。
  * 小説: 企画書＋採用中の構成テンプレート（Issue #54）＋全シーンを構成順に整形
- * （パート・アンカー・タイトル・本文・感情の起点→終点・紐づけノート全文）。
+ * （パート・アンカー・タイトル・本文・感情の変化量・紐づけノート全文）。
  * 非小説（技術書・その他）: 目次ボードの章カードのみを目次形式で整形（SPEC-outline-board §5。
  * パートラベル・アンカー・感情・テンプレート節は小説理論の項目のため出さない）。
  * ジャンル切替で両種のカードが混在していても、レビュー入力は表示中のビューと一致する
@@ -201,7 +201,7 @@ export function buildStructureReviewInput({
       if (isNovel) {
         lines.push(
           `## ${index + 1}. [${PART_LABEL[scene.part]}]${anchorLabel(scene.anchor)} ${scene.title || "（無題）"}`,
-          `感情の起伏: ${emotionArc(scene.emotion_start, scene.emotion_end)}`,
+          `感情の変化: ${emotionDelta(scene.emotion_delta)}`,
           '"""',
           scene.content || "（本文なし）",
           '"""',
@@ -255,7 +255,7 @@ export function buildSceneReviewInput({
     "# 対象シーン",
     `パート: ${PART_LABEL[scene.part]}${scene.anchor ? ` ${anchorLabel(scene.anchor)}` : ""}`,
     `タイトル: ${scene.title || "（無題）"}`,
-    `感情の起伏: ${emotionArc(scene.emotion_start, scene.emotion_end)}`,
+    `感情の変化: ${emotionDelta(scene.emotion_delta)}`,
     "本文:",
     '"""',
     scene.content || "（本文なし）",
@@ -272,7 +272,7 @@ export function buildSceneReviewInput({
     .forEach((item, index) => {
       const marker = item.id === scene.id ? "→ " : "";
       lines.push(
-        `${index + 1}. ${marker}[${PART_LABEL[item.part]}]${anchorLabel(item.anchor)} ${item.title || "（無題）"}（感情: ${emotionArc(item.emotion_start, item.emotion_end)}）`,
+        `${index + 1}. ${marker}[${PART_LABEL[item.part]}]${anchorLabel(item.anchor)} ${item.title || "（無題）"}（感情の変化: ${emotionDelta(item.emotion_delta)}）`,
       );
     });
 

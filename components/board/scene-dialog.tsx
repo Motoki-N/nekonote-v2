@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ChevronLeft,
@@ -21,6 +21,7 @@ import type { LinkedNote } from "@/lib/actions/projects";
 import {
   ANCHOR_LABEL,
   ANCHOR_TO_PART,
+  computeEmotionArc,
   formatEmotion,
   isBoundaryAnchor,
   SCENE_CONTENT_TEMPLATE,
@@ -28,7 +29,12 @@ import {
 } from "@/lib/board";
 import { BOARD_TEMPLATES } from "@/lib/board-templates";
 import { LinkedNoteChips } from "@/components/notes/linked-note-chips";
-import { EMOTION_MAX, EMOTION_MIN, sceneAnchors } from "@/lib/schemas/enums";
+import {
+  CHAPTER_PART,
+  EMOTION_MAX,
+  EMOTION_MIN,
+  sceneAnchors,
+} from "@/lib/schemas/enums";
 import type {
   Emotion,
   SceneAnchor,
@@ -63,13 +69,19 @@ import { cn } from "@/lib/utils";
 const selectClass =
   "h-8 w-full rounded-md border border-input bg-transparent px-2.5 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
+/**
+ * 感情の変化量のステッパー（Issue #205。そのシーンでの増減を単一値で設定する）。
+ * 感情の起伏が上下限に達してこの変化を反映しきれない場合は警告色＋注意文を出す
+ */
 function EmotionStepper({
   label,
   value,
+  clamped,
   onChange,
 }: {
   label: string;
   value: Emotion | null;
+  clamped: boolean;
   onChange: (next: Emotion | null) => void;
 }) {
   function step(delta: number) {
@@ -78,7 +90,14 @@ function EmotionStepper({
   }
   return (
     <fieldset className="flex flex-col gap-1">
-      <legend className="text-xs text-muted-foreground">{label}</legend>
+      <legend
+        className={cn(
+          "text-xs",
+          clamped ? "text-destructive" : "text-muted-foreground",
+        )}
+      >
+        {label}
+      </legend>
       <div
         className="flex items-center gap-1.5"
         role="group"
@@ -94,7 +113,12 @@ function EmotionStepper({
         >
           <Minus />
         </Button>
-        <span className="w-9 text-center text-sm text-foreground tabular-nums">
+        <span
+          className={cn(
+            "w-9 text-center text-sm tabular-nums",
+            clamped ? "text-destructive" : "text-foreground",
+          )}
+        >
           {formatEmotion(value)}
         </span>
         <Button
@@ -117,6 +141,12 @@ function EmotionStepper({
           未設定に戻す
         </Button>
       </div>
+      {clamped && (
+        <p className="text-xs text-destructive">
+          感情の起伏が上下限（{EMOTION_MIN}〜+{EMOTION_MAX}
+          ）に達しているため、この変化は起伏に反映されません
+        </p>
+      )}
     </fieldset>
   );
 }
@@ -174,11 +204,8 @@ export function SceneDialog({
   const [content, setContent] = useState(scene.content);
   const [part, setPart] = useState<ScenePart>(initialPart);
   const [anchor, setAnchor] = useState<SceneAnchor | null>(scene.anchor);
-  const [emotionStart, setEmotionStart] = useState<Emotion | null>(
-    scene.emotion_start,
-  );
-  const [emotionEnd, setEmotionEnd] = useState<Emotion | null>(
-    scene.emotion_end,
+  const [emotionDelta, setEmotionDelta] = useState<Emotion | null>(
+    scene.emotion_delta,
   );
   const [manuscriptPath, setManuscriptPath] = useState<string | null>(
     scene.manuscript_path,
@@ -190,8 +217,7 @@ export function SceneDialog({
     content: scene.content,
     part: initialPart,
     anchor: scene.anchor,
-    emotion_start: scene.emotion_start,
-    emotion_end: scene.emotion_end,
+    emotion_delta: scene.emotion_delta,
     manuscript_path: scene.manuscript_path,
   });
   // 原稿ファイルの選択肢（Issue #56）。ダイアログを開いたときに遅延取得。null = 読み込み中
@@ -209,6 +235,20 @@ export function SceneDialog({
       cancelled = true;
     };
   }, [scene.project_id]);
+
+  // 感情の起伏が上下限に達し、このシーンの変化量を反映しきれないか（Issue #205）。
+  // 編集中の値を差し込んで計算し、ステッパー操作に即座に追従させる
+  const emotionClamped = useMemo(() => {
+    const ordered = allScenes
+      .filter((s) => s.part !== CHAPTER_PART)
+      .map((s) =>
+        s.id === scene.id ? { ...s, emotion_delta: emotionDelta } : s,
+      );
+    return (
+      computeEmotionArc(ordered).find((p) => p.sceneId === scene.id)?.clamped ??
+      false
+    );
+  }, [allScenes, scene.id, emotionDelta]);
 
   // 現在のパートに応じたアンカー選択肢のみ出す（解決レーンはなし）
   const anchorOptions = sceneAnchors.filter((a) => ANCHOR_TO_PART[a] === part);
@@ -241,8 +281,7 @@ export function SceneDialog({
       content,
       part,
       anchor,
-      emotion_start: emotionStart,
-      emotion_end: emotionEnd,
+      emotion_delta: emotionDelta,
       manuscript_path: manuscriptPath,
     };
     const saved = savedRef.current;
@@ -359,18 +398,12 @@ export function SceneDialog({
             />
           </label>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <EmotionStepper
-              label="感情の起点"
-              value={emotionStart}
-              onChange={setEmotionStart}
-            />
-            <EmotionStepper
-              label="感情の終点"
-              value={emotionEnd}
-              onChange={setEmotionEnd}
-            />
-          </div>
+          <EmotionStepper
+            label="感情の変化"
+            value={emotionDelta}
+            clamped={emotionClamped}
+            onChange={setEmotionDelta}
+          />
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-xs text-muted-foreground">

@@ -16,11 +16,14 @@ export function AnchorSlot({
   anchor,
   scene,
   noteCount,
+  emotionClamped,
   onEdit,
 }: {
   anchor: SceneAnchor;
   scene: SceneRecord | undefined;
   noteCount?: number;
+  /** 感情の起伏が上下限に達し、変化量を反映しきれない（Issue #205） */
+  emotionClamped?: boolean;
   onEdit: (scene: SceneRecord) => void;
 }) {
   return (
@@ -34,6 +37,7 @@ export function AnchorSlot({
         <SceneCardContent
           scene={scene}
           noteCount={noteCount}
+          emotionClamped={emotionClamped}
           onClick={() => onEdit(scene)}
         />
       )}

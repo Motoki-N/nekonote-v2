@@ -1,16 +1,16 @@
 "use client";
 
-import type { SceneRecord } from "@/lib/board";
+import { computeEmotionArc, type SceneRecord } from "@/lib/board";
 import { EMOTION_MAX, EMOTION_MIN } from "@/lib/schemas/enums";
 
-const SLOT_WIDTH = 24; // 1シーン = 起点・終点の2スロット
+const SLOT_WIDTH = 24; // 1シーン = 1スロット（変化量を積み上げた到達値を1点で描く）
 const TOP = 8;
 const BOTTOM = 64;
 const HEIGHT = 76;
 const LEFT_PAD = 28; // 軸ラベル分
 
-// 固定ドメイン(-5〜+5)の線形スケール。実データのmin/maxは使わない
-// （感情強度は絶対値として比較できることが重要なため、シーン構成ごとに縮尺が変わるのを避ける）
+// 固定ドメイン(-9〜+9)の線形スケール。実データのmin/maxは使わない
+// （感情の到達値は絶対値として比較できることが重要なため、シーン構成ごとに縮尺が変わるのを避ける）
 function yFor(value: number): number {
   return (
     BOTTOM -
@@ -20,35 +20,32 @@ function yFor(value: number): number {
 
 /**
  * 感情の起伏の折れ線（SPEC-beat-board §3.2）。
- * 構成順序（order_index）に沿って emotion_start → emotion_end の遷移を
- * -5〜+5の固定スケールで描画する。未設定はスキップして線をつなぐ。
- * 色はテーマ用CSS変数（currentColor / Tailwind のテーマクラス）のみ
+ * 構成順序（order_index）に沿って各シーンの感情の変化量を0から積み上げ、
+ * -9〜+9の固定スケールで到達値を描画する（Issue #205）。
+ * 未設定シーンは変化なしとして累積を維持する。上下限に達して変化を反映しきれなかった
+ * シーンの点は警告色で示す。色はテーマ用CSS変数（currentColor / Tailwind のテーマクラス）のみ
  */
 export function EmotionLine({ scenes }: { scenes: SceneRecord[] }) {
-  const points: { x: number; y: number }[] = [];
-  scenes.forEach((scene, index) => {
-    if (scene.emotion_start !== null) {
-      points.push({
-        x: LEFT_PAD + index * 2 * SLOT_WIDTH,
-        y: yFor(scene.emotion_start),
-      });
-    }
-    if (scene.emotion_end !== null) {
-      points.push({
-        x: LEFT_PAD + (index * 2 + 1) * SLOT_WIDTH,
-        y: yFor(scene.emotion_end),
-      });
-    }
-  });
+  const arc = computeEmotionArc(scenes);
+  // 先頭に起点（0）を置き、各シーンの到達値を1点ずつ続ける
+  const points = [
+    { x: LEFT_PAD, y: yFor(0), clamped: false },
+    ...arc.map((point, index) => ({
+      x: LEFT_PAD + (index + 1) * SLOT_WIDTH,
+      y: yFor(point.value),
+      clamped: point.clamped,
+    })),
+  ];
 
-  const width = LEFT_PAD + Math.max(scenes.length, 1) * 2 * SLOT_WIDTH + 8;
+  const width = LEFT_PAD + (scenes.length + 1) * SLOT_WIDTH + 8;
+  const hasEmotion = scenes.some((s) => s.emotion_delta !== null);
 
   return (
     <section className="flex flex-col gap-1 rounded-lg border border-border p-3">
       <h2 className="text-sm font-medium text-foreground">感情の起伏</h2>
-      {points.length < 2 ? (
+      {!hasEmotion ? (
         <p className="text-xs text-muted-foreground">
-          シーンに感情の起点・終点を設定すると、構成順の起伏がここに折れ線で表示されます
+          シーンに感情の変化を設定すると、構成順の起伏がここに折れ線で表示されます
         </p>
       ) : (
         <div className="overflow-x-auto">
@@ -60,13 +57,13 @@ export function EmotionLine({ scenes }: { scenes: SceneRecord[] }) {
             aria-label="感情の起伏の折れ線グラフ"
             className="text-primary"
           >
-            {/* 感情強度の基準線と軸ラベル */}
+            {/* 感情の到達値の基準線と軸ラベル */}
             <text
               x={4}
               y={yFor(EMOTION_MAX) + 4}
               className="fill-muted-foreground text-[11px]"
             >
-              +5
+              +{EMOTION_MAX}
             </text>
             <text
               x={4}
@@ -80,7 +77,7 @@ export function EmotionLine({ scenes }: { scenes: SceneRecord[] }) {
               y={yFor(EMOTION_MIN) + 4}
               className="fill-muted-foreground text-[11px]"
             >
-              -5
+              {EMOTION_MIN}
             </text>
             <line
               x1={LEFT_PAD}
@@ -90,11 +87,11 @@ export function EmotionLine({ scenes }: { scenes: SceneRecord[] }) {
               className="stroke-border"
               strokeDasharray="4 4"
             />
-            {/* シーン番号（構成順） */}
+            {/* シーン番号（構成順。起点の分だけ右にずらす） */}
             {scenes.map((scene, index) => (
               <text
                 key={scene.id}
-                x={LEFT_PAD + (index * 2 + 0.5) * SLOT_WIDTH}
+                x={LEFT_PAD + (index + 1) * SLOT_WIDTH}
                 y={HEIGHT - 4}
                 textAnchor="middle"
                 className="fill-muted-foreground text-[10px]"
@@ -110,7 +107,15 @@ export function EmotionLine({ scenes }: { scenes: SceneRecord[] }) {
               strokeLinejoin="round"
             />
             {points.map((p, index) => (
-              <circle key={index} cx={p.x} cy={p.y} r={3} fill="currentColor" />
+              <circle
+                key={index}
+                cx={p.x}
+                cy={p.y}
+                r={3}
+                fill="currentColor"
+                // 上下限に達して変化を反映しきれなかったシーンは警告色（Issue #205）
+                className={p.clamped ? "text-destructive" : undefined}
+              />
             ))}
           </svg>
         </div>
