@@ -21,6 +21,9 @@ export type NoteContext = {
   tags: string[];
 };
 
+/** id 付きのノート（構成レビューで重複を畳み、シーンから番号で参照するのに使う） */
+export type IdentifiedNote = NoteContext & { id: string };
+
 export type ProposalContext = {
   writingGenre: WritingGenre; // 執筆ジャンル（小説/技術書/その他。SPEC-genre）
   purpose: string | null; // 執筆目的（自由記述）
@@ -64,10 +67,12 @@ function proposalSection(proposal: ProposalContext): string[] {
 }
 
 /** ノート一覧の整形（見出し・ノート見出しの階層は呼び出し側で指定。企画書・構成・シーンレビューで共用） */
-function notesSection(
+function notesSection<T extends NoteContext>(
   heading: string,
-  notes: NoteContext[],
+  notes: T[],
   notePrefix = "##",
+  /** ノート見出しに付ける接頭辞（構成レビューの参照番号。既定はなし） */
+  labelPrefix?: (note: T) => string,
 ): string[] {
   const lines: string[] = [heading];
   if (notes.length === 0) {
@@ -76,7 +81,7 @@ function notesSection(
   }
   for (const note of notes) {
     lines.push(
-      `${notePrefix} ${note.title || "（無題）"}`,
+      `${notePrefix} ${labelPrefix?.(note) ?? ""}${note.title || "（無題）"}`,
       `タグ: ${note.tags.length > 0 ? note.tags.join("、") : "（なし）"}`,
       '"""',
       note.content || "（本文なし）",
@@ -160,11 +165,15 @@ function templateSection(template: StructureTemplate): string[] {
 
 /**
  * 構成レビューの user 入力（SPEC-beat-board §3.5。紐づけノート全文はIssue #58）。
- * 小説: 企画書＋採用中の構成テンプレート（Issue #54）＋全シーンを構成順に整形
- * （パート・アンカー・タイトル・本文・感情の変化量・紐づけノート全文）。
+ * 小説: 企画書＋採用中の構成テンプレート（Issue #54）＋紐づけノート全文（重複なし）＋
+ * 全シーンを構成順に整形（パート・アンカー・タイトル・本文・感情の変化量・紐づけノートの参照番号）。
  * 非小説（技術書・その他）: 目次ボードの章カードのみを目次形式で整形（SPEC-outline-board §5。
  * パートラベル・アンカー・感情・テンプレート節は小説理論の項目のため出さない）。
  * ジャンル切替で両種のカードが混在していても、レビュー入力は表示中のビューと一致する
+ *
+ * ノート全文はシーンの下に繰り返さず、独立した節に1回だけ置く。
+ * 1枚のノートが複数シーンに紐づくのが常態のため、シーンごとに全文を出すと
+ * 「紐づいたシーン数」倍に膨らみ、生成が実行時間の上限に当たっていた
  */
 export function buildStructureReviewInput({
   proposal,
@@ -177,22 +186,49 @@ export function buildStructureReviewInput({
   /** 採用中の構成テンプレート（projects.structure_template） */
   structureTemplate: StructureTemplate;
   scenes: SceneRecord[];
-  /** シーンID→紐づけノート全文（Issue #58） */
-  sceneNotes: Record<string, NoteContext[]>;
+  /** シーンID→紐づけノート（Issue #58。同じノートが複数シーンに現れうる） */
+  sceneNotes: Record<string, IdentifiedNote[]>;
   history: FeedbackHistoryItem[];
 }): string {
   const isNovel = proposal.writingGenre === "novel";
   const visible = scenes.filter((s) =>
     isNovel ? s.part !== "chapter" : s.part === "chapter",
   );
+
+  // 構成順の初出でノートに通し番号を振る（題名が重複していてもシーンから一意に指せる）
+  const numberByNoteId = new Map<string, number>();
+  const uniqueNotes: IdentifiedNote[] = [];
+  for (const scene of visible) {
+    for (const note of sceneNotes[scene.id] ?? []) {
+      if (numberByNoteId.has(note.id)) continue;
+      numberByNoteId.set(note.id, uniqueNotes.length + 1);
+      uniqueNotes.push(note);
+    }
+  }
+
   const lines: string[] = [
     ...proposalSection(proposal),
     "",
     ...(isNovel ? [...templateSection(structureTemplate), ""] : []),
+  ];
+
+  if (uniqueNotes.length > 0) {
+    lines.push(
+      ...notesSection(
+        "# 紐づけノート（設定資料。各シーンからは番号で参照する）",
+        uniqueNotes,
+        "##",
+        (note) => `${numberByNoteId.get(note.id)}. `,
+      ),
+      "",
+    );
+  }
+
+  lines.push(
     isNovel
       ? `# 構成（${BOARD_TEMPLATES[structureTemplate].label}・構成順）`
       : "# 構成（目次・構成順）",
-  ];
+  );
 
   if (visible.length === 0) {
     lines.push(isNovel ? "（シーンはまだない）" : "（章はまだない）");
@@ -216,7 +252,15 @@ export function buildStructureReviewInput({
       }
       const notes = sceneNotes[scene.id] ?? [];
       if (notes.length > 0) {
-        lines.push(...notesSection("紐づけノート（設定資料）:", notes, "###"));
+        // 本文は上の「紐づけノート」節にあるため、ここでは番号と題名だけを指す
+        lines.push(
+          `紐づけノート: ${notes
+            .map(
+              (note) =>
+                `${numberByNoteId.get(note.id)}. ${note.title || "（無題）"}`,
+            )
+            .join("、")}`,
+        );
       }
       lines.push("");
     });

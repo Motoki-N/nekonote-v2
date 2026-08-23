@@ -17,6 +17,7 @@ import {
   buildStructureReviewInput,
   type CritiqueProposalScope,
   type FeedbackHistoryItem,
+  type IdentifiedNote,
   type NoteContext,
   type ProposalContext,
 } from "@/lib/ai/prompts";
@@ -174,23 +175,25 @@ async function fetchScenes(
 
 /**
  * プロジェクト内全シーンの紐づけノート全文をシーンID単位でまとめて取得
- * （構成レビュー用。ごみ箱中は除外。Issue #58）
+ * （構成レビュー用。ごみ箱中は除外。Issue #58）。
+ * 1枚のノートは紐づいたシーンの数だけ現れる（プロンプト側で番号を振って畳む）
  */
 async function fetchSceneNotesByScene(
   supabase: Supabase,
   projectId: string,
-): Promise<Record<string, NoteContext[]>> {
+): Promise<Record<string, IdentifiedNote[]>> {
   const { data, error } = await supabase
     .from("scene_notes")
     .select(
-      "scene_id, notes (title, content, deleted_at, note_tags (tags (name))), scenes!inner (project_id)",
+      "scene_id, notes (id, title, content, deleted_at, note_tags (tags (name))), scenes!inner (project_id)",
     )
     .eq("scenes.project_id", projectId);
   if (error) throw new AppError("internal", error.message);
-  const bySceneId: Record<string, NoteContext[]> = {};
+  const bySceneId: Record<string, IdentifiedNote[]> = {};
   for (const row of data ?? []) {
     if (!row.notes || row.notes.deleted_at !== null) continue;
     (bySceneId[row.scene_id] ??= []).push({
+      id: row.notes.id,
       title: row.notes.title,
       content: row.notes.content,
       tags: row.notes.note_tags.flatMap((nt) =>
@@ -437,13 +440,17 @@ export async function POST(req: Request) {
         supabase,
         session.project_id,
       );
-      // 紐づけノート経由のLLM入力肥大化ガード（監査L-3。全シーン×紐づけノートで肥大化しうるためIssue #58で追加）
+      // 紐づけノート経由のLLM入力肥大化ガード（監査L-3。全シーン×紐づけノートで肥大化しうるためIssue #58で追加）。
+      // ノートは複数シーンに紐づいていても入力には1回しか出ないため、重複を除いて数える
+      const uniqueNoteContents = new Map<string, string>();
+      for (const notes of Object.values(sceneNotes)) {
+        for (const note of notes) uniqueNoteContents.set(note.id, note.content);
+      }
       const structureInputChars =
         countChars(proposal.content) +
         scenes.reduce((sum, scene) => sum + countChars(scene.content), 0) +
-        Object.values(sceneNotes).reduce(
-          (sum, notes) =>
-            sum + notes.reduce((s, note) => s + countChars(note.content), 0),
+        [...uniqueNoteContents.values()].reduce(
+          (sum, content) => sum + countChars(content),
           0,
         );
       if (structureInputChars > CRITIQUE_MAX_CHARS) {
