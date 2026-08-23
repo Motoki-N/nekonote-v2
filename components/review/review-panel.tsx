@@ -45,7 +45,13 @@ async function toDisplayError(res: Response): Promise<string> {
   } catch {
     // JSON でなければ汎用文言にフォールバック
   }
-  return "レビューの実行に失敗しました。時間をおいて再試行してください";
+  // ここに来るのはアプリのエラーハンドラを経ていない応答＝プラットフォーム側の失敗。
+  // 原因の切り分けにステータスが要るため文言に含める（504 は実行時間の上限超過）
+  const hint =
+    res.status === 504
+      ? "・生成が実行時間の上限を超えました。対象を絞るか、時間をおいて再試行してください"
+      : "";
+  return `レビューの実行に失敗しました（HTTP ${res.status}${hint}）`;
 }
 
 function VerdictBadge({ verdict }: { verdict: FeedbackRecord["verdict"] }) {
@@ -247,6 +253,8 @@ export function ReviewPanel({
     const controller = new AbortController();
     abortRef.current = controller;
     setStreamingText("");
+    // 中断・切断の判定に使うため try の外で持つ（1文字も来ていないか、途中で切れたか）
+    let received = "";
     try {
       const res = await fetch("/api/review", {
         method: "POST",
@@ -260,7 +268,6 @@ export function ReviewPanel({
       }
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      let received = "";
       for (;;) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -292,9 +299,14 @@ export function ReviewPanel({
     } catch (err) {
       if (err instanceof DOMException && err.name === "AbortError") {
         // stop ボタンによる中断。未完のフィードバックは保存されない
-      } else {
+      } else if (received === "") {
         setError(
-          "レビューの実行に失敗しました。時間をおいて再試行してください",
+          "レビューの実行に失敗しました（応答が始まる前に接続が切れました）。時間をおいて再試行してください",
+        );
+      } else {
+        // 途中まで生成された本文はサーバー側で保存されない（半端な判定を残さないため）
+        setError(
+          "生成の途中で接続が切れたため、レビューを保存できませんでした。時間をおいて再試行してください",
         );
       }
     } finally {
