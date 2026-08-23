@@ -1,4 +1,9 @@
-import { streamText } from "ai";
+import {
+  APICallError,
+  RetryError,
+  createTextStreamResponse,
+  streamText,
+} from "ai";
 import { z } from "zod";
 
 import { resolveModel } from "@/lib/ai/models";
@@ -17,6 +22,7 @@ import {
 } from "@/lib/ai/prompts";
 import type { SceneRecord } from "@/lib/board";
 import { AppError, errorResponse } from "@/lib/errors";
+import type { AiProvider } from "@/lib/schemas/enums";
 import {
   fetchProjectGitFields,
   resolveRepoGit,
@@ -213,6 +219,50 @@ async function fetchNotesForScene(
       content: note.content,
       tags: note.note_tags.flatMap((nt) => (nt.tags ? [nt.tags.name] : [])),
     }));
+}
+
+/**
+ * プロバイダ由来の生成失敗を、利用者に見える AppError へ変換する。
+ * ストリーミング応答ではプロバイダのエラーがHTTPステータスに出ず、
+ * これまでは「空の応答」としてしか届かなかったため、原因の切り分けができなかった。
+ * 詳細（レスポンス本文・スタック）はサーバーログに残し、返す文言は切り分けに要る最小限にする
+ */
+function toGenerationError(error: unknown, provider: AiProvider): AppError {
+  // 5xx・429 は AI SDK が再試行するため、届くのは RetryError に包まれた最後の失敗
+  const cause = RetryError.isInstance(error) ? error.lastError : error;
+  if (APICallError.isInstance(cause)) {
+    const status = cause.statusCode;
+    if (status === 429) {
+      return new AppError(
+        "rate_limited",
+        `AI（${provider}）のレート上限に達しました。時間をおいて再実行してください`,
+      );
+    }
+    if (status !== undefined && status >= 500) {
+      return new AppError(
+        "ai_provider",
+        `AI（${provider}）側のエラーで生成できませんでした（HTTP ${status}）。プロバイダの障害の可能性があります。復旧しない場合は設定画面でこの能力帯を別プロバイダへ切り替えてください`,
+      );
+    }
+    // 4xx はアプリが送った入力の問題（コンテキスト長超過・モデルID誤り等）。
+    // 原因がプロバイダの文言にしかないため、要約して返す（秘密情報はレスポンス本文に含まれない）
+    const detail = cause.message.replaceAll(/\s+/g, " ").slice(0, 200);
+    return new AppError(
+      "ai_provider",
+      `AI（${provider}）がリクエストを受け付けませんでした${status === undefined ? "" : `（HTTP ${status}）`}: ${detail}`,
+    );
+  }
+  if (cause !== null && cause !== undefined) {
+    return new AppError(
+      "ai_provider",
+      `AI（${provider}）の呼び出しに失敗しました。時間をおいて再試行してください`,
+    );
+  }
+  // エラーなしで空応答（安全フィルタ等）。再実行で解消しうるため同じ案内にする
+  return new AppError(
+    "ai_provider",
+    `AI（${provider}）が空の応答を返しました。時間をおいて再試行してください`,
+  );
 }
 
 export async function POST(req: Request) {
@@ -535,6 +585,10 @@ export async function POST(req: Request) {
         console.error("講評セッションの確定に失敗:", statusError.message);
     };
 
+    // 生成中に発生したプロバイダ由来のエラー（onError 経由で受け取る）。
+    // AI SDK は onError を渡すとストリーム側へエラーを流さないため、ここに退避して応答に反映する
+    let generationError: unknown = null;
+
     const result = streamText({
       model,
       system: buildReviewSystemPrompt({
@@ -554,7 +608,10 @@ export async function POST(req: Request) {
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
         });
-        if (!text) {
+        // 生成途中でプロバイダエラーが起きた場合、text は打ち切られた本文になる。
+        // 判定行を欠いた本文は parseVerdict が差し戻しに倒すため、
+        // 中断（onAbort）と同じく保存しない（半端な差し戻しをゲートに残さない）
+        if (!text || generationError !== null) {
           await finalizeCritique("failed");
           return;
         }
@@ -600,12 +657,43 @@ export async function POST(req: Request) {
       },
       onError: async ({ error }) => {
         console.error("レビュー生成でエラー:", error);
+        generationError = error;
         // 講評セッションを running のまま残さない（読み切り型）
         await finalizeCritique("failed");
       },
     });
 
-    return result.toTextStreamResponse();
+    // 先頭チャンクだけ先に読み、1文字も生成されないまま終わったケースを
+    // 通常のエラー応答（JSON）に倒す。ヘッダー送出前のここでしか原因を伝えられない
+    // ——そのまま流すと 200＋空ボディになり、利用者にはアプリの不具合と区別が付かない
+    const reader = result.textStream.getReader();
+    const firstChunk = await reader.read();
+    if (firstChunk.done) throw toGenerationError(generationError, provider);
+
+    const stream = new ReadableStream<string>({
+      start(controller) {
+        controller.enqueue(firstChunk.value);
+      },
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (!done) {
+          controller.enqueue(value);
+          return;
+        }
+        // 生成途中で落ちた場合は、正常終了に見せずクライアント側のエラー処理へ落とす
+        // （フィードバックは保存されないため、無言で打ち切ると失敗が伝わらない）
+        if (generationError !== null) {
+          controller.error(toGenerationError(generationError, provider));
+          return;
+        }
+        controller.close();
+      },
+      cancel(reason) {
+        void reader.cancel(reason);
+      },
+    });
+
+    return createTextStreamResponse({ stream });
   } catch (error) {
     return errorResponse(error);
   }
