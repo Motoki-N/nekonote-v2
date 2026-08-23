@@ -1,4 +1,9 @@
-import { streamText } from "ai";
+import {
+  APICallError,
+  RetryError,
+  createTextStreamResponse,
+  streamText,
+} from "ai";
 import { z } from "zod";
 
 import { resolveModel } from "@/lib/ai/models";
@@ -12,11 +17,13 @@ import {
   buildStructureReviewInput,
   type CritiqueProposalScope,
   type FeedbackHistoryItem,
+  type IdentifiedNote,
   type NoteContext,
   type ProposalContext,
 } from "@/lib/ai/prompts";
 import type { SceneRecord } from "@/lib/board";
 import { AppError, errorResponse } from "@/lib/errors";
+import type { AiProvider } from "@/lib/schemas/enums";
 import {
   fetchProjectGitFields,
   resolveRepoGit,
@@ -168,23 +175,25 @@ async function fetchScenes(
 
 /**
  * プロジェクト内全シーンの紐づけノート全文をシーンID単位でまとめて取得
- * （構成レビュー用。ごみ箱中は除外。Issue #58）
+ * （構成レビュー用。ごみ箱中は除外。Issue #58）。
+ * 1枚のノートは紐づいたシーンの数だけ現れる（プロンプト側で番号を振って畳む）
  */
 async function fetchSceneNotesByScene(
   supabase: Supabase,
   projectId: string,
-): Promise<Record<string, NoteContext[]>> {
+): Promise<Record<string, IdentifiedNote[]>> {
   const { data, error } = await supabase
     .from("scene_notes")
     .select(
-      "scene_id, notes (title, content, deleted_at, note_tags (tags (name))), scenes!inner (project_id)",
+      "scene_id, notes (id, title, content, deleted_at, note_tags (tags (name))), scenes!inner (project_id)",
     )
     .eq("scenes.project_id", projectId);
   if (error) throw new AppError("internal", error.message);
-  const bySceneId: Record<string, NoteContext[]> = {};
+  const bySceneId: Record<string, IdentifiedNote[]> = {};
   for (const row of data ?? []) {
     if (!row.notes || row.notes.deleted_at !== null) continue;
     (bySceneId[row.scene_id] ??= []).push({
+      id: row.notes.id,
       title: row.notes.title,
       content: row.notes.content,
       tags: row.notes.note_tags.flatMap((nt) =>
@@ -213,6 +222,50 @@ async function fetchNotesForScene(
       content: note.content,
       tags: note.note_tags.flatMap((nt) => (nt.tags ? [nt.tags.name] : [])),
     }));
+}
+
+/**
+ * プロバイダ由来の生成失敗を、利用者に見える AppError へ変換する。
+ * ストリーミング応答ではプロバイダのエラーがHTTPステータスに出ず、
+ * これまでは「空の応答」としてしか届かなかったため、原因の切り分けができなかった。
+ * 詳細（レスポンス本文・スタック）はサーバーログに残し、返す文言は切り分けに要る最小限にする
+ */
+function toGenerationError(error: unknown, provider: AiProvider): AppError {
+  // 5xx・429 は AI SDK が再試行するため、届くのは RetryError に包まれた最後の失敗
+  const cause = RetryError.isInstance(error) ? error.lastError : error;
+  if (APICallError.isInstance(cause)) {
+    const status = cause.statusCode;
+    if (status === 429) {
+      return new AppError(
+        "rate_limited",
+        `AI（${provider}）のレート上限に達しました。時間をおいて再実行してください`,
+      );
+    }
+    if (status !== undefined && status >= 500) {
+      return new AppError(
+        "ai_provider",
+        `AI（${provider}）側のエラーで生成できませんでした（HTTP ${status}）。プロバイダの障害の可能性があります。復旧しない場合は設定画面でこの能力帯を別プロバイダへ切り替えてください`,
+      );
+    }
+    // 4xx はアプリが送った入力の問題（コンテキスト長超過・モデルID誤り等）。
+    // 原因がプロバイダの文言にしかないため、要約して返す（秘密情報はレスポンス本文に含まれない）
+    const detail = cause.message.replaceAll(/\s+/g, " ").slice(0, 200);
+    return new AppError(
+      "ai_provider",
+      `AI（${provider}）がリクエストを受け付けませんでした${status === undefined ? "" : `（HTTP ${status}）`}: ${detail}`,
+    );
+  }
+  if (cause !== null && cause !== undefined) {
+    return new AppError(
+      "ai_provider",
+      `AI（${provider}）の呼び出しに失敗しました。時間をおいて再試行してください`,
+    );
+  }
+  // エラーなしで空応答（安全フィルタ等）。再実行で解消しうるため同じ案内にする
+  return new AppError(
+    "ai_provider",
+    `AI（${provider}）が空の応答を返しました。時間をおいて再試行してください`,
+  );
 }
 
 export async function POST(req: Request) {
@@ -387,13 +440,17 @@ export async function POST(req: Request) {
         supabase,
         session.project_id,
       );
-      // 紐づけノート経由のLLM入力肥大化ガード（監査L-3。全シーン×紐づけノートで肥大化しうるためIssue #58で追加）
+      // 紐づけノート経由のLLM入力肥大化ガード（監査L-3。全シーン×紐づけノートで肥大化しうるためIssue #58で追加）。
+      // ノートは複数シーンに紐づいていても入力には1回しか出ないため、重複を除いて数える
+      const uniqueNoteContents = new Map<string, string>();
+      for (const notes of Object.values(sceneNotes)) {
+        for (const note of notes) uniqueNoteContents.set(note.id, note.content);
+      }
       const structureInputChars =
         countChars(proposal.content) +
         scenes.reduce((sum, scene) => sum + countChars(scene.content), 0) +
-        Object.values(sceneNotes).reduce(
-          (sum, notes) =>
-            sum + notes.reduce((s, note) => s + countChars(note.content), 0),
+        [...uniqueNoteContents.values()].reduce(
+          (sum, content) => sum + countChars(content),
           0,
         );
       if (structureInputChars > CRITIQUE_MAX_CHARS) {
@@ -535,6 +592,10 @@ export async function POST(req: Request) {
         console.error("講評セッションの確定に失敗:", statusError.message);
     };
 
+    // 生成中に発生したプロバイダ由来のエラー（onError 経由で受け取る）。
+    // AI SDK は onError を渡すとストリーム側へエラーを流さないため、ここに退避して応答に反映する
+    let generationError: unknown = null;
+
     const result = streamText({
       model,
       system: buildReviewSystemPrompt({
@@ -554,7 +615,10 @@ export async function POST(req: Request) {
           inputTokens: usage.inputTokens,
           outputTokens: usage.outputTokens,
         });
-        if (!text) {
+        // 生成途中でプロバイダエラーが起きた場合、text は打ち切られた本文になる。
+        // 判定行を欠いた本文は parseVerdict が差し戻しに倒すため、
+        // 中断（onAbort）と同じく保存しない（半端な差し戻しをゲートに残さない）
+        if (!text || generationError !== null) {
           await finalizeCritique("failed");
           return;
         }
@@ -600,12 +664,43 @@ export async function POST(req: Request) {
       },
       onError: async ({ error }) => {
         console.error("レビュー生成でエラー:", error);
+        generationError = error;
         // 講評セッションを running のまま残さない（読み切り型）
         await finalizeCritique("failed");
       },
     });
 
-    return result.toTextStreamResponse();
+    // 先頭チャンクだけ先に読み、1文字も生成されないまま終わったケースを
+    // 通常のエラー応答（JSON）に倒す。ヘッダー送出前のここでしか原因を伝えられない
+    // ——そのまま流すと 200＋空ボディになり、利用者にはアプリの不具合と区別が付かない
+    const reader = result.textStream.getReader();
+    const firstChunk = await reader.read();
+    if (firstChunk.done) throw toGenerationError(generationError, provider);
+
+    const stream = new ReadableStream<string>({
+      start(controller) {
+        controller.enqueue(firstChunk.value);
+      },
+      async pull(controller) {
+        const { done, value } = await reader.read();
+        if (!done) {
+          controller.enqueue(value);
+          return;
+        }
+        // 生成途中で落ちた場合は、正常終了に見せずクライアント側のエラー処理へ落とす
+        // （フィードバックは保存されないため、無言で打ち切ると失敗が伝わらない）
+        if (generationError !== null) {
+          controller.error(toGenerationError(generationError, provider));
+          return;
+        }
+        controller.close();
+      },
+      cancel(reason) {
+        void reader.cancel(reason);
+      },
+    });
+
+    return createTextStreamResponse({ stream });
   } catch (error) {
     return errorResponse(error);
   }

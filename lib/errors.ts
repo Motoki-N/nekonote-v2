@@ -7,6 +7,8 @@ export type AppErrorCode =
   | "validation"
   | "conflict"
   | "rate_limited"
+  // AIプロバイダ側の失敗（障害・入力の受け付け拒否など）。アプリの不具合と切り分けられるよう独立させる
+  | "ai_provider"
   | "internal";
 
 const STATUS_BY_CODE: Record<AppErrorCode, number> = {
@@ -16,6 +18,7 @@ const STATUS_BY_CODE: Record<AppErrorCode, number> = {
   validation: 400,
   conflict: 409,
   rate_limited: 429,
+  ai_provider: 502,
   internal: 500,
 };
 
