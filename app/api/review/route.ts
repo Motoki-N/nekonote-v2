@@ -48,8 +48,16 @@ import {
   writingGenres,
 } from "@/lib/schemas/enums";
 
-// ストリーミング応答のため Vercel Functions の実行上限を延長（レビュー文書は掘り下げ応答より長い）
-export const maxDuration = 120;
+// ストリーミング応答のため Vercel Functions の実行上限を延長（レビュー文書は掘り下げ応答より長い）。
+// 構成レビューが120秒では収まらず殺されていたため300秒へ（プランの上限までしか効かない点に注意）
+export const maxDuration = 300;
+
+/**
+ * 先頭チャンクを待つ上限。これを過ぎたらエラー判定を諦めてそのまま流し始める。
+ * 待ち続けると、生成が遅いだけのときに画面が無反応のままになるため
+ * （プロバイダのエラーは再試行を挟んでもこれより早く返る）
+ */
+const FIRST_CHUNK_WAIT_MS = 20_000;
 
 const uuidSchema = z.uuid();
 
@@ -572,6 +580,11 @@ export async function POST(req: Request) {
       throw new AppError("validation", "このレビュー種別には未対応です");
     }
 
+    // 実行時間・コンテキスト長の切り分け用（本文は出さない。長さと件数のみ）
+    console.log(
+      `[review] phase=${phase} promptChars=${prompt.length} historyItems=${history.length}`,
+    );
+
     const { model, provider, modelId } = await resolveModel(
       supabase,
       parseEnum(
@@ -670,19 +683,35 @@ export async function POST(req: Request) {
       },
     });
 
-    // 先頭チャンクだけ先に読み、1文字も生成されないまま終わったケースを
+    // 先頭チャンクを（上限つきで）先に読み、1文字も生成されないまま終わったケースを
     // 通常のエラー応答（JSON）に倒す。ヘッダー送出前のここでしか原因を伝えられない
-    // ——そのまま流すと 200＋空ボディになり、利用者にはアプリの不具合と区別が付かない
+    // ——そのまま流すと 200＋空ボディになり、利用者にはアプリの不具合と区別が付かない。
+    // 待ちに上限を置くのは、生成が遅いだけのときに画面が無反応にならないようにするため
     const reader = result.textStream.getReader();
-    const firstChunk = await reader.read();
-    if (firstChunk.done) throw toGenerationError(generationError, provider);
+    const pendingRead = reader.read();
+    let waitTimer: ReturnType<typeof setTimeout> | undefined;
+    const firstChunk = await Promise.race([
+      pendingRead,
+      new Promise<null>((resolve) => {
+        waitTimer = setTimeout(() => resolve(null), FIRST_CHUNK_WAIT_MS);
+      }),
+    ]);
+    clearTimeout(waitTimer);
+    if (firstChunk?.done) throw toGenerationError(generationError, provider);
 
+    // 待ち切れずに流し始めた場合も先頭チャンクは pendingRead が持っている。
+    // 同じ Promise を await して受け取る（read を呼び直すと次のチャンクになり先頭を落とす）
+    let firstDelivered = false;
     const stream = new ReadableStream<string>({
-      start(controller) {
-        controller.enqueue(firstChunk.value);
-      },
       async pull(controller) {
-        const { done, value } = await reader.read();
+        let chunk;
+        if (firstDelivered) {
+          chunk = await reader.read();
+        } else {
+          firstDelivered = true;
+          chunk = await pendingRead;
+        }
+        const { done, value } = chunk;
         if (!done) {
           controller.enqueue(value);
           return;
