@@ -97,11 +97,17 @@ function ManuscriptBadge({ scene }: { scene: SceneRecord }) {
 /** シーンカードの見た目（通常カード・境界スロット内・DragOverlay で共用） */
 export function SceneCardContent({
   scene,
+  sceneNumber,
   noteCount = 0,
   emotionClamped = false,
   onClick,
 }: {
   scene: SceneRecord;
+  /**
+   * ボード表示順の通し番号（1始まり。Issue #213）。
+   * シーン自身の属性ではなく並び順から算出する値のため、省略時は表示しない（目次ボード・DragOverlay）
+   */
+  sceneNumber?: number;
   /** 紐づけノート件数（Issue #56） */
   noteCount?: number;
   /** 感情の起伏が上下限に達し、このシーンの変化量を反映しきれない（Issue #205） */
@@ -112,11 +118,25 @@ export function SceneCardContent({
     <button
       type="button"
       onClick={onClick}
-      aria-label={`シーンを編集: ${scene.title || "無題"}`}
+      aria-label={
+        sceneNumber === undefined
+          ? `シーンを編集: ${scene.title || "無題"}`
+          : `シーンを編集: ${sceneNumber}番目 ${scene.title || "無題"}`
+      }
       className="flex w-full flex-col gap-1 rounded-md border border-border bg-card p-2 text-left shadow-xs transition-colors hover:border-ring/60 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
     >
-      <span className="text-sm font-medium text-card-foreground">
-        {scene.title || "（無題）"}
+      <span className="flex items-baseline gap-1.5">
+        {sceneNumber !== undefined && (
+          <span
+            className="shrink-0 text-xs font-medium tabular-nums text-muted-foreground"
+            aria-hidden
+          >
+            {sceneNumber}
+          </span>
+        )}
+        <span className="text-sm font-medium text-card-foreground">
+          {scene.title || "（無題）"}
+        </span>
       </span>
       {scene.content !== "" && (
         <p className="line-clamp-3 text-xs whitespace-pre-wrap text-muted-foreground">
@@ -160,11 +180,14 @@ export function SceneCardContent({
 /** レーン内でドラッグできるシーンカード（境界アンカー付きはスロット側で固定表示する） */
 export function SortableSceneCard({
   scene,
+  sceneNumber,
   noteCount,
   emotionClamped,
   onEdit,
 }: {
   scene: SceneRecord;
+  /** ボード表示順の通し番号（1始まり。Issue #213） */
+  sceneNumber?: number;
   noteCount?: number;
   emotionClamped?: boolean;
   onEdit: (scene: SceneRecord) => void;
@@ -190,6 +213,7 @@ export function SortableSceneCard({
     >
       <SceneCardContent
         scene={scene}
+        sceneNumber={sceneNumber}
         noteCount={noteCount}
         emotionClamped={emotionClamped}
         onClick={() => onEdit(scene)}
