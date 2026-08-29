@@ -26,6 +26,7 @@ export function Lane({
   part,
   scenes,
   boundaryScene,
+  sceneNumbers,
   noteCounts,
   emotionClampedIds,
   adding,
@@ -37,6 +38,8 @@ export function Lane({
   scenes: SceneRecord[];
   /** レーン末尾スロットに固定する境界アンカー付きシーン */
   boundaryScene: SceneRecord | undefined;
+  /** シーンID→ボード表示順の通し番号（1始まり。Issue #213） */
+  sceneNumbers: Record<string, number>;
   /** シーンごとの紐づけノート件数（Issue #56） */
   noteCounts: Record<string, number>;
   /** 感情の起伏が上下限に達し、変化量を反映しきれないシーンのid（Issue #205） */
@@ -72,6 +75,7 @@ export function Lane({
             <SortableSceneCard
               key={scene.id}
               scene={scene}
+              sceneNumber={sceneNumbers[scene.id]}
               noteCount={noteCounts[scene.id]}
               emotionClamped={emotionClampedIds.has(scene.id)}
               onEdit={onEdit}
@@ -95,6 +99,9 @@ export function Lane({
         <AnchorSlot
           anchor={boundary}
           scene={boundaryScene}
+          sceneNumber={
+            boundaryScene ? sceneNumbers[boundaryScene.id] : undefined
+          }
           noteCount={boundaryScene ? noteCounts[boundaryScene.id] : undefined}
           emotionClamped={
             boundaryScene ? emotionClampedIds.has(boundaryScene.id) : false

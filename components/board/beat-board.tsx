@@ -157,6 +157,16 @@ export function BeatBoard({
     [novelScenes],
   );
 
+  // ボード表示順の通し番号（Issue #213。1始まり。章カードを除いた構成順＝
+  // 構成/シーンレビューのプロンプトがシーンに振る番号と同じ並び）
+  const sceneNumbers = useMemo(
+    () =>
+      Object.fromEntries(
+        novelScenes.map((s, i): [string, number] => [s.id, i + 1]),
+      ),
+    [novelScenes],
+  );
+
   const noteCounts = useMemo(
     () =>
       Object.fromEntries(
@@ -488,6 +498,7 @@ export function BeatBoard({
                       ? laneScenes.find((s) => s.anchor === boundary)
                       : undefined
                   }
+                  sceneNumbers={sceneNumbers}
                   noteCounts={noteCounts}
                   emotionClampedIds={emotionClampedIds}
                   adding={adding}
@@ -501,6 +512,7 @@ export function BeatBoard({
             {activeScene && !isBoundaryAnchor(activeScene.anchor) ? (
               <SceneCardContent
                 scene={activeScene}
+                sceneNumber={sceneNumbers[activeScene.id]}
                 noteCount={noteCounts[activeScene.id]}
                 emotionClamped={emotionClampedIds.has(activeScene.id)}
               />

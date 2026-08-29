@@ -15,12 +15,15 @@ import { SceneCardContent } from "@/components/board/scene-card";
 export function AnchorSlot({
   anchor,
   scene,
+  sceneNumber,
   noteCount,
   emotionClamped,
   onEdit,
 }: {
   anchor: SceneAnchor;
   scene: SceneRecord | undefined;
+  /** ボード表示順の通し番号（1始まり。Issue #213） */
+  sceneNumber?: number;
   noteCount?: number;
   /** 感情の起伏が上下限に達し、変化量を反映しきれない（Issue #205） */
   emotionClamped?: boolean;
@@ -36,6 +39,7 @@ export function AnchorSlot({
       {scene && (
         <SceneCardContent
           scene={scene}
+          sceneNumber={sceneNumber}
           noteCount={noteCount}
           emotionClamped={emotionClamped}
           onClick={() => onEdit(scene)}
