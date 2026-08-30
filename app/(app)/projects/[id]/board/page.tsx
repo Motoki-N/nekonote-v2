@@ -17,10 +17,16 @@ import {
  */
 export default async function BoardPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** ?scene= はエディタ・原稿タブの逆引きからの遷移（SPEC-manuscript-bridge §5.5）。
+   * 該当カードが無ければ何も起きない（ボード側で無視する） */
+  searchParams: Promise<{ scene?: string }>;
 }) {
   const { id } = await params;
+  const { scene } = await searchParams;
+  const initialSceneId = typeof scene === "string" ? scene : null;
   const supabase = await createClient();
 
   const [
@@ -80,6 +86,7 @@ export default async function BoardPage({
         projectId={id}
         initialScenes={(scenes ?? []) as SceneRecord[]}
         structureStatus={structureStatus}
+        initialSceneId={initialSceneId}
       />
     );
   }
@@ -100,6 +107,7 @@ export default async function BoardPage({
       initialLinkedNotes={linkedNotes}
       structureStatus={structureStatus}
       structureTemplate={structureTemplate}
+      initialSceneId={initialSceneId}
     />
   );
 }

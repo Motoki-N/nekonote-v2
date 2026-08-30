@@ -21,9 +21,11 @@ import {
   type ManuscriptFileData,
   type ManuscriptTreeData,
 } from "@/lib/actions/manuscripts";
+import type { LinkedScene } from "@/lib/board";
 import type { SuggestionStatus } from "@/lib/schemas/enums";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { LinkedSceneList } from "@/components/board/linked-scene-list";
 import { CritiquePanel } from "@/components/manuscript/critique-panel";
 import { HistoryPanel } from "@/components/manuscript/history-panel";
 import { ProofreadPanel } from "@/components/manuscript/proofread-panel";
@@ -38,6 +40,7 @@ export function ManuscriptWorkspace({
   tree,
   treeError,
   initialFile,
+  linkedScenes,
 }: {
   projectId: string;
   tree: ManuscriptTreeData | null;
@@ -45,6 +48,8 @@ export function ManuscriptWorkspace({
   treeError: string | null;
   /** ?file= での初期表示（エディタからの相互リンク。一覧に無いパスは無視する。SPEC-phase4 §3.1） */
   initialFile: string | null;
+  /** 原稿パス → 紐づくシーン／章（逆引き。SPEC-manuscript-bridge §4.4） */
+  linkedScenes: Record<string, LinkedScene[]>;
 }) {
   // ?file= の初期表示（エディタからの相互リンク。一覧との一致でのみ採用する多層防御。SPEC-phase4 §3.1）
   const [selectedPath, setSelectedPath] = useState<string | null>(() =>
@@ -350,6 +355,17 @@ export function ManuscriptWorkspace({
                   </Button>
                 </div>
               </header>
+
+              {/* 逆引き（原稿 → シーン。SPEC-manuscript-bridge §4.4）。
+                  校正中に、その原稿の構成メモを読めるようにする */}
+              {(linkedScenes[selectedPath] ?? []).length > 0 && (
+                <div className="border-b border-border px-2 py-2">
+                  <LinkedSceneList
+                    projectId={projectId}
+                    scenes={linkedScenes[selectedPath] ?? []}
+                  />
+                </div>
+              )}
 
               {file &&
                 file.lastReviewedCommit !== null &&

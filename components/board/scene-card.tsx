@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   BadgeCheck,
   FileText,
+  FileX,
   Minus,
   StickyNote,
   TrendingDown,
@@ -15,6 +16,7 @@ import {
 import { ANCHOR_BADGE, formatEmotion, type SceneRecord } from "@/lib/board";
 import type { Emotion } from "@/lib/schemas/enums";
 import { Badge } from "@/components/ui/badge";
+import { useManuscriptStatus } from "@/components/board/manuscript-status";
 import { cn } from "@/lib/utils";
 
 /**
@@ -65,13 +67,34 @@ function EmotionBadge({
 }
 
 /**
- * 紐づけ原稿バッジ（Issue #56）。クリックでエディタの該当ファイルへ。
- * カード全体が <button>（<a> をネストできない）ため role="link" の span で実装する。
- * シーンカードと章マーカーカードで共用する（SPEC-board-chapters §5.1）
+ * 紐づけ原稿バッジ（Issue #56）＋執筆進捗の表示（SPEC-manuscript-bridge §4.3）。
+ * クリックでエディタの該当ファイルへ。カード全体が <button>（<a> をネストできない）ため
+ * role="link" の span で実装する。シーンカードと章マーカーカードで共用する
+ * （SPEC-board-chapters §5.1）。
+ * 進捗が取れていないとき（未取得・取得失敗・repo/PAT 未設定）は従来どおり「原稿」を出す
  */
 export function ManuscriptBadge({ scene }: { scene: SceneRecord }) {
   const router = useRouter();
+  const status = useManuscriptStatus(scene.manuscript_path);
   if (scene.manuscript_path === null) return null;
+
+  // ツリーにないパスは開いても読めないのでリンクにしない
+  // （文言はシーンダイアログの select と揃える）
+  if (status === "missing") {
+    return (
+      <Badge
+        variant="outline"
+        className="border-destructive text-destructive"
+        aria-label={`原稿が見つかりません: ${scene.manuscript_path}`}
+        title={scene.manuscript_path}
+      >
+        <FileX data-icon="inline-start" />
+        見つかりません
+      </Badge>
+    );
+  }
+
+  const unwritten = status === "unwritten";
   const href = `/projects/${scene.project_id}/editor?file=${encodeURIComponent(scene.manuscript_path)}`;
   const open = (e: React.SyntheticEvent) => {
     e.stopPropagation(); // カードの編集ダイアログを開かせない
@@ -82,15 +105,18 @@ export function ManuscriptBadge({ scene }: { scene: SceneRecord }) {
       variant="outline"
       role="link"
       tabIndex={0}
-      aria-label={`原稿をエディタで開く: ${scene.manuscript_path}`}
-      className="cursor-pointer hover:bg-accent hover:text-accent-foreground"
+      aria-label={`${unwritten ? "未執筆の原稿" : "原稿"}をエディタで開く: ${scene.manuscript_path}`}
+      className={cn(
+        "cursor-pointer hover:bg-accent hover:text-accent-foreground",
+        unwritten && "text-muted-foreground",
+      )}
       onClick={open}
       onKeyDown={(e) => {
         if (e.key === "Enter") open(e);
       }}
     >
       <FileText data-icon="inline-start" />
-      原稿
+      {unwritten ? "未執筆" : "原稿"}
     </Badge>
   );
 }

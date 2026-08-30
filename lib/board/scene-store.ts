@@ -7,9 +7,9 @@ import "server-only";
 // 関数を export するとクライアントから呼べる Server Action になってしまうため、この層に置く。
 // ロジックは移動のみで変更していない
 
-import type { SceneRecord } from "@/lib/board";
+import type { LinkedScene, SceneRecord } from "@/lib/board";
 import { AppError } from "@/lib/errors";
-import { parseEnum, structureTemplates } from "@/lib/schemas/enums";
+import { parseEnum, sceneKinds, structureTemplates } from "@/lib/schemas/enums";
 import type { StructureTemplate } from "@/lib/schemas/enums";
 import type { createClient } from "@/lib/supabase/server";
 
@@ -30,6 +30,41 @@ export async function fetchProjectScenes(
     .order("order_index");
   if (error) throw new AppError("internal", error.message);
   return (data ?? []) as SceneRecord[];
+}
+
+/**
+ * 原稿ファイルのパス → 紐づくシーン／章（SPEC-manuscript-bridge §5.5）。
+ * `scenes.manuscript_path` の等値検索のみで、`manuscript_links` とは結合しない
+ * （目的の違う遅延生成レコードのため。理由は SPEC §5.5）。
+ * エディタ・原稿タブのサーバーコンポーネントから1本だけ引く（GitHub API は増えない）
+ */
+export async function fetchLinkedScenesByPath(
+  supabase: Supabase,
+  projectId: string,
+): Promise<Record<string, LinkedScene[]>> {
+  const { data, error } = await supabase
+    .from("scenes")
+    .select("id, kind, title, content, manuscript_path")
+    .eq("project_id", projectId)
+    .not("manuscript_path", "is", null)
+    .order("order_index");
+  // 逆引きは補助情報なので、失敗しても本体（章一覧・原稿ツリー）は出す。
+  // ただし切り分けできるようにログには残す
+  if (error) {
+    console.error("fetchLinkedScenesByPath:", error.message);
+    return {};
+  }
+  const map: Record<string, LinkedScene[]> = {};
+  for (const row of data ?? []) {
+    if (row.manuscript_path === null) continue;
+    (map[row.manuscript_path] ??= []).push({
+      id: row.id,
+      kind: parseEnum(sceneKinds, row.kind, "scenes.kind"),
+      title: row.title,
+      content: row.content,
+    });
+  }
+  return map;
 }
 
 /** RLS越しのプロジェクト所有確認（他人・不存在はともに not_found に正規化）。

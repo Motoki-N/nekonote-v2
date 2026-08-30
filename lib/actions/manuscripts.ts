@@ -64,6 +64,42 @@ export async function getManuscriptFiles(
   }
 }
 
+/**
+ * 執筆進捗の判定に使う原稿ファイルのサイズ表（SPEC-manuscript-bridge §4.3）。
+ * `getManuscriptFiles` と同じ gate 型でフェイルソフトに返す
+ */
+export type ManuscriptFileStatusData =
+  | { gate: "no_repo" }
+  | { gate: "no_pat" }
+  | { gate: "ok"; sizes: Record<string, number> };
+
+/**
+ * base_path 配下の原稿ファイルのパス → バイト数を返す（ボードの進捗バッジ用）。
+ * trees API のレスポンスに含まれる blob サイズを使うだけで、本文は取りに行かない
+ */
+export async function getManuscriptFileStatus(
+  projectId: string,
+): Promise<ActionResult<ManuscriptFileStatusData>> {
+  try {
+    const supabase = await createClient();
+
+    // RLS越しの取得＝所有確認を兼ねる
+    const gitCtx = await loadProjectGitOrGate(supabase, projectId);
+    if (gitCtx.gate !== "ok") return { ok: true, data: { gate: gitCtx.gate } };
+
+    const files = await getManuscriptTree(
+      gitCtx.token,
+      gitCtx.repo,
+      gitCtx.basePath,
+    );
+    const sizes: Record<string, number> = {};
+    for (const file of files) sizes[file.path] = file.size;
+    return { ok: true, data: { gate: "ok", sizes } };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
 export type SuggestionRecord = {
   id: string;
   original_text: string;
