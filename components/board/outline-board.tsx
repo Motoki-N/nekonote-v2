@@ -60,6 +60,10 @@ import {
 } from "@/components/board/chapter-card";
 import { ChapterDialog } from "@/components/board/chapter-dialog";
 import { GenerateManuscriptsDialog } from "@/components/board/generate-manuscripts-dialog";
+import {
+  ManuscriptStatusProvider,
+  useManuscriptSizes,
+} from "@/components/board/manuscript-status";
 import { ReviewPanel } from "@/components/review/review-panel";
 
 /** 2つの並びが同じか（id・part の列として比較。差がなければ保存しない） */
@@ -81,18 +85,28 @@ export function OutlineBoard({
   projectId,
   initialScenes,
   structureStatus,
+  initialSceneId,
 }: {
   projectId: string;
   initialScenes: SceneRecord[];
   /** 構成レビューのゲート状態（projects.structure_status。ビートボードと共通） */
   structureStatus: ApprovalStatus;
+  /** ?scene= で開くカード（逆引きからの遷移。目次に並ばない id は無視する。
+   * SPEC-manuscript-bridge §5.5。?file= と同型の多層防御） */
+  initialSceneId: string | null;
 }) {
   const router = useRouter();
   const [scenes, setScenes] = useState<SceneRecord[]>(() =>
     toCanonicalOrder(initialScenes),
   );
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [editing, setEditing] = useState<SceneRecord | null>(null);
+  // 逆引きからの ?scene=（存在しない・目次に描画されない id は無視する）
+  const [editing, setEditing] = useState<SceneRecord | null>(
+    () =>
+      initialScenes.find(
+        (s) => s.id === initialSceneId && s.kind === "chapter",
+      ) ?? null,
+  );
   const [reviewOpen, setReviewOpen] = useState(false);
   const [adding, setAdding] = useState(false);
   const [structureApproved, setStructureApproved] = useState(
@@ -101,6 +115,8 @@ export function OutlineBoard({
   const [approving, setApproving] = useState(false);
   // 原稿ファイル生成ダイアログ（Issue #223）。null = 非表示、[] = 未紐づけ全件、[id] = 単体
   const [generating, setGenerating] = useState<string[] | null>(null);
+  // 執筆進捗（SPEC-manuscript-bridge §4.3）。マウント後に取得するため初期表示は待たせない
+  const { sizes: manuscriptSizes, addCreated } = useManuscriptSizes(projectId);
   // ドラッグ開始時点の状態（キャンセル・保存失敗時のロールバック先）
   const snapshotRef = useRef<SceneRecord[] | null>(null);
 
@@ -248,6 +264,8 @@ export function OutlineBoard({
   /** 原稿ファイル生成の完了（Issue #223）。紐づけはサーバー側で保存済み */
   function handleGenerated(result: GenerateManuscriptsResult) {
     setScenes(toCanonicalOrder(result.scenes));
+    // 作成直後は雛形なので「未執筆」として即座に反映する（ツリーを取り直さない）
+    addCreated(result.created.map((c) => c.path));
     const first = result.created[0];
     toast(`${result.created.length}件の原稿ファイルを作成しました`, {
       action: first
@@ -296,7 +314,7 @@ export function OutlineBoard({
     }
   }
 
-  return (
+  const board = (
     <div className="flex min-h-0 flex-1">
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6">
         <div className="flex flex-wrap items-center gap-2">
@@ -518,5 +536,12 @@ export function OutlineBoard({
         />
       )}
     </div>
+  );
+
+  // 進捗バッジの判定材料はカード階層が深く props で通しにくいため context で配る
+  return (
+    <ManuscriptStatusProvider sizes={manuscriptSizes}>
+      {board}
+    </ManuscriptStatusProvider>
   );
 }

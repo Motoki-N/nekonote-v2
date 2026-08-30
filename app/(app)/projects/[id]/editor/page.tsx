@@ -1,4 +1,6 @@
 import { getEditorWorkspace } from "@/lib/actions/editor";
+import { fetchLinkedScenesByPath } from "@/lib/board/scene-store";
+import { createClient } from "@/lib/supabase/server";
 import { VerticalEditor } from "@/components/editor/vertical-editor";
 
 /**
@@ -15,12 +17,15 @@ export default async function EditorPage({
 }) {
   const { id } = await params;
   const { file, branch } = await searchParams;
-  // ?branch= 指定時はそのブランチを開く（存在しなければサーバー側でデフォルトへ
-  // フォールバックし、branchFallback で通知される。SPEC-vertical-editor-phase5 §3.1）
-  const result = await getEditorWorkspace(
-    id,
-    typeof branch === "string" ? branch : undefined,
-  );
+  const supabase = await createClient();
+  const [result, linkedScenes] = await Promise.all([
+    // ?branch= 指定時はそのブランチを開く（存在しなければサーバー側でデフォルトへ
+    // フォールバックし、branchFallback で通知される。SPEC-vertical-editor-phase5 §3.1）
+    getEditorWorkspace(id, typeof branch === "string" ? branch : undefined),
+    // 逆引き（原稿 → シーン）はサーバーで1本引くだけ（SPEC-manuscript-bridge §5.5。
+    // scenes.manuscript_path の等値検索で、GitHub API 呼び出しは増えない）
+    fetchLinkedScenesByPath(supabase, id),
+  ]);
 
   return (
     <VerticalEditor
@@ -28,6 +33,7 @@ export default async function EditorPage({
       workspace={result.ok ? (result.data ?? null) : null}
       workspaceError={result.ok ? null : result.error.message}
       initialFile={typeof file === "string" ? file : null}
+      linkedScenes={linkedScenes}
     />
   );
 }

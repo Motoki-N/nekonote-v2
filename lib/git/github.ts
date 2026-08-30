@@ -14,6 +14,9 @@ const MANUSCRIPT_EXTENSIONS = [".md", ".txt"];
 export type ManuscriptTreeEntry = {
   /** リポジトリルートからのパス */
   path: string;
+  /** blob のバイト数（trees API のレスポンス由来。執筆進捗の判定に使う。
+   * SPEC-manuscript-bridge §4.3。欠けている場合は 0＝未執筆側に倒す） */
+  size: number;
 };
 
 // DB由来の repo も使用時に再検証する（PostgREST直叩きで作られた不正な行への多層防御。
@@ -127,7 +130,7 @@ export async function getManuscriptTree(
       `リポジトリ ${repo} のファイル一覧を取得できません`,
     );
   const data = (await res.json()) as {
-    tree?: { path: string; type: string }[];
+    tree?: { path: string; type: string; size?: number }[];
     truncated?: boolean;
   };
   const prefix = basePath === "" ? "" : `${basePath.replace(/\/$/, "")}/`;
@@ -138,7 +141,7 @@ export async function getManuscriptTree(
         entry.path.startsWith(prefix) &&
         MANUSCRIPT_EXTENSIONS.some((ext) => entry.path.endsWith(ext)),
     )
-    .map((entry) => ({ path: entry.path }))
+    .map((entry) => ({ path: entry.path, size: entry.size ?? 0 }))
     .sort((a, b) => a.path.localeCompare(b.path, "en"));
 }
 

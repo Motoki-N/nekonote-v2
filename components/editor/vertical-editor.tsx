@@ -17,6 +17,7 @@ import { EditorView } from "@codemirror/view";
 import { extractComments } from "@/lib/editor/comments";
 import type { ManuscriptComment } from "@/lib/editor/comments";
 import { deleteDraft, getDraft } from "@/lib/editor/draft-store";
+import type { LinkedScene } from "@/lib/board";
 import type { Draft } from "@/lib/editor/draft-store";
 import { buildPreviewHtml } from "@/lib/editor/preview";
 import {
@@ -69,12 +70,15 @@ export function VerticalEditor({
   workspace,
   workspaceError,
   initialFile,
+  linkedScenes,
 }: {
   projectId: string;
   workspace: EditorWorkspaceData | null;
   workspaceError: string | null;
   /** ?file= での初期章選択（原稿タブからの相互リンク。章一覧に無いパスは無視する。SPEC-phase4 §3.1） */
   initialFile: string | null;
+  /** 原稿パス → 紐づくシーン／章（逆引き。SPEC-manuscript-bridge §4.4） */
+  linkedScenes: Record<string, LinkedScene[]>;
 }) {
   // 設定フォームのコミット後にテーマ・章一覧を取り直すため state で持つ（初期値はサーバー）
   const [ws, setWs] = useState<EditorWorkspaceData | null>(workspace);
@@ -735,6 +739,9 @@ export function VerticalEditor({
             onJumpToComment={jumpToComment}
             onDeleteComment={deleteComment}
             fileName={fileName}
+            linkedScenes={
+              selectedPath === null ? [] : (linkedScenes[selectedPath] ?? [])
+            }
           />
         )}
 

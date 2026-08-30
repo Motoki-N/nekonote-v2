@@ -34,6 +34,17 @@ export type SceneRecord = {
   manuscript_path: string | null;
 };
 
+/**
+ * 逆引き（原稿 → シーン）で表示する最小のシーン情報（SPEC-manuscript-bridge §4.4）。
+ * 執筆中に構成メモを読めることが価値なので content を含める
+ */
+export type LinkedScene = {
+  id: string;
+  kind: SceneKind;
+  title: string;
+  content: string;
+};
+
 // ---- テンプレートレジストリからのグローバル対応表の導出（Issue #54） ----
 // スラッグがテンプレート横断で一意なため、全テンプレートを平坦化した対応表が成立する。
 // Record の網羅性は「enums の全語彙がいずれかのテンプレート定義に現れること」に依存する

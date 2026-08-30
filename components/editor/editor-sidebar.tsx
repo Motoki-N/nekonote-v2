@@ -3,9 +3,11 @@
 import { FilePlus2, FileText, Trash2 } from "lucide-react";
 
 import type { EditorChapter } from "@/lib/actions/editor";
+import type { LinkedScene } from "@/lib/board";
 import type { ManuscriptComment } from "@/lib/editor/comments";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { LinkedSceneList } from "@/components/board/linked-scene-list";
 import { BranchMenu } from "@/components/editor/branch-menu";
 
 /**
@@ -33,6 +35,7 @@ export function EditorSidebar({
   onJumpToComment,
   onDeleteComment,
   fileName,
+  linkedScenes,
 }: {
   projectId: string;
   branch: string;
@@ -53,6 +56,8 @@ export function EditorSidebar({
   onJumpToComment: (comment: ManuscriptComment) => void;
   onDeleteComment: (comment: ManuscriptComment) => void;
   fileName: (path: string) => string;
+  /** 開いているファイルに紐づくシーン／章（逆引き。SPEC-manuscript-bridge §4.4） */
+  linkedScenes: LinkedScene[];
 }) {
   return (
     <nav
@@ -198,6 +203,13 @@ export function EditorSidebar({
                 </li>
               ))}
             </ul>
+          )}
+          {/* 逆引き（原稿 → シーン。SPEC-manuscript-bridge §4.4）。
+              ファイルを開いているときだけ、その原稿の構成メモを読めるようにする */}
+          {selectedPath !== null && linkedScenes.length > 0 && (
+            <div className="mt-3 border-t border-border pt-2">
+              <LinkedSceneList projectId={projectId} scenes={linkedScenes} />
+            </div>
           )}
         </>
       )}

@@ -1,4 +1,6 @@
 import { getManuscriptFiles } from "@/lib/actions/manuscripts";
+import { fetchLinkedScenesByPath } from "@/lib/board/scene-store";
+import { createClient } from "@/lib/supabase/server";
 import { ManuscriptWorkspace } from "@/components/manuscript/manuscript-workspace";
 
 /**
@@ -15,7 +17,13 @@ export default async function ManuscriptPage({
 }) {
   const { id } = await params;
   const { file } = await searchParams;
-  const result = await getManuscriptFiles(id);
+  // 逆引き（原稿 → シーン）はサーバーで1本引くだけ（SPEC-manuscript-bridge §5.5。
+  // scenes.manuscript_path の等値検索で、GitHub API 呼び出しは増えない）
+  const supabase = await createClient();
+  const [result, linkedScenes] = await Promise.all([
+    getManuscriptFiles(id),
+    fetchLinkedScenesByPath(supabase, id),
+  ]);
 
   return (
     <ManuscriptWorkspace
@@ -23,6 +31,7 @@ export default async function ManuscriptPage({
       tree={result.ok ? (result.data ?? null) : null}
       treeError={result.ok ? null : result.error.message}
       initialFile={typeof file === "string" ? file : null}
+      linkedScenes={linkedScenes}
     />
   );
 }
