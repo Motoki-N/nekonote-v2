@@ -16,9 +16,10 @@ import {
 } from "@dnd-kit/core";
 import { arrayMove, sortableKeyboardCoordinates } from "@dnd-kit/sortable";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, ClipboardCheck } from "lucide-react";
+import { BadgeCheck, ClipboardCheck, FilePlus } from "lucide-react";
 import { toast } from "sonner";
 
+import type { GenerateManuscriptsResult } from "@/lib/actions/manuscript-generate";
 import type { LinkedNote } from "@/lib/actions/projects";
 import { approveBoardReview } from "@/lib/actions/review";
 import {
@@ -65,6 +66,7 @@ import { Button } from "@/components/ui/button";
 import { EmotionLine } from "@/components/board/emotion-line";
 import { ChapterCardContent } from "@/components/board/chapter-card";
 import { ChapterDialog } from "@/components/board/chapter-dialog";
+import { GenerateManuscriptsDialog } from "@/components/board/generate-manuscripts-dialog";
 import { Lane } from "@/components/board/lane";
 import { SceneCardContent } from "@/components/board/scene-card";
 import { SceneDialog } from "@/components/board/scene-dialog";
@@ -125,6 +127,8 @@ export function BeatBoard({
     structureStatus === "approved",
   );
   const [approving, setApproving] = useState(false);
+  // 原稿ファイル生成ダイアログ（Issue #223）。null = 非表示、[] = 未紐づけ全件、[id] = 単体
+  const [generating, setGenerating] = useState<string[] | null>(null);
   // ドラッグ開始時点の状態（キャンセル・保存失敗時のロールバック先）
   const snapshotRef = useRef<SceneRecord[] | null>(null);
 
@@ -168,6 +172,20 @@ export function BeatBoard({
   const chapterCount = useMemo(
     () => boardCards.filter((s) => s.kind === "chapter").length,
     [boardCards],
+  );
+
+  // 原稿ファイルの紐づき状況（ヘッダ集計とCTAバー。SPEC-manuscript-bridge §4.1。
+  // 件数はDBの manuscript_path から数えるだけで、GitHub API 呼び出しは増えない）
+  const linkedCount = useMemo(
+    () => boardCards.filter((s) => s.manuscript_path !== null).length,
+    [boardCards],
+  );
+  // CTAバーの件数は「一括生成が実際に対象にする行」＝プロジェクトの全未紐づけ行で数える
+  // （ジャンル切替で目次レーンのカードが同居しているとボード表示分とずれるため。
+  // SPEC-board-chapters §5.2）
+  const unlinkedCount = useMemo(
+    () => scenes.filter((s) => s.manuscript_path === null).length,
+    [scenes],
   );
 
   // 感情の起伏が上下限に達し、変化量を反映しきれないシーン（Issue #205。カードで赤字警告）
@@ -364,7 +382,18 @@ export function BeatBoard({
       }
       if (target.kind === "structure") {
         setStructureApproved(true);
-        toast("構成が通りました！シーンの執筆に進みましょう");
+        // 承認の瞬間に「クリックできる先」を出す（SPEC-manuscript-bridge §4.1）
+        toast(
+          "構成が通りました！シーンの執筆に進みましょう",
+          unlinkedCount > 0
+            ? {
+                action: {
+                  label: "原稿ファイルを作る",
+                  onClick: () => setGenerating([]),
+                },
+              }
+            : undefined,
+        );
       } else {
         setScenes((prev) =>
           prev.map((s) =>
@@ -430,6 +459,28 @@ export function BeatBoard({
     if (target) setEditing(target);
   }
 
+  /** 原稿ファイル生成の完了（Issue #223）。紐づけはサーバー側で保存済み */
+  function handleGenerated(result: GenerateManuscriptsResult) {
+    setScenes(toCanonicalOrder(result.scenes));
+    const first = result.created[0];
+    toast(`${result.created.length}件の原稿ファイルを作成しました`, {
+      action: first
+        ? {
+            label: "エディタで開く",
+            onClick: () =>
+              router.push(
+                `/projects/${projectId}/editor?file=${encodeURIComponent(first.path)}`,
+              ),
+          }
+        : undefined,
+    });
+    // 追記しない指定（skipped）は正常。失敗したときだけ案内する
+    if (result.entryStatus === "failed") {
+      // entry 追記はベストエフォート。失敗しても章一覧の末尾に印つきで出るため開ける
+      toast("book.config.js の entry には追記できませんでした（entry 未登録）");
+    }
+  }
+
   async function handleDelete(sceneId: string): Promise<boolean> {
     const isChapter = scenes.find((s) => s.id === sceneId)?.kind === "chapter";
     const result = await deleteScene(sceneId);
@@ -477,6 +528,7 @@ export function BeatBoard({
           <span className="text-xs text-muted-foreground">
             {chapterCount > 0 && `章 ${chapterCount} / `}シーン{" "}
             {novelScenes.length}枚
+            {linkedCount > 0 && ` / 原稿 ${linkedCount}件`}
           </span>
           {structureApproved && (
             <Badge variant="secondary">
@@ -499,6 +551,26 @@ export function BeatBoard({
             構成レビュー
           </Button>
         </div>
+
+        {/* 構成承認後の恒久CTA（SPEC-manuscript-bridge §4.1）。
+            承認トーストは消えてしまうため、未生成が残るあいだは導線を出し続ける */}
+        {structureApproved && unlinkedCount > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
+            <p className="text-sm text-card-foreground">
+              構成が通りました。まだ原稿ファイルのない章・シーンが{" "}
+              {unlinkedCount} 件あります
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setGenerating([])}
+            >
+              <FilePlus data-icon="inline-start" />
+              まとめて作成
+            </Button>
+          </div>
+        )}
 
         <DndContext
           id="beat-board-dnd" // SSRとクライアントで一致させる（未指定だと useId 由来の aria 属性が hydration ミスマッチになる）
@@ -692,6 +764,7 @@ export function BeatBoard({
           chapterNumber={chapterNumbers[editing.id] ?? undefined}
           onSave={handleSave}
           onDelete={handleDelete}
+          onGenerateManuscript={handleGenerated}
           onClose={() => setEditing(null)}
         />
       )}
@@ -708,6 +781,7 @@ export function BeatBoard({
           onSave={handleSave}
           onDuplicate={handleDuplicate}
           onDelete={handleDelete}
+          onGenerateManuscript={handleGenerated}
           hasPrev={editingIndex > 0}
           hasNext={editingIndex !== -1 && editingIndex < novelScenes.length - 1}
           onNavigate={handleNavigate}
@@ -716,6 +790,16 @@ export function BeatBoard({
             setReview({ kind: "scene", scene });
           }}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {/* 一括生成（CTAバー・承認トーストから。単体作成は各ダイアログ側で開く） */}
+      {generating !== null && (
+        <GenerateManuscriptsDialog
+          projectId={projectId}
+          targetIds={generating}
+          onGenerated={handleGenerated}
+          onClose={() => setGenerating(null)}
         />
       )}
     </div>

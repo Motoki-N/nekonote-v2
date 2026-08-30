@@ -2,12 +2,9 @@
 
 import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
-import {
-  extractEntryPaths,
-  joinRepoPath,
-  parseEntryItems,
-  replaceEntryItems,
-} from "@/lib/editor/book-config";
+import { joinRepoPath } from "@/lib/editor/book-config";
+import { appendChapterToEntry } from "@/lib/editor/entry-sync";
+import { chapterScaffold } from "@/lib/editor/manuscript-scaffold";
 import {
   createFileContent,
   getFileContent,
@@ -24,7 +21,6 @@ import {
   validateChapterPath,
   listChapters,
 } from "./context";
-import type { EditorContext } from "./context";
 
 export type ChapterData = {
   path: string;
@@ -90,17 +86,6 @@ export async function saveChapter(
   }
 }
 
-/** 新規章の雛形（見出しフロントマター入り。SPEC §3.3） */
-function chapterScaffold(): string {
-  return `---
-title: 新しい章
----
-
-# 新しい章
-
-`;
-}
-
 /**
  * 新規章ファイルの作成＝コミット（SPEC §3.3）。`manuscripts/` 配下固定。
  * 作成後、book.config.js の entry へ自動追記する（SPEC-phase3 §7-2。
@@ -130,43 +115,6 @@ export async function createChapter(
     return { ok: true, data: { path, content, sha: blobSha, inEntry } };
   } catch (error) {
     return toActionError(error);
-  }
-}
-
-/** entry への自動追記（ベストエフォート。失敗しても呼び出し側は「entry未登録」扱いで続行） */
-async function appendChapterToEntry(
-  ctx: EditorContext,
-  fileName: string,
-  branch?: string,
-): Promise<boolean> {
-  try {
-    const configPath = joinRepoPath(ctx.basePath, "book.config.js");
-    if (!configPath) return false;
-    const config = await getFileContent(
-      ctx.token,
-      ctx.repo,
-      configPath,
-      branch,
-    );
-    const items = parseEntryItems(config.content);
-    if (!items) return false;
-    const relPath = `manuscripts/${fileName}`;
-    if (items.some((item) => item.path === relPath)) return true;
-    const updated = replaceEntryItems(config.content, [
-      ...items.map((item) => item.raw),
-      `'${relPath}'`,
-    ]);
-    // 置換後に読み取り側と同じ抽出関数で検証してからコミット（SPEC-phase3 §7）
-    if (!updated || !extractEntryPaths(updated).includes(relPath)) return false;
-    await putFileContent(ctx.token, ctx.repo, configPath, {
-      content: updated,
-      sha: config.sha,
-      message: `設定: ${fileName} を entry に追加（ネコノテAI 縦書きエディタ）`,
-      branch,
-    });
-    return true;
-  } catch {
-    return false;
   }
 }
 

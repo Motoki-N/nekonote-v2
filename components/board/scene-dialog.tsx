@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  FilePlus,
   MessageSquareText,
   Minus,
   Plus,
@@ -17,6 +18,7 @@ import {
   getManuscriptFiles,
   type ManuscriptTreeData,
 } from "@/lib/actions/manuscripts";
+import type { GenerateManuscriptsResult } from "@/lib/actions/manuscript-generate";
 import type { LinkedNote } from "@/lib/actions/projects";
 import {
   ANCHOR_LABEL,
@@ -28,6 +30,7 @@ import {
   type SceneRecord,
 } from "@/lib/board";
 import { BOARD_TEMPLATES } from "@/lib/board-templates";
+import { GenerateManuscriptsDialog } from "@/components/board/generate-manuscripts-dialog";
 import { LinkedNoteChips } from "@/components/notes/linked-note-chips";
 import { EMOTION_MAX, EMOTION_MIN, sceneAnchors } from "@/lib/schemas/enums";
 import type {
@@ -161,6 +164,7 @@ export function SceneDialog({
   onSave,
   onDuplicate,
   onDelete,
+  onGenerateManuscript,
   onReview,
   hasPrev,
   hasNext,
@@ -180,6 +184,8 @@ export function SceneDialog({
   /** 複製（Issue #154）。未保存の変更を保存してから複製する（Issue #169） */
   onDuplicate: (sceneId: string) => Promise<boolean>;
   onDelete: (sceneId: string) => Promise<boolean>;
+  /** 原稿ファイルの生成（Issue #223）。ボードの state 更新とトーストは親が担う */
+  onGenerateManuscript: (result: GenerateManuscriptsResult) => void;
   onReview: (scene: SceneRecord) => void;
   /** 前後シーンへの移動（Issue #171）。移動可否はボード表示順での位置から親が判定する */
   hasPrev: boolean;
@@ -217,6 +223,8 @@ export function SceneDialog({
   });
   // 原稿ファイルの選択肢（Issue #56）。ダイアログを開いたときに遅延取得。null = 読み込み中
   const [tree, setTree] = useState<ManuscriptTreeData | null>(null);
+  // 原稿ファイル生成ダイアログの表示（Issue #223）
+  const [generating, setGenerating] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -345,6 +353,25 @@ export function SceneDialog({
     } finally {
       setBusy(false);
     }
+  }
+
+  /**
+   * 原稿ファイルの新規作成（Issue #223）。サーバー側で紐づけまで保存済みなので、
+   * ローカルの選択値と「保存済み」基準の両方へ反映し、閉じるときに再送しない
+   */
+  function handleGenerated(result: GenerateManuscriptsResult) {
+    const created = result.created.find((c) => c.id === scene.id);
+    if (created) {
+      setManuscriptPath(created.path);
+      savedRef.current = { ...savedRef.current, manuscript_path: created.path };
+      // 選択肢は開いた時点のツリー。作ったばかりのファイルを「見つかりません」にしない
+      setTree((prev) =>
+        prev !== null && prev.gate === "ok"
+          ? { ...prev, files: [...prev.files, created.path] }
+          : prev,
+      );
+    }
+    onGenerateManuscript(result);
   }
 
   /** 「エディタで開く」。遷移でダイアログごとアンマウントされるため、未保存の変更を保存してから遷移する（Issue #169） */
@@ -509,6 +536,20 @@ export function SceneDialog({
                 </select>
               )}
             </label>
+            {/* 原稿ファイルの新規作成（Issue #223）。未紐づけのときだけ出す。
+                取得ロジック（上の useEffect）には手を入れていない */}
+            {tree !== null && tree.gate === "ok" && manuscriptPath === null && (
+              <Button
+                variant="outline"
+                size="xs"
+                className="w-fit"
+                disabled={busy}
+                onClick={() => setGenerating(true)}
+              >
+                <FilePlus data-icon="inline-start" />
+                原稿ファイルを新規作成
+              </Button>
+            )}
             {manuscriptPath !== null && (
               <button
                 type="button"
@@ -607,6 +648,15 @@ export function SceneDialog({
           </div>
         </DialogFooter>
       </DialogContent>
+
+      {generating && (
+        <GenerateManuscriptsDialog
+          projectId={scene.project_id}
+          targetIds={[scene.id]}
+          onGenerated={handleGenerated}
+          onClose={() => setGenerating(false)}
+        />
+      )}
     </Dialog>
   );
 }

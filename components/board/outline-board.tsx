@@ -20,9 +20,16 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { useRouter } from "next/navigation";
-import { BadgeCheck, ClipboardCheck, ListPlus, Plus } from "lucide-react";
+import {
+  BadgeCheck,
+  ClipboardCheck,
+  FilePlus,
+  ListPlus,
+  Plus,
+} from "lucide-react";
 import { toast } from "sonner";
 
+import type { GenerateManuscriptsResult } from "@/lib/actions/manuscript-generate";
 import { approveBoardReview } from "@/lib/actions/review";
 import {
   applyOutlineTemplate,
@@ -52,6 +59,7 @@ import {
   SortableChapterCard,
 } from "@/components/board/chapter-card";
 import { ChapterDialog } from "@/components/board/chapter-dialog";
+import { GenerateManuscriptsDialog } from "@/components/board/generate-manuscripts-dialog";
 import { ReviewPanel } from "@/components/review/review-panel";
 
 /** 2つの並びが同じか（id・part の列として比較。差がなければ保存しない） */
@@ -91,6 +99,8 @@ export function OutlineBoard({
     structureStatus === "approved",
   );
   const [approving, setApproving] = useState(false);
+  // 原稿ファイル生成ダイアログ（Issue #223）。null = 非表示、[] = 未紐づけ全件、[id] = 単体
+  const [generating, setGenerating] = useState<string[] | null>(null);
   // ドラッグ開始時点の状態（キャンセル・保存失敗時のロールバック先）
   const snapshotRef = useRef<SceneRecord[] | null>(null);
 
@@ -114,6 +124,19 @@ export function OutlineBoard({
   const activeScene = useMemo(
     () => (activeId ? chapters.find((s) => s.id === activeId) : undefined),
     [activeId, chapters],
+  );
+
+  // 原稿ファイルの紐づき状況（ヘッダ集計とCTAバー。SPEC-manuscript-bridge §4.1。
+  // 件数はDBの manuscript_path から数えるだけで、GitHub API 呼び出しは増えない）
+  const linkedCount = useMemo(
+    () => chapters.filter((s) => s.manuscript_path !== null).length,
+    [chapters],
+  );
+  // CTAバーの件数は「一括生成が実際に対象にする行」＝プロジェクトの全未紐づけ行で数える
+  // （小説シーンが同居しているとき、描画分の章だけで数えると実際の件数とずれる）
+  const unlinkedCount = useMemo(
+    () => scenes.filter((s) => s.manuscript_path === null).length,
+    [scenes],
   );
 
   function handleDragStart(event: DragStartEvent) {
@@ -222,6 +245,28 @@ export function OutlineBoard({
     return true;
   }
 
+  /** 原稿ファイル生成の完了（Issue #223）。紐づけはサーバー側で保存済み */
+  function handleGenerated(result: GenerateManuscriptsResult) {
+    setScenes(toCanonicalOrder(result.scenes));
+    const first = result.created[0];
+    toast(`${result.created.length}件の原稿ファイルを作成しました`, {
+      action: first
+        ? {
+            label: "エディタで開く",
+            onClick: () =>
+              router.push(
+                `/projects/${projectId}/editor?file=${encodeURIComponent(first.path)}`,
+              ),
+          }
+        : undefined,
+    });
+    // 追記しない指定（skipped）は正常。失敗したときだけ案内する
+    if (result.entryStatus === "failed") {
+      // entry 追記はベストエフォート。失敗しても章一覧の末尾に印つきで出るため開ける
+      toast("book.config.js の entry には追記できませんでした（entry 未登録）");
+    }
+  }
+
   /** 「通す」確定（ビートボードの構成承認と同じゲート。approveBoardReview 共用） */
   async function handleApprove(sessionId: string) {
     if (approving) return;
@@ -233,7 +278,18 @@ export function OutlineBoard({
         return;
       }
       setStructureApproved(true);
-      toast("構成が通りました！執筆に進みましょう");
+      // 承認の瞬間に「クリックできる先」を出す（SPEC-manuscript-bridge §4.1）
+      toast(
+        "構成が通りました！執筆に進みましょう",
+        unlinkedCount > 0
+          ? {
+              action: {
+                label: "原稿ファイルを作る",
+                onClick: () => setGenerating([]),
+              },
+            }
+          : undefined,
+      );
       router.refresh();
     } finally {
       setApproving(false);
@@ -246,6 +302,7 @@ export function OutlineBoard({
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs text-muted-foreground">
             章 {chapters.length}枚
+            {linkedCount > 0 && ` / 原稿 ${linkedCount}件`}
           </span>
           {structureApproved && (
             <Badge variant="secondary">
@@ -290,6 +347,25 @@ export function OutlineBoard({
             </Button>
           </div>
         </div>
+
+        {/* 構成承認後の恒久CTA（SPEC-manuscript-bridge §4.1） */}
+        {structureApproved && unlinkedCount > 0 && (
+          <div className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3">
+            <p className="text-sm text-card-foreground">
+              構成が通りました。まだ原稿ファイルのない章・シーンが{" "}
+              {unlinkedCount} 件あります
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto"
+              onClick={() => setGenerating([])}
+            >
+              <FilePlus data-icon="inline-start" />
+              まとめて作成
+            </Button>
+          </div>
+        )}
 
         {chapters.length === 0 ? (
           // 空ボード: 定番構成テンプレを目立つ形で提示（SPEC-outline-board §3.4）
@@ -427,7 +503,18 @@ export function OutlineBoard({
           chapter={editing}
           onSave={handleSave}
           onDelete={handleDelete}
+          onGenerateManuscript={handleGenerated}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {/* 一括生成（CTAバー・承認トーストから。単体作成は章ダイアログ側で開く） */}
+      {generating !== null && (
+        <GenerateManuscriptsDialog
+          projectId={projectId}
+          targetIds={generating}
+          onGenerated={handleGenerated}
+          onClose={() => setGenerating(null)}
         />
       )}
     </div>
