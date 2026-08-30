@@ -31,6 +31,7 @@
 | [SPEC-structure-templates](SPEC-structure-templates.md) | 07-31 | 構成テンプレート6種（4部構成・三幕・ストラクチャー式・Save The Cat・ヒーローズジャーニー・ストーリー解剖学） |
 | [SPEC-outline-board](SPEC-outline-board.md) | 07-25 | 目次ボード（非小説ジャンル。scenes を `part='chapter'` で共用） |
 | [SPEC-review-history](SPEC-review-history.md) | 07-27 | レビュー履歴の一覧・閲覧（`/projects/[id]/reviews`） |
+| [SPEC-board-chapters](SPEC-board-chapters.md) | 08-30 | 章の導入（`scenes.kind` の章マーカー行）と、目次ボードとの仕組みの統一 |
 
 ## 3. 原稿・校正フェーズ
 
@@ -40,6 +41,7 @@
 | [SPEC-proofread-selection](SPEC-proofread-selection.md) | 07-24 | 縦書きエディタでの選択範囲校正（範囲内 pending のみ置き換え・SHA非更新） |
 | [SPEC-manuscript-history](SPEC-manuscript-history.md) | 08-09 | 原稿タブのコミット履歴・差分ビュー（行単位＋行内文字ハイライト） |
 | [SPEC-repo-setup](SPEC-repo-setup.md) | 07-24 | 原稿リポジトリの初期セットアップ（テンプレートを GitHub API で1コミット展開） |
+| [SPEC-manuscript-bridge](SPEC-manuscript-bridge.md) | 08-30 | 構成→執筆の橋渡し（ボードからの原稿ファイル生成・執筆進捗・シーンへの逆引き） |
 
 ## 4. 縦書きエディタ（親SPEC＋フェーズ別）
 

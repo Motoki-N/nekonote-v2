@@ -5,6 +5,7 @@
 親SPEC: [SPEC-vertical-editor.md](SPEC-vertical-editor.md) §5.1 Phase 2
 改訂: 2026-07-23 論点E「デフォルトブランチのみ」を解除（Issue #21・SPEC-vertical-editor-phase5。§11 スコープ外の「ブランチ切替・作成・PR連携」の昇格）
 改訂: 2026-08-12 §9 に生HTML実行の受容判断を追記（security-audit-20260812 M-1）
+改訂: 2026-08-30 §3.3 新規章ファイル作成の経路が2つになった（SPEC-manuscript-bridge。ボードからの原稿ファイル生成を追加。entry 追記のヘルパ `appendChapterToEntry` は `lib/editor/entry-sync.ts` へ切り出して共用する。`createChapter` の外部挙動は無変更。なお §3.3 本文の「entry への追記は自動では行わない」は Phase 3 §7-2 で既に解除済み）
 
 ## 1. 目的・完了条件
 
