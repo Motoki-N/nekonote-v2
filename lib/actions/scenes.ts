@@ -15,6 +15,13 @@ import {
   type SceneRecord,
 } from "@/lib/board";
 import { BOARD_TEMPLATES } from "@/lib/board-templates";
+import {
+  fetchProjectScenes,
+  getOwnedProject,
+  persistChanges,
+  SCENE_COLUMNS,
+  toMap,
+} from "@/lib/board/scene-store";
 import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
 import {
@@ -23,7 +30,6 @@ import {
 } from "@/lib/constants/outline-template";
 import {
   CHAPTER_PART,
-  parseEnum,
   sceneKinds,
   scenePartsAll,
   structureTemplates,
@@ -39,52 +45,13 @@ import {
 } from "@/lib/schemas/projects";
 import { createClient } from "@/lib/supabase/server";
 
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
 const uuidSchema = z.uuid();
 const partSchema = z.enum(scenePartsAll);
 const kindSchema = z.enum(sceneKinds);
 const outlineTemplateKeySchema = z.enum(outlineTemplateKeys);
 const structureTemplateSchema = z.enum(structureTemplates);
-
-const SCENE_COLUMNS =
-  "id, project_id, kind, part, anchor, order_index, title, content, emotion_delta, status, manuscript_path";
-
-type Supabase = Awaited<ReturnType<typeof createClient>>;
-
-/** プロジェクトの全シーンを構成順（order_index 昇順）で取得。RLS越し＝所有分のみ */
-async function fetchProjectScenes(
-  supabase: Supabase,
-  projectId: string,
-): Promise<SceneRecord[]> {
-  const { data, error } = await supabase
-    .from("scenes")
-    .select(SCENE_COLUMNS)
-    .eq("project_id", projectId)
-    .order("order_index");
-  if (error) throw new AppError("internal", error.message);
-  return (data ?? []) as SceneRecord[];
-}
-
-/** RLS越しのプロジェクト所有確認（他人・不存在はともに not_found に正規化）。
- * 検証に使う構成テンプレートも返す（Issue #54） */
-async function getOwnedProject(
-  supabase: Supabase,
-  projectId: string,
-): Promise<{ structureTemplate: StructureTemplate }> {
-  const { data, error } = await supabase
-    .from("projects")
-    .select("id, structure_template")
-    .eq("id", projectId)
-    .maybeSingle();
-  if (error) throw new AppError("internal", error.message);
-  if (!data) throw new AppError("not_found", "プロジェクトが見つかりません");
-  return {
-    structureTemplate: parseEnum(
-      structureTemplates,
-      data.structure_template,
-      "projects.structure_template",
-    ),
-  };
-}
 
 /** part が「章」またはプロジェクトの現テンプレートのレーンであることの担保
  * （DB CHECK は全テンプレートの和集合のため、テンプレート整合はここで守る。SPEC-structure-templates §4） */
@@ -117,53 +84,6 @@ function assertTurningPointOrder(
   const violation = findTurningPointOrderViolation(scenes, template);
   if (violation)
     throw new AppError("validation", turningPointOrderMessage(violation));
-}
-
-/**
- * 変更のあった行だけを1回の upsert で保存する。
- * supabase-js にトランザクションがないため、単一ステートメント＝原子的な一括更新で整合を保つ
- */
-async function persistChanges(
-  supabase: Supabase,
-  before: Map<string, SceneRecord>,
-  after: SceneRecord[],
-): Promise<void> {
-  const changed = after.filter((scene) => {
-    const prev = before.get(scene.id);
-    if (!prev) return true; // 新規行
-    return (
-      prev.kind !== scene.kind ||
-      prev.part !== scene.part ||
-      prev.anchor !== scene.anchor ||
-      prev.order_index !== scene.order_index ||
-      prev.title !== scene.title ||
-      prev.content !== scene.content ||
-      prev.emotion_delta !== scene.emotion_delta ||
-      prev.manuscript_path !== scene.manuscript_path
-    );
-  });
-  if (changed.length === 0) return;
-  // status はシーン系アクションの管理外（approveBoardReview だけが更新する）。取得時点の値を
-  // 書き戻して承認を巻き戻さないよう upsert ペイロードから除外する（新規行は default 'draft'）
-  const payload = changed.map((scene) => ({
-    id: scene.id,
-    project_id: scene.project_id,
-    // 新規行の挿入に必要（既存行では実質不変。SPEC-board-chapters §6）
-    kind: scene.kind,
-    part: scene.part,
-    anchor: scene.anchor,
-    order_index: scene.order_index,
-    title: scene.title,
-    content: scene.content,
-    emotion_delta: scene.emotion_delta,
-    manuscript_path: scene.manuscript_path,
-  }));
-  const { error } = await supabase.from("scenes").upsert(payload);
-  if (error) throw new AppError("internal", error.message);
-}
-
-function toMap(scenes: SceneRecord[]): Map<string, SceneRecord> {
-  return new Map(scenes.map((s) => [s.id, s]));
 }
 
 /** シーン・章マーカーの作成。レーン末尾（境界アンカースロットの手前）に置き、

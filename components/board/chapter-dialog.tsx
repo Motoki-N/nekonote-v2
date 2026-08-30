@@ -2,12 +2,13 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Trash2 } from "lucide-react";
+import { ExternalLink, FilePlus, Trash2 } from "lucide-react";
 
 import {
   getManuscriptFiles,
   type ManuscriptTreeData,
 } from "@/lib/actions/manuscripts";
+import type { GenerateManuscriptsResult } from "@/lib/actions/manuscript-generate";
 import type { SceneRecord } from "@/lib/board";
 import type { SceneEdit } from "@/lib/schemas/projects";
 import {
@@ -22,6 +23,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { GenerateManuscriptsDialog } from "@/components/board/generate-manuscripts-dialog";
 import {
   Dialog,
   DialogContent,
@@ -47,6 +49,7 @@ export function ChapterDialog({
   chapterNumber,
   onSave,
   onDelete,
+  onGenerateManuscript,
   onClose,
 }: {
   chapter: SceneRecord;
@@ -54,6 +57,8 @@ export function ChapterDialog({
   chapterNumber?: number;
   onSave: (sceneId: string, edit: SceneEdit) => Promise<boolean>;
   onDelete: (sceneId: string) => Promise<boolean>;
+  /** 原稿ファイルの生成（Issue #223）。ボードの state 更新とトーストは親が担う */
+  onGenerateManuscript: (result: GenerateManuscriptsResult) => void;
   onClose: () => void;
 }) {
   const scene = chapter;
@@ -64,6 +69,8 @@ export function ChapterDialog({
   );
   // 原稿ファイルの選択肢（scene-dialog と同じ遅延取得。null = 読み込み中）
   const [tree, setTree] = useState<ManuscriptTreeData | null>(null);
+  // 原稿ファイル生成ダイアログの表示（Issue #223）
+  const [generating, setGenerating] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
@@ -87,6 +94,24 @@ export function ChapterDialog({
       (f) => f.startsWith(`${prefix}manuscripts/`) && f.endsWith(".md"),
     );
   })();
+
+  /**
+   * 原稿ファイルの新規作成（Issue #223）。サーバー側で紐づけまで保存済みだが、
+   * ローカルの選択値にも反映して「保存する」で同じ値を送れるようにしておく
+   */
+  function handleGenerated(result: GenerateManuscriptsResult) {
+    const created = result.created.find((c) => c.id === scene.id);
+    if (created) {
+      setManuscriptPath(created.path);
+      // 選択肢は開いた時点のツリー。作ったばかりのファイルを「見つかりません」にしない
+      setTree((prev) =>
+        prev !== null && prev.gate === "ok"
+          ? { ...prev, files: [...prev.files, created.path] }
+          : prev,
+      );
+    }
+    onGenerateManuscript(result);
+  }
 
   async function handleSave() {
     if (busy) return;
@@ -194,6 +219,19 @@ export function ChapterDialog({
               </select>
             )}
           </label>
+          {/* 原稿ファイルの新規作成（Issue #223）。未紐づけのときだけ出す */}
+          {tree !== null && tree.gate === "ok" && manuscriptPath === null && (
+            <Button
+              variant="outline"
+              size="xs"
+              className="w-fit"
+              disabled={busy}
+              onClick={() => setGenerating(true)}
+            >
+              <FilePlus data-icon="inline-start" />
+              原稿ファイルを新規作成
+            </Button>
+          )}
           {manuscriptPath !== null && (
             <Link
               href={`/projects/${scene.project_id}/editor?file=${encodeURIComponent(manuscriptPath)}`}
@@ -247,6 +285,15 @@ export function ChapterDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {generating && (
+        <GenerateManuscriptsDialog
+          projectId={scene.project_id}
+          targetIds={[scene.id]}
+          onGenerated={handleGenerated}
+          onClose={() => setGenerating(false)}
+        />
+      )}
     </Dialog>
   );
 }
