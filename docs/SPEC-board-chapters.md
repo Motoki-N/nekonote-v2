@@ -209,7 +209,9 @@ export function chapterNumberByScene(scenes: SceneRecord[]): Record<string, numb
 
 `lib/ai/prompts.ts` の `buildStructureReviewInput`:
 
-- 可視判定を `part` から `kind` へ変更する（小説= `kind !== 'chapter'`、非小説= `kind === 'chapter'`）
+- 可視判定を `kind` ベースに変える。非小説= `kind === 'chapter'`。小説はビートボードのカード列
+  （= `part !== 'chapter'`。シーンと章マーカーの両方）を走査し、シーンだけに番号を振る
+  ——章見出しを差し込むには章マーカーが走査対象に残っている必要があるため
 - **小説の構成レビュー入力に章見出しを差し込む。** 章マーカーの位置に `## 第3章 〇〇` の見出し行を置き、
   続くシーン群がその章に属することを AI が読めるようにする。シーンの通し番号は章マーカーを飛ばして
   連続させる（画面の通し番号と一致させる。Issue #213 の規約）

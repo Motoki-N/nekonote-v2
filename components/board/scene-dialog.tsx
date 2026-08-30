@@ -29,12 +29,7 @@ import {
 } from "@/lib/board";
 import { BOARD_TEMPLATES } from "@/lib/board-templates";
 import { LinkedNoteChips } from "@/components/notes/linked-note-chips";
-import {
-  CHAPTER_PART,
-  EMOTION_MAX,
-  EMOTION_MIN,
-  sceneAnchors,
-} from "@/lib/schemas/enums";
+import { EMOTION_MAX, EMOTION_MIN, sceneAnchors } from "@/lib/schemas/enums";
 import type {
   Emotion,
   SceneAnchor,
@@ -240,7 +235,8 @@ export function SceneDialog({
   // 編集中の値を差し込んで計算し、ステッパー操作に即座に追従させる
   const emotionClamped = useMemo(() => {
     const ordered = allScenes
-      .filter((s) => s.part !== CHAPTER_PART)
+      // 感情の起伏はシーンのみで積み上げる（章マーカーは点を持たない。SPEC-board-chapters §4.1）
+      .filter((s) => s.kind !== "chapter")
       .map((s) =>
         s.id === scene.id ? { ...s, emotion_delta: emotionDelta } : s,
       );

@@ -80,7 +80,13 @@ export const sceneParts = [
 ] as const;
 export type ScenePart = (typeof sceneParts)[number];
 
-// 目次ボードの章カード（Issue #96・SPEC-outline-board。小説レーンには描画しない）
+// カードの種別（scenes.kind。20260830000001 の CHECK 制約と対応。SPEC-board-chapters §2）。
+// 'chapter' は「並びの中の区切り行」＝章マーカー。章とシーンの所属は保存せず、
+// 正準順序上の位置から導出する（直前の章マーカー行がその章）
+export const sceneKinds = ["scene", "chapter"] as const;
+export type SceneKind = (typeof sceneKinds)[number];
+
+// 目次ボードの章レーン（Issue #96・SPEC-outline-board。小説レーンには描画しない）
 export const CHAPTER_PART = "chapter" as const;
 // DBのCHECK制約（20260731000001）・zod検証・正準順序（toCanonicalOrder）用の全語彙
 export const scenePartsAll = [...sceneParts, CHAPTER_PART] as const;

@@ -33,6 +33,7 @@ import {
 } from "@/lib/actions/scenes";
 import {
   BOUNDARY_ANCHOR_BY_PART,
+  chapterNumberByScene,
   computeEmotionArc,
   findTurningPointOrderViolation,
   isBoundaryAnchor,
@@ -44,6 +45,7 @@ import {
 import { BOARD_TEMPLATES, boardTemplateList } from "@/lib/board-templates";
 import type {
   ApprovalStatus,
+  SceneKind,
   ScenePart,
   StructureTemplate,
 } from "@/lib/schemas/enums";
@@ -61,6 +63,8 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmotionLine } from "@/components/board/emotion-line";
+import { ChapterCardContent } from "@/components/board/chapter-card";
+import { ChapterDialog } from "@/components/board/chapter-dialog";
 import { Lane } from "@/components/board/lane";
 import { SceneCardContent } from "@/components/board/scene-card";
 import { SceneDialog } from "@/components/board/scene-dialog";
@@ -139,11 +143,31 @@ export function BeatBoard({
     [activeId, scenes],
   );
 
-  // ビートボードに描画する小説シーンのみ（chapter=目次ボードの章カードは枚数・感情線に含めない。
-  // state には全件を保持し、並べ替え保存の全件送信で章カードを保全する。SPEC-outline-board §4）
-  const novelScenes = useMemo(
+  // ビートボードのカード列に並ぶ全カード（シーン＋章マーカー）。
+  // 目次レーン（part='chapter'）のカードは描画しないが、state には全件を保持し、
+  // 並べ替え保存の全件送信で相手ビューのカードを保全する（SPEC-outline-board §4）
+  const boardCards = useMemo(
     () => scenes.filter((s) => s.part !== "chapter"),
     [scenes],
+  );
+
+  // シーンのみ（枚数・通し番号・感情線・前後移動の対象。章マーカーは番号を消費しない。
+  // SPEC-board-chapters §4.1）
+  const novelScenes = useMemo(
+    () => boardCards.filter((s) => s.kind !== "chapter"),
+    [boardCards],
+  );
+
+  // カードID→所属章番号（正準順序上の位置から導出。SPEC-board-chapters §4）
+  const chapterNumbers = useMemo(
+    () => chapterNumberByScene(boardCards),
+    [boardCards],
+  );
+
+  // ボード上の章の数（ヘッダ集計）
+  const chapterCount = useMemo(
+    () => boardCards.filter((s) => s.kind === "chapter").length,
+    [boardCards],
   );
 
   // 感情の起伏が上下限に達し、変化量を反映しきれないシーン（Issue #205。カードで赤字警告）
@@ -157,7 +181,7 @@ export function BeatBoard({
     [novelScenes],
   );
 
-  // ボード表示順の通し番号（Issue #213。1始まり。章カードを除いた構成順＝
+  // ボード表示順の通し番号（Issue #213。1始まり。章マーカーを除いた構成順＝
   // 構成/シーンレビューのプロンプトがシーンに振る番号と同じ並び）
   const sceneNumbers = useMemo(
     () =>
@@ -179,7 +203,7 @@ export function BeatBoard({
   );
 
   /** over 先のレーンを解決する（レーン id か、レーン内カードの id）。
-   * chapter カード（目次ボード）はビートボードに描画されないため実際には到達しない */
+   * 目次レーン（part='chapter'）のカードはビートボードに描画されないため実際には到達しない */
   function resolveLane(overId: string): ScenePart | null {
     if (templateDef.lanes.some((lane) => lane.id === overId))
       return overId as ScenePart;
@@ -265,14 +289,15 @@ export function BeatBoard({
     setActiveId(null);
   }
 
-  async function handleAdd(part: ScenePart) {
+  async function handleAdd(part: ScenePart, kind: SceneKind) {
     if (adding) return;
     setAdding(true);
     try {
-      const result = await createScene(projectId, part);
+      const result = await createScene(projectId, part, kind);
       if (!result.ok || !result.data) {
+        const label = kind === "chapter" ? "章の区切り" : "シーン";
         toast.error(
-          result.ok ? "シーンの追加に失敗しました" : result.error.message,
+          result.ok ? `${label}の追加に失敗しました` : result.error.message,
         );
         return;
       }
@@ -406,6 +431,7 @@ export function BeatBoard({
   }
 
   async function handleDelete(sceneId: string): Promise<boolean> {
+    const isChapter = scenes.find((s) => s.id === sceneId)?.kind === "chapter";
     const result = await deleteScene(sceneId);
     if (!result.ok) {
       toast.error(result.error.message);
@@ -416,7 +442,8 @@ export function BeatBoard({
     setReview((prev) =>
       prev?.kind === "scene" && prev.scene.id === sceneId ? null : prev,
     );
-    toast("シーンを削除しました");
+    // 章マーカーは区切りだけが消える。属していたシーンは前の章に移る（SPEC-board-chapters §5.1）
+    toast(isChapter ? "章の区切りを削除しました" : "シーンを削除しました");
     return true;
   }
 
@@ -448,7 +475,8 @@ export function BeatBoard({
             </select>
           </label>
           <span className="text-xs text-muted-foreground">
-            シーン {novelScenes.length}枚
+            {chapterCount > 0 && `章 ${chapterCount} / `}シーン{" "}
+            {novelScenes.length}枚
           </span>
           {structureApproved && (
             <Badge variant="secondary">
@@ -499,10 +527,11 @@ export function BeatBoard({
                       : undefined
                   }
                   sceneNumbers={sceneNumbers}
+                  chapterNumbers={chapterNumbers}
                   noteCounts={noteCounts}
                   emotionClampedIds={emotionClampedIds}
                   adding={adding}
-                  onAdd={(p) => void handleAdd(p)}
+                  onAdd={(p, kind) => void handleAdd(p, kind)}
                   onEdit={setEditing}
                 />
               );
@@ -510,12 +539,19 @@ export function BeatBoard({
           </div>
           <DragOverlay>
             {activeScene && !isBoundaryAnchor(activeScene.anchor) ? (
-              <SceneCardContent
-                scene={activeScene}
-                sceneNumber={sceneNumbers[activeScene.id]}
-                noteCount={noteCounts[activeScene.id]}
-                emotionClamped={emotionClampedIds.has(activeScene.id)}
-              />
+              activeScene.kind === "chapter" ? (
+                <ChapterCardContent
+                  chapter={activeScene}
+                  chapterNumber={chapterNumbers[activeScene.id] ?? undefined}
+                />
+              ) : (
+                <SceneCardContent
+                  scene={activeScene}
+                  sceneNumber={sceneNumbers[activeScene.id]}
+                  noteCount={noteCounts[activeScene.id]}
+                  emotionClamped={emotionClampedIds.has(activeScene.id)}
+                />
+              )
             ) : null}
           </DragOverlay>
         </DndContext>
@@ -628,6 +664,7 @@ export function BeatBoard({
                 : ""}
               」に移動し、転換点マークはすべて解除されます。構成の承認状態もリセットされます。
               シーンのタイトル・本文・感情・ノート紐づけは保持されます。
+              章の区切りも同じレーンへ移りますが、並びは変わらないため章の区切り方は保たれます。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -648,7 +685,18 @@ export function BeatBoard({
         </AlertDialogContent>
       </AlertDialog>
 
-      {editing && (
+      {editing?.kind === "chapter" && (
+        <ChapterDialog
+          key={`dialog-${editing.id}`}
+          chapter={editing}
+          chapterNumber={chapterNumbers[editing.id] ?? undefined}
+          onSave={handleSave}
+          onDelete={handleDelete}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
+      {editing && editing.kind !== "chapter" && (
         <SceneDialog
           key={`dialog-${editing.id}`}
           scene={editing}
