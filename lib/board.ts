@@ -6,6 +6,7 @@ import type {
   ApprovalStatus,
   Emotion,
   SceneAnchor,
+  SceneKind,
   ScenePart,
   ScenePartAll,
   StructureTemplate,
@@ -15,7 +16,11 @@ import { EMOTION_MAX, EMOTION_MIN, scenePartsAll } from "@/lib/schemas/enums";
 export type SceneRecord = {
   id: string;
   project_id: string;
-  /** 'chapter' は目次ボードの章カード（SPEC-outline-board。ビートボードには描画しない） */
+  /** カードの種別（SPEC-board-chapters §2）。'chapter' は章マーカー＝並びの中の区切り行。
+   * 目次ボードに描画されるのはこちらで、ビートボードではシーン列に混ざって並ぶ */
+  kind: SceneKind;
+  /** レーン。章マーカーでは「章が始まるレーン」を意味する
+   * （'chapter' は目次ボードのレーン。SPEC-outline-board） */
   part: ScenePartAll;
   anchor: SceneAnchor | null;
   order_index: number;
@@ -61,7 +66,7 @@ export const ANCHOR_BADGE = Object.fromEntries(
 ) as Record<SceneAnchor, string>;
 
 /** 新規シーン本文の初期値（Issue #155。4観点のテンプレとして残す。
- * 章カードは対象外。編集ダイアログの placeholder（本文を空にしたとき）と共用） */
+ * 章マーカーは対象外。編集ダイアログの placeholder（本文を空にしたとき）と共用） */
 export const SCENE_CONTENT_TEMPLATE = [
   "4観点を目安に自由に:",
   "・シチュエーション（場所・時刻）",
@@ -90,7 +95,7 @@ export type EmotionArcPoint = {
  * 各シーンの変化量から感情の起伏を積み上げる（SPEC-beat-board §3.2。Issue #205）。
  * 先頭を0とし、構成順に emotion_delta を足し込む。未設定シーンは変化なし（累積を維持）。
  * 上下限（±9）を超える分は切り捨て、そのシーンに clamped を立てる。
- * scenes はビートボードの表示順（章カードを除く正準順序）で渡すこと
+ * scenes はビートボードの表示順（章マーカーを除く正準順序）で渡すこと
  */
 export function computeEmotionArc(scenes: SceneRecord[]): EmotionArcPoint[] {
   let current = 0;
@@ -153,6 +158,59 @@ export function toCanonicalOrder(scenes: SceneRecord[]): SceneRecord[] {
     if (boundary) result.push(...lane.filter((s) => s.anchor === boundary));
   }
   return result.map((s, index) => ({ ...s, order_index: index }));
+}
+
+/** 章マーカーで区切った1章分（groupByChapter の結果） */
+export type ChapterGroup = {
+  /** 章マーカー行。null = 章に属さない先頭群（章立ては任意。SPEC-board-chapters §1） */
+  chapter: SceneRecord | null;
+  /** 章番号（1..M。章マーカーの出現順）。章なし群は null */
+  number: number | null;
+  /** その章に属するシーン（kind='scene' のみ） */
+  scenes: SceneRecord[];
+};
+
+/**
+ * 正準順序の全行を、章マーカーを区切りにグループ化する（SPEC-board-chapters §4）。
+ * 所属は位置から導出する（直前の章マーカー行がその章）ため、章に属するシーンは
+ * 定義上つねに連続する。検証も修復も要らない。
+ * scenes は正準順序（toCanonicalOrder の結果）で渡すこと
+ */
+export function groupByChapter(scenes: SceneRecord[]): ChapterGroup[] {
+  // 先頭群は、実際に章なしシーンが現れたときだけ結果に残す
+  // （1枚目が章マーカーのボードで空の見出しなし群を作らない）
+  const groups: ChapterGroup[] = [{ chapter: null, number: null, scenes: [] }];
+  let count = 0;
+  for (const scene of scenes) {
+    if (scene.kind === "chapter") {
+      count += 1;
+      groups.push({ chapter: scene, number: count, scenes: [] });
+      continue;
+    }
+    groups[groups.length - 1].scenes.push(scene);
+  }
+  return groups[0].scenes.length === 0 ? groups.slice(1) : groups;
+}
+
+/**
+ * シーンID → 所属章番号（章に属さないシーンは null）。
+ * カードのラベル・レーン先頭の「第N章のつづき」表示に使う（SPEC-board-chapters §5.1）。
+ * 章マーカー自身も自分の章番号で引ける
+ */
+export function chapterNumberByScene(
+  scenes: SceneRecord[],
+): Record<string, number | null> {
+  const result: Record<string, number | null> = {};
+  let current: number | null = null;
+  let count = 0;
+  for (const scene of scenes) {
+    if (scene.kind === "chapter") {
+      count += 1;
+      current = count;
+    }
+    result[scene.id] = current;
+  }
+  return result;
 }
 
 /**

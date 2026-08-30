@@ -66,9 +66,10 @@ function EmotionBadge({
 
 /**
  * 紐づけ原稿バッジ（Issue #56）。クリックでエディタの該当ファイルへ。
- * カード全体が <button>（<a> をネストできない）ため role="link" の span で実装する
+ * カード全体が <button>（<a> をネストできない）ため role="link" の span で実装する。
+ * シーンカードと章マーカーカードで共用する（SPEC-board-chapters §5.1）
  */
-function ManuscriptBadge({ scene }: { scene: SceneRecord }) {
+export function ManuscriptBadge({ scene }: { scene: SceneRecord }) {
   const router = useRouter();
   if (scene.manuscript_path === null) return null;
   const href = `/projects/${scene.project_id}/editor?file=${encodeURIComponent(scene.manuscript_path)}`;

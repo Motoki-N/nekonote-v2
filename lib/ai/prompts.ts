@@ -5,6 +5,7 @@ import {
   type SceneRecord,
 } from "@/lib/board";
 import { BOARD_TEMPLATES } from "@/lib/board-templates";
+import { CHAPTER_PART } from "@/lib/schemas/enums";
 import type { StructureTemplate } from "@/lib/schemas/enums";
 import { WRITING_GENRE_LABEL } from "@/lib/constants/proposal-template";
 import type {
@@ -167,7 +168,9 @@ function templateSection(template: StructureTemplate): string[] {
  * 構成レビューの user 入力（SPEC-beat-board §3.5。紐づけノート全文はIssue #58）。
  * 小説: 企画書＋採用中の構成テンプレート（Issue #54）＋紐づけノート全文（重複なし）＋
  * 全シーンを構成順に整形（パート・アンカー・タイトル・本文・感情の変化量・紐づけノートの参照番号）。
- * 非小説（技術書・その他）: 目次ボードの章カードのみを目次形式で整形（SPEC-outline-board §5。
+ * 章マーカーがある場合は、その位置に「## 第N章 〇〇」の見出しを差し込む（SPEC-board-chapters §5.4。
+ * シーンの通し番号は章マーカーを飛ばして連続させ、画面の通し番号と一致させる）。
+ * 非小説（技術書・その他）: 章のみを目次形式で整形（SPEC-outline-board §5。
  * パートラベル・アンカー・感情・テンプレート節は小説理論の項目のため出さない）。
  * ジャンル切替で両種のカードが混在していても、レビュー入力は表示中のビューと一致する
  *
@@ -191,9 +194,14 @@ export function buildStructureReviewInput({
   history: FeedbackHistoryItem[];
 }): string {
   const isNovel = proposal.writingGenre === "novel";
-  const visible = scenes.filter((s) =>
-    isNovel ? s.part !== "chapter" : s.part === "chapter",
+  // 小説はビートボードのカード列（シーン＋章マーカー。目次レーンは出さない）、
+  // 非小説は章のみを出す（SPEC-board-chapters §5.4）
+  const cards = scenes.filter((s) =>
+    isNovel ? s.part !== CHAPTER_PART : s.kind === "chapter",
   );
+  // 見出しの数え上げ・ノートの採番・件数判定はいずれもシーンが対象
+  // （章マーカーは通し番号を消費しない。SPEC-board-chapters §4.1）
+  const visible = isNovel ? cards.filter((s) => s.kind !== "chapter") : cards;
 
   // 構成順の初出でノートに通し番号を振る（題名が重複していてもシーンから一意に指せる）
   const numberByNoteId = new Map<string, number>();
@@ -230,10 +238,22 @@ export function buildStructureReviewInput({
       : "# 構成（目次・構成順）",
   );
 
-  if (visible.length === 0) {
+  // 章マーカーだけでシーンが0枚のボードでも章見出しは出す（空の章を許容するため。SPEC §2）
+  if (cards.length === 0) {
     lines.push(isNovel ? "（シーンはまだない）" : "（章はまだない）");
   } else {
-    visible.forEach((scene, index) => {
+    // 小説は章マーカーの位置に見出しを差し込む。シーンの通し番号は章を飛ばして
+    // 連続させ、画面の通し番号と一致させる（Issue #213 の規約）
+    let sceneNumber = 0;
+    let chapterNumber = 0;
+    cards.forEach((scene) => {
+      if (isNovel && scene.kind === "chapter") {
+        chapterNumber += 1;
+        lines.push(`## 第${chapterNumber}章 ${scene.title || "（無題）"}`);
+        return;
+      }
+      const index = sceneNumber;
+      sceneNumber += 1;
       if (isNovel) {
         lines.push(
           `## ${index + 1}. [${PART_LABEL[scene.part]}]${anchorLabel(scene.anchor)} ${scene.title || "（無題）"}`,
@@ -310,9 +330,10 @@ export function buildSceneReviewInput({
     "# 全シーン一覧（構成順。→ が対象シーン）",
   ];
 
-  // シーンレビューは小説専用機能のため、章カード（目次ボード）は一覧に混ぜない
+  // シーンレビューは小説専用機能のため、章マーカーは一覧に混ぜない
+  // （通し番号を画面と一致させるためにも除外する。SPEC-board-chapters §5.4）
   scenes
-    .filter((item) => item.part !== "chapter")
+    .filter((item) => item.kind !== "chapter")
     .forEach((item, index) => {
       const marker = item.id === scene.id ? "→ " : "";
       lines.push(

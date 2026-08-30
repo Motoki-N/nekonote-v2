@@ -814,6 +814,7 @@ export type Database = {
           created_at: string
           emotion_delta: number | null
           id: string
+          kind: string
           manuscript_path: string | null
           order_index: number
           part: string
@@ -828,6 +829,7 @@ export type Database = {
           created_at?: string
           emotion_delta?: number | null
           id?: string
+          kind?: string
           manuscript_path?: string | null
           order_index?: number
           part: string
@@ -842,6 +844,7 @@ export type Database = {
           created_at?: string
           emotion_delta?: number | null
           id?: string
+          kind?: string
           manuscript_path?: string | null
           order_index?: number
           part?: string

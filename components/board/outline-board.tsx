@@ -48,10 +48,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  SceneCardContent,
-  SortableSceneCard,
-} from "@/components/board/scene-card";
-import { OutlineDialog } from "@/components/board/outline-dialog";
+  ChapterCardContent,
+  SortableChapterCard,
+} from "@/components/board/chapter-card";
+import { ChapterDialog } from "@/components/board/chapter-dialog";
 import { ReviewPanel } from "@/components/review/review-panel";
 
 /** 2つの並びが同じか（id・part の列として比較。差がなければ保存しない） */
@@ -64,8 +64,8 @@ function sameOrder(a: SceneRecord[], b: SceneRecord[]): boolean {
 
 /**
  * 目次ボード（SPEC-outline-board §3.2）。非小説ジャンル（技術書・その他）の構成設計。
- * 章カード（part='chapter'）を1列に並べるシンプルな目次作成機能。
- * state にはプロジェクトの全 scenes を保持し（描画は chapter のみ）、並べ替え保存は
+ * 章（kind='chapter'）を1列に並べるシンプルな目次作成機能。
+ * state にはプロジェクトの全 scenes を保持し（描画は章のみ）、並べ替え保存は
  * 全件送信する——これで小説シーンが混在していても reorderScenes の完全一致検証を通り、
  * 相手ビューのカードが保全される（SPEC-outline-board §4）
  */
@@ -104,9 +104,11 @@ export function OutlineBoard({
     }),
   );
 
-  // 目次ボードに描画する章カードのみ（小説シーンは state に保持しつつ非表示）
+  // 目次ボードに描画する章のみ（小説シーンは state に保持しつつ非表示）。
+  // kind で絞ることで、ビートボードで作った章マーカーもそのまま目次に並ぶ
+  // （ジャンルを小説から切り替えたプロジェクト。SPEC-board-chapters §5.2）
   const chapters = useMemo(
-    () => scenes.filter((s) => s.part === "chapter"),
+    () => scenes.filter((s) => s.kind === "chapter"),
     [scenes],
   );
   const activeScene = useMemo(
@@ -129,13 +131,10 @@ export function OutlineBoard({
     if (over && over.id !== active.id) {
       const from = scenes.findIndex((s) => s.id === String(active.id));
       const to = scenes.findIndex((s) => s.id === String(over.id));
-      // 正準順序では章カードは連続しているため arrayMove が成立（ビートボードの同一レーン内と同型）
-      if (
-        from !== -1 &&
-        to !== -1 &&
-        scenes[from].part === "chapter" &&
-        scenes[to].part === "chapter"
-      ) {
+      // 同一レーン内でのみ入れ替える。正準順序では同じ part のカードが連続しているため
+      // arrayMove が成立する（純粋な目次プロジェクトは全件 part='chapter' なので現状と同挙動。
+      // 小説レーンの章マーカーが混ざったときだけ効く安全弁。SPEC-board-chapters §5.2）
+      if (from !== -1 && to !== -1 && scenes[from].part === scenes[to].part) {
         next = toCanonicalOrder(arrayMove(scenes, from, to));
         setScenes(next);
       }
@@ -163,7 +162,7 @@ export function OutlineBoard({
     if (adding) return;
     setAdding(true);
     try {
-      const result = await createScene(projectId, "chapter");
+      const result = await createScene(projectId, "chapter", "chapter");
       if (!result.ok || !result.data) {
         toast.error(
           result.ok ? "章の追加に失敗しました" : result.error.message,
@@ -354,10 +353,11 @@ export function OutlineBoard({
                 items={chapters.map((s) => s.id)}
                 strategy={verticalListSortingStrategy}
               >
-                {chapters.map((scene) => (
-                  <SortableSceneCard
-                    key={scene.id}
-                    scene={scene}
+                {chapters.map((chapter) => (
+                  <SortableChapterCard
+                    key={chapter.id}
+                    chapter={chapter}
+                    chapterNumber={undefined}
                     onEdit={setEditing}
                   />
                 ))}
@@ -374,7 +374,9 @@ export function OutlineBoard({
               </Button>
             </div>
             <DragOverlay>
-              {activeScene ? <SceneCardContent scene={activeScene} /> : null}
+              {activeScene ? (
+                <ChapterCardContent chapter={activeScene} />
+              ) : null}
             </DragOverlay>
           </DndContext>
         )}
@@ -420,9 +422,9 @@ export function OutlineBoard({
       )}
 
       {editing && (
-        <OutlineDialog
+        <ChapterDialog
           key={`dialog-${editing.id}`}
-          scene={editing}
+          chapter={editing}
           onSave={handleSave}
           onDelete={handleDelete}
           onClose={() => setEditing(null)}

@@ -24,8 +24,10 @@ import {
 import {
   CHAPTER_PART,
   parseEnum,
+  sceneKinds,
   scenePartsAll,
   structureTemplates,
+  type SceneKind,
   type ScenePartAll,
   type StructureTemplate,
 } from "@/lib/schemas/enums";
@@ -39,11 +41,12 @@ import { createClient } from "@/lib/supabase/server";
 
 const uuidSchema = z.uuid();
 const partSchema = z.enum(scenePartsAll);
+const kindSchema = z.enum(sceneKinds);
 const outlineTemplateKeySchema = z.enum(outlineTemplateKeys);
 const structureTemplateSchema = z.enum(structureTemplates);
 
 const SCENE_COLUMNS =
-  "id, project_id, part, anchor, order_index, title, content, emotion_delta, status, manuscript_path";
+  "id, project_id, kind, part, anchor, order_index, title, content, emotion_delta, status, manuscript_path";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -97,6 +100,15 @@ function assertPartInTemplate(
   );
 }
 
+/** 目次レーン（part='chapter'）は章マーカー専用であることの担保
+ * （DBの scenes_chapter_part_check と対応。SPEC-board-chapters §3.1。
+ * 逆向き＝章マーカーを小説レーンに置くのは正常な使い方なので制限しない） */
+function assertKindPart(kind: SceneKind, part: ScenePartAll): void {
+  if (part === CHAPTER_PART && kind !== "chapter") {
+    throw new AppError("validation", "目次のレーンには章だけを置けます");
+  }
+}
+
 /** レーン内の転換点の並び順制約の担保（SPEC-structure-templates §5。scenes は正準順序で渡す） */
 function assertTurningPointOrder(
   scenes: SceneRecord[],
@@ -120,6 +132,7 @@ async function persistChanges(
     const prev = before.get(scene.id);
     if (!prev) return true; // 新規行
     return (
+      prev.kind !== scene.kind ||
       prev.part !== scene.part ||
       prev.anchor !== scene.anchor ||
       prev.order_index !== scene.order_index ||
@@ -135,6 +148,8 @@ async function persistChanges(
   const payload = changed.map((scene) => ({
     id: scene.id,
     project_id: scene.project_id,
+    // 新規行の挿入に必要（既存行では実質不変。SPEC-board-chapters §6）
+    kind: scene.kind,
     part: scene.part,
     anchor: scene.anchor,
     order_index: scene.order_index,
@@ -151,14 +166,18 @@ function toMap(scenes: SceneRecord[]): Map<string, SceneRecord> {
   return new Map(scenes.map((s) => [s.id, s]));
 }
 
-/** シーン作成。レーン末尾（境界アンカースロットの手前）に置き、全体を正準順序で再採番する */
+/** シーン・章マーカーの作成。レーン末尾（境界アンカースロットの手前）に置き、
+ * 全体を正準順序で再採番する（章マーカーは SPEC-board-chapters §5.1） */
 export async function createScene(
   projectId: string,
   part: string,
+  kind: string = "scene",
 ): Promise<ActionResult<{ scenes: SceneRecord[]; createdId: string }>> {
   try {
     const pid = uuidSchema.parse(projectId);
     const targetPart = partSchema.parse(part);
+    const targetKind = kindSchema.parse(kind);
+    assertKindPart(targetKind, targetPart);
     const supabase = await createClient();
     const { structureTemplate } = await getOwnedProject(supabase, pid);
     assertPartInTemplate(targetPart, structureTemplate);
@@ -167,12 +186,13 @@ export async function createScene(
     const created: SceneRecord = {
       id: randomUUID(),
       project_id: pid,
+      kind: targetKind,
       part: targetPart,
       anchor: null,
       order_index: scenes.length, // 仮値。toCanonicalOrder で確定する
       title: "",
-      // 小説シーンは4観点テンプレを初期値として残す（Issue #155。章カードは対象外）
-      content: targetPart === CHAPTER_PART ? "" : SCENE_CONTENT_TEMPLATE,
+      // 小説シーンは4観点テンプレを初期値として残す（Issue #155。章マーカーは対象外）
+      content: targetKind === "chapter" ? "" : SCENE_CONTENT_TEMPLATE,
       emotion_delta: null,
       status: "draft",
       manuscript_path: null,
@@ -213,6 +233,7 @@ export async function duplicateScene(
     const created: SceneRecord = {
       id: randomUUID(),
       project_id: source.project_id,
+      kind: source.kind,
       part: source.part,
       anchor: null,
       order_index: 0, // 仮値。toCanonicalOrder で確定する
@@ -259,6 +280,7 @@ export async function applyOutlineTemplate(
       (title, index) => ({
         id: randomUUID(),
         project_id: pid,
+        kind: "chapter",
         part: "chapter",
         anchor: null,
         order_index: scenes.length + index, // 仮値。toCanonicalOrder で確定する
@@ -308,6 +330,7 @@ export async function updateScene(
       current.project_id,
     );
     assertPartInTemplate(parsed.part, structureTemplate);
+    assertKindPart(current.kind, parsed.part);
 
     const scenes = await fetchProjectScenes(supabase, current.project_id);
     const anchor = normalizeAnchor(parsed.anchor, parsed.part);
@@ -370,6 +393,7 @@ export async function reorderScenes(
 
     const submitted = parsed.map((entry): SceneRecord => {
       const scene = byId.get(entry.id) as SceneRecord;
+      assertKindPart(scene.kind, entry.part);
       // レーン間移動で part が変わったピンチ等のアンカーは自動解除（part↔anchor 整合の正規化）
       return {
         ...scene,
@@ -392,7 +416,9 @@ export async function reorderScenes(
 /**
  * 構成テンプレートの切替（Issue #54・SPEC-structure-templates §2）。
  * 全小説シーンを新テンプレートの先頭レーンへ集約し、転換点マークを全解除する
- * （タイトル・本文・感情・ノート紐づけ・シーン承認状態は保全。章カードは対象外）。
+ * （タイトル・本文・感情・ノート紐づけ・シーン承認状態は保全。目次レーンのカードは対象外）。
+ * 小説レーンの章マーカーも同じく先頭レーンへ寄る。相対順が保たれるため、章の所属関係は
+ * 保全される（所属は正準順序上の位置から導出されるため。SPEC-board-chapters §4.1）。
  * 構成の承認状態はリセットする（構成が丸ごと変わるため）。
  * supabase-js にトランザクションがないため scenes → projects の2文で更新する。
  * scenes 側を先に更新することで、途中失敗しても再実行すれば整合が回復する

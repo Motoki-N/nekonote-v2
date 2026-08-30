@@ -37,21 +37,26 @@ const selectClass =
   "h-8 w-full rounded-md border border-input bg-transparent px-2.5 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 /**
- * 章カードの編集ダイアログ（SPEC-outline-board §3.3）。
+ * 章の編集ダイアログ（SPEC-outline-board §3.3・SPEC-board-chapters §5.3）。
+ * 目次ボードの章カードとビートボードの章マーカーで共用する。
  * シーンダイアログの縮退版: タイトル・内容メモ・原稿ファイル紐づけ・削除のみ。
  * パート・アンカー・感情・ノート紐づけ・シーンレビューは持たない（小説理論の項目のため）
  */
-export function OutlineDialog({
-  scene,
+export function ChapterDialog({
+  chapter,
+  chapterNumber,
   onSave,
   onDelete,
   onClose,
 }: {
-  scene: SceneRecord;
+  chapter: SceneRecord;
+  /** 章番号（1始まり）。ビートボードの章マーカーでのみ渡す（目次ボードは通し番号を出さない） */
+  chapterNumber?: number;
   onSave: (sceneId: string, edit: SceneEdit) => Promise<boolean>;
   onDelete: (sceneId: string) => Promise<boolean>;
   onClose: () => void;
 }) {
+  const scene = chapter;
   const [title, setTitle] = useState(scene.title);
   const [content, setContent] = useState(scene.content);
   const [manuscriptPath, setManuscriptPath] = useState<string | null>(
@@ -90,8 +95,9 @@ export function OutlineDialog({
       const ok = await onSave(scene.id, {
         title,
         content,
-        // 章カードの固定値（アンカー・感情は目次ボードでは使わない。SPEC-outline-board §4）
-        part: "chapter",
+        // 章の固定値（アンカー・感情は章の項目ではない。SPEC-board-chapters §2）
+        // 章が始まるレーンを維持する（目次ボードは 'chapter'、ビートボードは小説レーン）
+        part: scene.part,
         anchor: null,
         emotion_delta: null,
         manuscript_path: manuscriptPath,
@@ -118,7 +124,11 @@ export function OutlineDialog({
       {/* 低い画面でも保存ボタンに届くよう、ダイアログ全体を画面内に収めてスクロール（Issue #153） */}
       <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>章を編集</DialogTitle>
+          <DialogTitle>
+            {chapterNumber === undefined
+              ? "章を編集"
+              : `第${chapterNumber}章を編集`}
+          </DialogTitle>
           <DialogDescription className="sr-only">
             章のタイトル・内容メモ・原稿ファイル紐づけを編集します
           </DialogDescription>
@@ -130,7 +140,9 @@ export function OutlineDialog({
             <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="例: 環境構築"
+              placeholder={
+                chapterNumber === undefined ? "例: 環境構築" : "例: 邂逅"
+              }
               className="text-foreground"
             />
           </label>
@@ -212,8 +224,11 @@ export function OutlineDialog({
               <AlertDialogHeader>
                 <AlertDialogTitle>この章を削除しますか？</AlertDialogTitle>
                 <AlertDialogDescription>
-                  「{scene.title || "（無題）"}
-                  」を完全に削除します。元に戻せません
+                  {chapterNumber === undefined
+                    ? // 目次ボード: 章カードそのものが構成の1項目
+                      `「${scene.title || "（無題）"}」を完全に削除します。元に戻せません`
+                    : // ビートボード: 消えるのは区切りだけ（SPEC-board-chapters §5.1）
+                      "この章の区切りを削除します。章に属していたシーンは前の章に移ります。原稿ファイルは削除されません"}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
