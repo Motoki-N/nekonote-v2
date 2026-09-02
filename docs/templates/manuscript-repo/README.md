@@ -19,7 +19,7 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 │   ├─ theme-bunko-a6.css … 文庫判テーマ（theme-bunko派生・16行×40字）
 │   ├─ theme-b6.css       … B6判テーマ（theme-bunko派生・17行×44字）
 │   ├─ theme-epub.css     … EPUB用テーマ（リフロー型縦書き・自己完結。印刷用と独立）
-│   └─ nekonote-parts.css … 共通パーツ（扉・奥付・挿絵・傍点・縦中横・割注・改ページ・塗り足し）
+│   └─ nekonote-parts.css … 共通パーツ（ノンブル・柱・扉・奥付・挿絵・傍点・縦中横・割注・改ページ・塗り足し）
 ├─ images/               … 挿絵（Git管理。太ったらLFS移行）
 ├─ scripts/
 │   ├─ check-images.mjs  … 画像検査（実効解像度・カラー検出）
@@ -28,6 +28,34 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
     ├─ build-pdf.yml     … 入稿タグpush → 入稿PDF自動生成
     └─ build-epub.yml    … EPUBタグpush → EPUB自動生成
 ```
+
+## ノンブル・柱
+
+ノンブル（ページ番号）と柱（章タイトル）をどこに出すかは、判型テーマ（`theme-bunko-a6.css` / `theme-b6.css`）の
+`:root` にある4つのスロット変数で決める。ネコノテAIの書籍設定フォームからも編集できる。
+
+| 変数 | 位置 |
+|---|---|
+| `--nekonote--slot-top-outer` | 天・小口（左右ページで自動的に入れ替わる） |
+| `--nekonote--slot-top-center` | 天・中央 |
+| `--nekonote--slot-bottom-outer` | 地・小口（同上） |
+| `--nekonote--slot-bottom-center` | 地・中央 |
+
+値は `none` / `counter(page)`（ノンブル）/ `env(doc-title)`（柱＝章タイトル）と、その連結
+（`counter(page) '　' env(doc-title)`）。既定は天・小口にノンブル＋柱で、**左右どちらのページにも柱が出る**。
+仕組み（`@page` ルール）は `nekonote-parts.css` 側にある。
+
+本文との間隔を広げたいときは、判型テーマの字詰め（`--vs-theme--num-of-character`）を減らして
+天地マージンごと広げる。
+
+### 既存リポジトリへの反映（2ファイルをセットで）
+
+このノンブル機構を後から取り込むときは、**`nekonote-parts.css` と判型テーマの2つを必ずセットで**更新する。
+`nekonote-parts.css` だけを差し替えると、スロット変数が未定義のまま `none` にフォールバックし、
+**ノンブルも柱も出なくなる**（エラーは出ない）。
+
+1. `themes/nekonote-parts.css` を新しい版で置き換える
+2. `themes/theme-bunko-a6.css` と `themes/theme-b6.css` の `:root` に上表の4変数を追記する
 
 ## 記法
 

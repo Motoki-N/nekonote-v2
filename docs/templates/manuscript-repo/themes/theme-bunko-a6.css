@@ -14,4 +14,11 @@
 
   --nekonote--trim-width: 105mm;
   --nekonote--trim-height: 148mm;
+
+  /* ノンブル・柱（仕組みは nekonote-parts.css。設定フォームがこの4行を書き換える）。
+   * 各スロットの値は none / counter(page) / env(doc-title) とその連結のみ */
+  --nekonote--slot-top-outer: counter(page) '　' env(doc-title);
+  --nekonote--slot-top-center: none;
+  --nekonote--slot-bottom-outer: none;
+  --nekonote--slot-bottom-center: none;
 }

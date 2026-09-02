@@ -36,6 +36,31 @@ export function extractBodyClass(markdown: string): string | null {
 }
 
 /**
+ * 章の見出しを取り出す（フロントマターの `title:` → 先頭の H1 の順。VFM の `<title>` と同じ規則）。
+ * 柱（`env(doc-title)`）が参照するため、プレビューでも入稿ビルドと同じ文字列を出すのに使う（Issue #237）
+ */
+export function extractChapterTitle(markdown: string): string | null {
+  const frontmatter = markdown.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
+  if (frontmatter) {
+    const line = frontmatter[1].match(/^title:\s*(.+)$/m);
+    if (line) {
+      const value = line[1].trim().replace(/^['"]|['"]$/g, "");
+      if (value !== "") return value;
+    }
+  }
+  const body = frontmatter ? markdown.slice(frontmatter[0].length) : markdown;
+  // コードブロック内の `# ...` は見出しではない（VFM も拾わない）
+  const withoutFences = body.replace(/^```[\s\S]*?^```[^\n]*$/gm, "");
+  const heading = withoutFences.match(/^#\s+(.+)$/m);
+  if (!heading) return null;
+  // VFM の <title> はテキストのみになるため、強調・コードのマーカーを落とす
+  const text = heading[1]
+    .replace(/[*_`]/g, "")
+    .trim();
+  return text === "" ? null : text;
+}
+
+/**
  * 章ファイルからの相対パスをリポジトリルート基準に正規化する。
  * ルート外へ出るパス（`..` が残る）は null
  */
