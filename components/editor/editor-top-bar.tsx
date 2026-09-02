@@ -207,7 +207,7 @@ export function EditorTopBar({
             variant="ghost"
             size="icon-sm"
             aria-label="書籍設定"
-            title="書籍設定（書誌・章構成・組み設定・奥付）"
+            title="書籍設定（書誌・章構成・組み設定・ノンブル・奥付）"
             className="text-muted-foreground"
             onClick={onOpenSettings}
           >

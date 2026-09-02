@@ -1,5 +1,5 @@
 /*
- * ネコノテ共通パーツ: 扉・奥付・挿絵テンプレート・傍点・縦中横・割注・改ページ
+ * ネコノテ共通パーツ: ノンブル・柱・扉・奥付・挿絵テンプレート・傍点・縦中横・割注・改ページ
  * 判型テーマ（theme-bunko-a6.css / theme-b6.css）から @import される
  */
 
@@ -12,6 +12,70 @@
 
   /* GitHub Actions（Linux）には游明朝がないため Noto Serif CJK JP へフォールバック */
   --vs-font-family: '游明朝', 'YuMincho', 'Noto Serif CJK JP', serif;
+}
+
+/* ---- ノンブル・柱 ---- */
+/* 出す内容は4つの「スロット」変数で決める。値は判型テーマの :root が持ち、
+ * 設定フォーム（組み設定）が書き換える。ここは仕組みと未設定時のフォールバックだけを持つ。
+ *
+ * theme-bunko は @top-left/@top-right へ「ノンブル＋柱」を固定で置くが、
+ * マージンボックスは font-size 8.5pt 固定のまま本文用の --vs-line-height を継承するため、
+ * 行ボックスが天マージンからあふれて版面に食い込む（Issue #237）。
+ * 既定を無効化してスロットへ一本化し、行送りと天地からの距離をここで与える */
+:root {
+  --vs-theme--page-top-left-content: none;
+  --vs-theme--page-top-right-content: none;
+}
+
+/* 小口（外側）は左右ページで入れ替わる。偶奇の出し分けは :left/:right に任せる */
+@page :left {
+  --vs-page--mbox-content-top-left: var(--nekonote--slot-top-outer, none);
+  --vs-page--mbox-content-top-center: var(--nekonote--slot-top-center, none);
+  --vs-page--mbox-content-bottom-left: var(--nekonote--slot-bottom-outer, none);
+  --vs-page--mbox-content-bottom-center: var(--nekonote--slot-bottom-center, none);
+}
+@page :right {
+  --vs-page--mbox-content-top-right: var(--nekonote--slot-top-outer, none);
+  --vs-page--mbox-content-top-center: var(--nekonote--slot-top-center, none);
+  --vs-page--mbox-content-bottom-right: var(--nekonote--slot-bottom-outer, none);
+  --vs-page--mbox-content-bottom-center: var(--nekonote--slot-bottom-center, none);
+}
+
+/* 版面に食い込ませないための共通指定（Issue #237）。2つセットで効く:
+ *
+ * 1. line-height: 1 … 本文用の行送り（--vs-line-height）の継承を断つ。継承したままだと
+ *    8.5pt の文字に本文用の行送り（A6: 1.8 / B6: 1.9）がかかり、行ボックスが膨らんで版面に食い込む
+ * 2. margin … theme-bunko の既定（8.5mm）ではマージンボックスの高さが足りず、
+ *    やはり文字が版面側へあふれる。天地マージンの内側に収まる余裕を持たせる。
+ *    ボックス内で文字は版面側の端に寄るため、この値は「紙の端から文字までの距離」ではなく
+ *    「ボックスの高さ＝あふれない余裕」を決めるもの。小さくするほど本文から離れる
+ *
+ * 本文との間隔をさらに広げたい場合は、組み設定の字詰めを減らして天地マージンごと広げる */
+@page {
+  @top-left {
+    line-height: 1;
+    margin-top: 4mm;
+  }
+  @top-right {
+    line-height: 1;
+    margin-top: 4mm;
+  }
+  @top-center {
+    line-height: 1;
+    margin-top: 4mm;
+  }
+  @bottom-left {
+    line-height: 1;
+    margin-bottom: 4mm;
+  }
+  @bottom-right {
+    line-height: 1;
+    margin-bottom: 4mm;
+  }
+  @bottom-center {
+    line-height: 1;
+    margin-bottom: 4mm;
+  }
 }
 
 /* ---- 扉 ---- */

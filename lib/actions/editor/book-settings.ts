@@ -6,17 +6,27 @@ import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
 import {
   KUMI_VAR_NAMES,
+  NOMBRE_SLOTS,
+  NOMBRE_VAR_NAMES,
+  buildNombreVars,
   extractCssVar,
   extractEntryPaths,
   extractStringValue,
   extractThemePath,
   joinRepoPath,
   parseEntryItems,
+  parseNombreSettings,
   replaceCssVar,
   replaceEntryItems,
   replaceStringValue,
 } from "@/lib/editor/book-config";
-import type { EntryItem, KumiVarName } from "@/lib/editor/book-config";
+import type {
+  EntryItem,
+  KumiVarName,
+  NombreSettings,
+  NombreVarName,
+  ThemeVarName,
+} from "@/lib/editor/book-config";
 import {
   OKUZUKE_LABELS,
   parseOkuzuke,
@@ -42,6 +52,11 @@ export type ThemeSettings = {
   sha: string;
   /** 組み設定変数の現在値（見つからない変数は null＝そのフィールドは読み取り専用） */
   vars: Record<KumiVarName, string | null>;
+  /**
+   * ノンブル・柱の現在の設定（Issue #237）。
+   * null = 変数がない、または手書きでカスタムされた値＝この区画は読み取り専用
+   */
+  nombre: NombreSettings | null;
 };
 
 export type BookSettingsData = {
@@ -122,7 +137,19 @@ export async function getBookSettings(
             extractCssVar(css.content, name),
           ]),
         ) as Record<KumiVarName, string | null>;
-        themes.push({ label: source.label, cssPath, sha: css.sha, vars });
+        const nombreVars = Object.fromEntries(
+          NOMBRE_VAR_NAMES.map((name) => [
+            name,
+            extractCssVar(css.content, name),
+          ]),
+        ) as Record<NombreVarName, string | null>;
+        themes.push({
+          label: source.label,
+          cssPath,
+          sha: css.sha,
+          vars,
+          nombre: parseNombreSettings(nombreVars),
+        });
       } catch {
         // テーマがnpmパッケージ等リポジトリ外の場合は組み設定フォームの対象外
       }
@@ -326,6 +353,84 @@ const saveThemeVarsSchema = z.object({
   branch: branchNameSchema.optional(),
 });
 
+/**
+ * テーマCSSの :root 変数を置換してコミットする（組み設定とノンブル設定で共用）。
+ * 対象CSSを config の theme が指すものに限定し、置換後に抽出し直して検証する
+ */
+async function commitThemeVars(
+  ctx: Awaited<ReturnType<typeof loadEditorContext>>,
+  params: {
+    cssPath: string;
+    baseSha: string;
+    branch: string | undefined;
+    replacements: [ThemeVarName, string][];
+    message: string;
+  },
+): Promise<{ blobSha: string }> {
+  const { cssPath, baseSha, branch, replacements, message } = params;
+
+  // 対象CSSは config の theme が指すものに限定（任意パス書き換えの防止）
+  const allowed = new Set<string>();
+  for (const configName of ["book.config.js", "book.config.b6.js"]) {
+    const path = joinRepoPath(ctx.basePath, configName);
+    if (!path) continue;
+    try {
+      const config = await getFileContent(ctx.token, ctx.repo, path, branch);
+      const themePath = extractThemePath(config.content);
+      if (themePath) {
+        const resolved = joinRepoPath(ctx.basePath, themePath);
+        if (resolved && resolved.endsWith(".css")) allowed.add(resolved);
+      }
+    } catch {
+      // 設定ファイルがないものはスキップ
+    }
+  }
+  if (!allowed.has(cssPath)) {
+    throw new AppError(
+      "validation",
+      "対象のテーマCSSが設定ファイルから参照されていません",
+    );
+  }
+
+  const current = await getFileContent(ctx.token, ctx.repo, cssPath, branch);
+  if (current.sha !== baseSha) {
+    throw new AppError(
+      "conflict",
+      "テーマがリモートで更新されています。開き直してください",
+    );
+  }
+
+  if (replacements.length === 0)
+    throw new AppError("validation", "変更する値がありません");
+
+  let updated = current.content;
+  for (const [name, value] of replacements) {
+    const replaced = replaceCssVar(updated, name, value);
+    if (!replaced) {
+      throw new AppError(
+        "validation",
+        `テーマCSSに ${name} が見つかりません（直接編集してください）`,
+      );
+    }
+    updated = replaced;
+  }
+  for (const [name, value] of replacements) {
+    if (extractCssVar(updated, name) !== value) {
+      throw new AppError(
+        "validation",
+        "テーマCSSの書き換え結果を検証できませんでした",
+      );
+    }
+  }
+
+  return putFileContent(ctx.token, ctx.repo, cssPath, {
+    content: updated,
+    sha: baseSha,
+    message,
+    branch,
+  });
+}
+
 /** 組み設定（テーマCSSの :root 変数）を書き換えてコミットする（SPEC-phase3 §7-3） */
 export async function saveThemeVars(
   projectId: string,
@@ -337,38 +442,7 @@ export async function saveThemeVars(
     const { cssPath, baseSha, vars, branch } =
       saveThemeVarsSchema.parse(params);
 
-    // 対象CSSは config の theme が指すものに限定（任意パス書き換えの防止）
-    const allowed = new Set<string>();
-    for (const configName of ["book.config.js", "book.config.b6.js"]) {
-      const path = joinRepoPath(ctx.basePath, configName);
-      if (!path) continue;
-      try {
-        const config = await getFileContent(ctx.token, ctx.repo, path, branch);
-        const themePath = extractThemePath(config.content);
-        if (themePath) {
-          const resolved = joinRepoPath(ctx.basePath, themePath);
-          if (resolved && resolved.endsWith(".css")) allowed.add(resolved);
-        }
-      } catch {
-        // 設定ファイルがないものはスキップ
-      }
-    }
-    if (!allowed.has(cssPath)) {
-      throw new AppError(
-        "validation",
-        "対象のテーマCSSが設定ファイルから参照されていません",
-      );
-    }
-
-    const current = await getFileContent(ctx.token, ctx.repo, cssPath, branch);
-    if (current.sha !== baseSha) {
-      throw new AppError(
-        "conflict",
-        "テーマがリモートで更新されています。開き直してください",
-      );
-    }
-
-    const replacements: [KumiVarName, string][] = [];
+    const replacements: [ThemeVarName, string][] = [];
     if (vars.fontSizePercent !== null) {
       replacements.push([
         "--vs-font-size-on-print",
@@ -385,34 +459,55 @@ export async function saveThemeVars(
         String(vars.charsPerLine),
       ]);
     }
-    if (replacements.length === 0)
-      throw new AppError("validation", "変更する値がありません");
 
-    let updated = current.content;
-    for (const [name, value] of replacements) {
-      const replaced = replaceCssVar(updated, name, value);
-      if (!replaced) {
-        throw new AppError(
-          "validation",
-          `テーマCSSに ${name} が見つかりません（直接編集してください）`,
-        );
-      }
-      updated = replaced;
-    }
-    for (const [name, value] of replacements) {
-      if (extractCssVar(updated, name) !== value) {
-        throw new AppError(
-          "validation",
-          "組み設定の書き換え結果を検証できませんでした",
-        );
-      }
-    }
-
-    const result = await putFileContent(ctx.token, ctx.repo, cssPath, {
-      content: updated,
-      sha: baseSha,
-      message: "設定: 組み設定（版面）を更新（ネコノテAI 縦書きエディタ）",
+    const result = await commitThemeVars(ctx, {
+      cssPath,
+      baseSha,
       branch,
+      replacements,
+      message: "設定: 組み設定（版面）を更新（ネコノテAI 縦書きエディタ）",
+    });
+    return { ok: true, data: { blobSha: result.blobSha } };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+const saveNombreVarsSchema = z.object({
+  cssPath: z.string().max(300),
+  baseSha: blobShaSchema,
+  settings: z.object({
+    page: z.enum(NOMBRE_SLOTS),
+    title: z.enum(NOMBRE_SLOTS),
+  }),
+  /** コミット先ブランチ（省略時はデフォルト。SPEC-phase5 §3.4） */
+  branch: branchNameSchema.optional(),
+});
+
+/**
+ * ノンブル・柱の設定（テーマCSSのスロット変数）を書き換えてコミットする
+ * （SPEC-phase3 §7-5。Issue #237）。書き込む値は `buildNombreVars` が組み立てたものだけ
+ */
+export async function saveNombreVars(
+  projectId: string,
+  params: z.infer<typeof saveNombreVarsSchema>,
+): Promise<ActionResult<{ blobSha: string }>> {
+  try {
+    const ctx = await loadEditorContext(projectId);
+    enforceRateLimit(ctx.userId, "editor-save", { perMinute: 12, perDay: 600 });
+    const { cssPath, baseSha, settings, branch } =
+      saveNombreVarsSchema.parse(params);
+
+    const replacements = Object.entries(buildNombreVars(settings)) as [
+      ThemeVarName,
+      string,
+    ][];
+    const result = await commitThemeVars(ctx, {
+      cssPath,
+      baseSha,
+      branch,
+      replacements,
+      message: "設定: ノンブル・柱を更新（ネコノテAI 縦書きエディタ）",
     });
     return { ok: true, data: { blobSha: result.blobSha } };
   } catch (error) {

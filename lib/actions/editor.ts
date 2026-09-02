@@ -18,6 +18,7 @@ export {
   getBookSettings,
   saveBookConfig,
   saveThemeVars,
+  saveNombreVars,
   saveOkuzuke,
 } from "./editor/book-settings";
 export type { ThemeSettings, BookSettingsData } from "./editor/book-settings";

@@ -1,17 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Fragment, useCallback, useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import {
   getBookSettings,
   saveBookConfig,
+  saveNombreVars,
   saveOkuzuke,
   saveThemeVars,
 } from "@/lib/actions/editor";
 import type { BookSettingsData, ThemeSettings } from "@/lib/actions/editor";
-import type { EntryItem } from "@/lib/editor/book-config";
+import { NOMBRE_SLOTS, NOMBRE_SLOT_LABELS } from "@/lib/editor/book-config";
+import type { EntryItem, NombreSlot } from "@/lib/editor/book-config";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -127,13 +129,20 @@ export function SettingsDialog({
                 </p>
               )}
               {data.themes.map((theme) => (
-                <KumiSection
-                  key={theme.cssPath}
-                  projectId={projectId}
-                  branch={branch}
-                  theme={theme}
-                  onSaved={handleSaved}
-                />
+                <Fragment key={theme.cssPath}>
+                  <KumiSection
+                    projectId={projectId}
+                    branch={branch}
+                    theme={theme}
+                    onSaved={handleSaved}
+                  />
+                  <NombreSection
+                    projectId={projectId}
+                    branch={branch}
+                    theme={theme}
+                    onSaved={handleSaved}
+                  />
+                </Fragment>
               ))}
               <OkuzukeSection
                 projectId={projectId}
@@ -650,6 +659,139 @@ function KumiSection({
           <Button
             size="sm"
             disabled={changedFields.length === 0 || invalid}
+            onClick={() => setConfirming(true)}
+          >
+            変更を確認
+          </Button>
+        </div>
+      )}
+    </SectionFrame>
+  );
+}
+
+// ---- 3-2. ノンブル・柱（Issue #237） ----
+
+// Input と同じトーンの select（shadcn select 未導入のため。atelier-workspace と同じ流儀）
+const selectClass =
+  "h-9 w-full rounded-md border border-input bg-transparent px-2.5 text-sm text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50";
+
+function NombreSection({
+  projectId,
+  branch,
+  theme,
+  onSaved,
+}: {
+  projectId: string;
+  branch: string;
+  theme: ThemeSettings;
+  onSaved: () => void;
+}) {
+  const initial = theme.nombre;
+  const [page, setPage] = useState<NombreSlot>(initial?.page ?? "none");
+  const [title, setTitle] = useState<NombreSlot>(initial?.title ?? "none");
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  if (initial === null) {
+    return (
+      <SectionFrame title={`ノンブル・柱 — ${theme.label}`}>
+        <p className="text-sm text-muted-foreground">
+          このテーマにはノンブル・柱の変数が見つからないか、フォームで扱えない値が
+          入っています。CSSを直接編集してください。
+        </p>
+      </SectionFrame>
+    );
+  }
+
+  const changes = [
+    page !== initial.page
+      ? {
+          label: "ノンブルの位置",
+          before: NOMBRE_SLOT_LABELS[initial.page],
+          after: NOMBRE_SLOT_LABELS[page],
+        }
+      : null,
+    title !== initial.title
+      ? {
+          label: "柱（章タイトル）の位置",
+          before: NOMBRE_SLOT_LABELS[initial.title],
+          after: NOMBRE_SLOT_LABELS[title],
+        }
+      : null,
+  ].filter((change) => change !== null);
+
+  const commit = async () => {
+    setSaving(true);
+    try {
+      const result = await saveNombreVars(projectId, {
+        cssPath: theme.cssPath,
+        baseSha: theme.sha,
+        settings: { page, title },
+        branch,
+      });
+      if (!result.ok) {
+        toast.error(result.error.message);
+        return;
+      }
+      toast.success("ノンブル・柱の設定をコミットしました");
+      setConfirming(false);
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SectionFrame title={`ノンブル・柱 — ${theme.label}`}>
+      <p className="text-xs text-muted-foreground">
+        小口（外側）は左右ページで自動的に入れ替わります。ノンブルと柱を同じ位置にすると
+        「1　章タイトル」のように連結して出ます。
+      </p>
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+        <label className="flex flex-col gap-1 text-sm">
+          ノンブル（ページ番号）
+          <select
+            className={selectClass}
+            value={page}
+            onChange={(event) => setPage(event.target.value as NombreSlot)}
+          >
+            {NOMBRE_SLOTS.map((slot) => (
+              <option key={slot} value={slot}>
+                {NOMBRE_SLOT_LABELS[slot]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex flex-col gap-1 text-sm">
+          柱（章タイトル）
+          <select
+            className={selectClass}
+            value={title}
+            onChange={(event) => setTitle(event.target.value as NombreSlot)}
+          >
+            {NOMBRE_SLOTS.map((slot) => (
+              <option key={slot} value={slot}>
+                {NOMBRE_SLOT_LABELS[slot]}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        本文との間隔を広げたいときは、組み設定の字詰めを減らして天地の余白を広げてください。
+      </p>
+      {confirming ? (
+        <ConfirmDiff
+          changes={changes}
+          saving={saving}
+          onCommit={() => void commit()}
+          onBack={() => setConfirming(false)}
+        />
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            disabled={changes.length === 0}
             onClick={() => setConfirming(true)}
           >
             変更を確認

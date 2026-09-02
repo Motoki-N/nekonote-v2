@@ -19,7 +19,10 @@ import type { ManuscriptComment } from "@/lib/editor/comments";
 import { deleteDraft, getDraft } from "@/lib/editor/draft-store";
 import type { LinkedScene } from "@/lib/board";
 import type { Draft } from "@/lib/editor/draft-store";
-import { buildPreviewHtml } from "@/lib/editor/preview";
+import {
+  buildPreviewHtml,
+  extractChapterTitle,
+} from "@/lib/editor/preview";
 import {
   countManuscriptChars,
   extractKumiSettings,
@@ -195,7 +198,9 @@ export function VerticalEditor({
     const html = buildPreviewHtml({
       chapters: [{ path: current.path, content: contentRef.current }],
       theme: okNow.theme,
-      title: fileName(current.path),
+      // 柱（env(doc-title)）が参照するため、入稿ビルドと同じ「章の見出し」を入れる（Issue #237）
+      title:
+        extractChapterTitle(contentRef.current) ?? fileName(current.path),
       origin: window.location.origin,
       assetUrl,
     });
@@ -512,7 +517,10 @@ export function VerticalEditor({
       const html = buildPreviewHtml({
         chapters: chapterContents,
         theme: ok.theme,
-        title: "全体プレビュー",
+        // 単一HTML化しているため柱は全ページ共通になる。本ビルドに一番近い先頭章の見出しを使う
+        title:
+          extractChapterTitle(chapterContents[0]?.content ?? "") ??
+          "全体プレビュー",
         origin: window.location.origin,
         assetUrl,
       });
@@ -887,7 +895,7 @@ export function VerticalEditor({
                     <div className="flex items-center gap-2 border-b border-border bg-secondary px-3 py-1.5 text-xs text-secondary-foreground">
                       <Info className="size-3.5 shrink-0" />
                       <span className="min-w-0">
-                        全体プレビュー（目次ページは入稿ビルドでのみ生成されます。扉・奥付の専用様式は章単体プレビューで確認してください）
+                        全体プレビュー（目次ページは入稿ビルドでのみ生成されます。扉・奥付の専用様式と章ごとの柱は章単体プレビューで確認してください）
                       </span>
                       <Button
                         size="sm"
