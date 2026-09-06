@@ -14,6 +14,7 @@ import {
 import type { BookSettingsData, ThemeSettings } from "@/lib/actions/editor";
 import { NOMBRE_SLOTS, NOMBRE_SLOT_LABELS } from "@/lib/editor/book-config";
 import type { EntryItem, NombreSlot } from "@/lib/editor/book-config";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -128,22 +129,34 @@ export function SettingsDialog({
                   原稿リポジトリテンプレートの構成にしてください。
                 </p>
               )}
-              {data.themes.map((theme) => (
-                <Fragment key={theme.cssPath}>
-                  <KumiSection
-                    projectId={projectId}
-                    branch={branch}
-                    theme={theme}
-                    onSaved={handleSaved}
-                  />
-                  <NombreSection
-                    projectId={projectId}
-                    branch={branch}
-                    theme={theme}
-                    onSaved={handleSaved}
-                  />
-                </Fragment>
-              ))}
+              {data.themes.map((theme) => {
+                // どの区画がプレビューか特定できたときだけ印を出す（Issue #242）
+                const usage: ThemeUsage = data.themes.some(
+                  (candidate) => candidate.usedInPreview,
+                )
+                  ? theme.usedInPreview
+                    ? "preview"
+                    : "build-only"
+                  : undefined;
+                return (
+                  <Fragment key={theme.cssPath}>
+                    <KumiSection
+                      projectId={projectId}
+                      branch={branch}
+                      theme={theme}
+                      themeUsage={usage}
+                      onSaved={handleSaved}
+                    />
+                    <NombreSection
+                      projectId={projectId}
+                      branch={branch}
+                      theme={theme}
+                      themeUsage={usage}
+                      onSaved={handleSaved}
+                    />
+                  </Fragment>
+                );
+              })}
               <OkuzukeSection
                 projectId={projectId}
                 branch={branch}
@@ -164,16 +177,38 @@ export function SettingsDialog({
 
 // ---- 共通パーツ ----
 
+/**
+ * テーマ区画がプレビューに使われるか（Issue #242）。
+ * undefined = 判定できない（book.config.js が読めない等）＝印を出さない
+ */
+type ThemeUsage = "preview" | "build-only" | undefined;
+
 function SectionFrame({
   title,
+  themeUsage,
   children,
 }: {
   title: string;
+  themeUsage?: ThemeUsage;
   children: React.ReactNode;
 }) {
   return (
     <section className="flex flex-col gap-2">
-      <h3 className="text-sm font-medium text-foreground">{title}</h3>
+      <h3 className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground">
+        {title}
+        {themeUsage === "preview" ? (
+          <Badge variant="secondary">プレビューに使用中</Badge>
+        ) : null}
+        {themeUsage === "build-only" ? (
+          <Badge variant="outline">入稿ビルド専用</Badge>
+        ) : null}
+      </h3>
+      {themeUsage === "build-only" ? (
+        <p className="text-xs text-muted-foreground">
+          この判型のテーマはエディタのプレビューには読み込まれません。ここを変更しても
+          プレビューの見た目は変わらず、この判型の入稿ビルドにのみ反映されます。
+        </p>
+      ) : null}
       {children}
     </section>
   );
@@ -546,11 +581,13 @@ function KumiSection({
   projectId,
   branch,
   theme,
+  themeUsage,
   onSaved,
 }: {
   projectId: string;
   branch: string;
   theme: ThemeSettings;
+  themeUsage: ThemeUsage;
   onSaved: () => void;
 }) {
   // 現在値（'72.92%' 等の単位付き文字列）を数値へ。抽出できない変数は編集不可
@@ -574,7 +611,7 @@ function KumiSection({
   );
   if (editableFields.length === 0) {
     return (
-      <SectionFrame title={`組み設定 — ${theme.label}`}>
+      <SectionFrame title={`組み設定 — ${theme.label}`} themeUsage={themeUsage}>
         <p className="text-sm text-muted-foreground">
           このテーマには組み設定の変数が見つかりません。CSSを直接編集してください。
         </p>
@@ -623,7 +660,7 @@ function KumiSection({
   };
 
   return (
-    <SectionFrame title={`組み設定 — ${theme.label}`}>
+    <SectionFrame title={`組み設定 — ${theme.label}`} themeUsage={themeUsage}>
       <p className="text-xs text-muted-foreground">{theme.cssPath}</p>
       <div className="grid grid-cols-2 gap-2">
         {editableFields.map((field) => (
@@ -679,11 +716,13 @@ function NombreSection({
   projectId,
   branch,
   theme,
+  themeUsage,
   onSaved,
 }: {
   projectId: string;
   branch: string;
   theme: ThemeSettings;
+  themeUsage: ThemeUsage;
   onSaved: () => void;
 }) {
   const initial = theme.nombre;
@@ -694,7 +733,10 @@ function NombreSection({
 
   if (initial === null) {
     return (
-      <SectionFrame title={`ノンブル・柱 — ${theme.label}`}>
+      <SectionFrame
+        title={`ノンブル・柱 — ${theme.label}`}
+        themeUsage={themeUsage}
+      >
         <p className="text-sm text-muted-foreground">
           このテーマにはノンブル・柱の変数が見つからないか、フォームで扱えない値が
           入っています。CSSを直接編集してください。
@@ -742,7 +784,10 @@ function NombreSection({
   };
 
   return (
-    <SectionFrame title={`ノンブル・柱 — ${theme.label}`}>
+    <SectionFrame
+      title={`ノンブル・柱 — ${theme.label}`}
+      themeUsage={themeUsage}
+    >
       <p className="text-xs text-muted-foreground">
         小口（外側）は左右ページで自動的に入れ替わります。ノンブルと柱を同じ位置にすると
         「1　章タイトル」のように連結して出ます。
