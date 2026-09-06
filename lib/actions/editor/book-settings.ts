@@ -33,6 +33,7 @@ import {
   replaceOkuzuke,
 } from "@/lib/editor/okuzuke";
 import type { OkuzukeData } from "@/lib/editor/okuzuke";
+import { repoThemeCssPath } from "@/lib/editor/theme";
 import { getFileContent, putFileContent } from "@/lib/git/github";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import {
@@ -49,6 +50,13 @@ export type ThemeSettings = {
   label: string;
   /** リポジトリルートからのCSSパス */
   cssPath: string;
+  /**
+   * このテーマがエディタのプレビューに使われるか（Issue #242）。
+   * プレビューは book.config.js の theme が指すCSSしか読まないため、false の区画を
+   * 変更してもプレビューは変わらない（入稿ビルドでのみ効く）。
+   * book.config.js が読めない・theme が取れない場合はどの区画も false
+   */
+  usedInPreview: boolean;
   sha: string;
   /** 組み設定変数の現在値（見つからない変数は null＝そのフィールドは読み取り専用） */
   vars: Record<KumiVarName, string | null>;
@@ -110,6 +118,10 @@ export async function getBookSettings(
 
     // テーマCSS（既定＋B6。リポジトリ外を指すテーマは対象外）
     const themes: ThemeSettings[] = [];
+    // プレビューが読むCSS（book.config.js の theme。取れなければ null＝どの区画にも印なし）
+    const previewCssPath = configContent
+      ? repoThemeCssPath(ctx.basePath, extractThemePath(configContent))
+      : null;
     const themeSources: { label: string; content: string | null }[] = [
       { label: "既定（A6）", content: configContent },
     ];
@@ -146,6 +158,7 @@ export async function getBookSettings(
         themes.push({
           label: source.label,
           cssPath,
+          usedInPreview: previewCssPath !== null && cssPath === previewCssPath,
           sha: css.sha,
           vars,
           nombre: parseNombreSettings(nombreVars),

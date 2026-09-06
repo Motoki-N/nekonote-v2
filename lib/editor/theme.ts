@@ -60,6 +60,25 @@ const IMPORT_RE =
   /@import\s+(?:url\(\s*(?:"([^"]*)"|'([^']*)'|([^)'"]*))\s*\)|"([^"]*)"|'([^']*)')[^;]*;?/g;
 
 /**
+ * book.config.js の theme がリポジトリ内のCSSを指すなら、そのパスを返す（Issue #242）。
+ * npm パッケージ指定・アプリホストへ読み替える参照・CSS以外は null（＝プレビューは
+ * リポジトリのCSSを読まない）。プレビューの実際の挙動と判定がずれないよう、
+ * resolveThemeAssets とこの関数で条件を共有する
+ */
+export function repoThemeCssPath(
+  basePath: string,
+  themePath: string | null,
+): string | null {
+  if (!themePath) return null;
+  // npm パッケージ指定（相対パスでない）はリポジトリのCSSではない
+  if (!themePath.startsWith(".") && !themePath.includes("/")) return null;
+  if (APP_HOSTED_THEMES.some((t) => t.pattern.test(themePath))) return null;
+  const cssPath = joinRepoPath(basePath, themePath);
+  if (!cssPath || !cssPath.endsWith(".css")) return null;
+  return cssPath;
+}
+
+/**
  * book.config.js の theme が指すCSSを取得し、@import を解決した ThemeAssets を返す。
  * - node_modules/@vivliostyle/* への参照 → アプリホストの <link> へ読み替え
  * - リポジトリ内の相対参照 → 取得してインライン展開（1段のみ。判型テーマの構造上それで足りる）
@@ -75,9 +94,7 @@ export async function resolveThemeAssets(
 ): Promise<ThemeAssets> {
   if (!themePath) return DEFAULT_THEME;
 
-  // npm パッケージ指定（相対パスでない）はアプリホスト読み替えのみ
-  if (!themePath.startsWith(".") && !themePath.includes("/"))
-    return DEFAULT_THEME;
+  // アプリホスト読み替え対象（node_modules/@vivliostyle/*）は <link> だけで足りる
   const hosted = APP_HOSTED_THEMES.find((t) => t.pattern.test(themePath));
   if (hosted)
     return {
@@ -86,8 +103,9 @@ export async function resolveThemeAssets(
       direction: hosted.direction,
     };
 
-  const themeFilePath = joinRepoPath(basePath, themePath);
-  if (!themeFilePath || !themeFilePath.endsWith(".css")) return DEFAULT_THEME;
+  // npm パッケージ指定・CSS以外は既定テーマ
+  const themeFilePath = repoThemeCssPath(basePath, themePath);
+  if (!themeFilePath) return DEFAULT_THEME;
 
   let source: string;
   try {
