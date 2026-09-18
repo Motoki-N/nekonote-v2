@@ -18,6 +18,7 @@ export function useDetachedPreview({
   previewHtml,
   fullPreview,
   previewTitleRef,
+  previewKeyRef,
   onPages,
 }: {
   projectId: string;
@@ -25,6 +26,8 @@ export function useDetachedPreview({
   fullPreview: boolean;
   /** previewHtml と対になる表示名（組版時点で確定） */
   previewTitleRef: React.RefObject<string>;
+  /** previewHtml と対になる文書の同一性（窓側の表示位置引き継ぎ判定用。Issue #256） */
+  previewKeyRef: React.RefObject<string>;
   /** 分離窓からの実ページ数通知（編集章の部分プレビューのみ） */
   onPages: (total: number) => void;
 }) {
@@ -74,8 +77,16 @@ export function useDetachedPreview({
       html: previewHtml,
       full: fullPreview,
       title: previewTitleRef.current,
+      documentKey: previewKeyRef.current,
     } satisfies PreviewChannelMessage);
-  }, [detached, previewHtml, fullPreview, resendTick, previewTitleRef]);
+  }, [
+    detached,
+    previewHtml,
+    fullPreview,
+    resendTick,
+    previewTitleRef,
+    previewKeyRef,
+  ]);
 
   // pagehide が飛ばない閉じ方（プロセス終了等）への保険として閉窓をポーリング検知
   useEffect(() => {

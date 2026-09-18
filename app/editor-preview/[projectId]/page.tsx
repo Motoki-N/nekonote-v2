@@ -19,6 +19,8 @@ export default function DetachedPreviewPage({
 }) {
   const { projectId } = use(params);
   const [html, setHtml] = useState<string | null>(null);
+  /** html と対になる文書キー（PreviewPane の表示位置引き継ぎ判定に渡す。Issue #256） */
+  const [documentKey, setDocumentKey] = useState<string | null>(null);
   const [typesetting, setTypesetting] = useState(false);
   const fullRef = useRef(false);
   const lastHtmlRef = useRef<string | null>(null);
@@ -42,6 +44,8 @@ export default function DetachedPreviewPage({
       if (message.html !== lastHtmlRef.current) {
         lastHtmlRef.current = message.html;
         setHtml(message.html);
+        // html と対で更新する（キーだけ変わって不要な再ロードが走るのを防ぐ）
+        setDocumentKey(message.documentKey);
         setTypesetting(true);
       }
     };
@@ -68,6 +72,7 @@ export default function DetachedPreviewPage({
       ) : (
         <PreviewPane
           html={html}
+          documentKey={documentKey}
           typesetting={typesetting}
           onLoaded={() => setTypesetting(false)}
           onPageCount={(total) =>

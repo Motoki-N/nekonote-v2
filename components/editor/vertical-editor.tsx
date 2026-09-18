@@ -63,6 +63,13 @@ import { EditorTopBar } from "@/components/editor/editor-top-bar";
 const PREVIEW_DEBOUNCE_MS = 3000;
 // 字数カウントのデバウンス（SPEC-vertical-editor-phase3 §5）
 const COUNT_DEBOUNCE_MS = 500;
+// 全体プレビューを表す文書キー（章のパスとは衝突しない値。Issue #256）
+const FULL_PREVIEW_KEY = "__full-preview__";
+/**
+ * プレビューの文書キー（Issue #256）。同じキーの再組版だけが表示位置を引き継ぐ。
+ * ブランチが違えば中身の違う別の文書なので、キーにブランチを含める
+ */
+const previewKeyFor = (branch: string, target: string) => `${branch}:${target}`;
 
 /**
  * 縦書きエディタの本体（SPEC-vertical-editor-phase2 §3）。
@@ -139,6 +146,14 @@ export function VerticalEditor({
   const countTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   /** previewHtml と対になる表示名（組版時点で確定。章切替中に古いHTMLへ新タイトルが付くのを防ぐ） */
   const previewTitleRef = useRef("プレビュー");
+  /**
+   * previewHtml と対になる文書の同一性（章のパス or 全体プレビュー。組版時点で確定）。
+   * 同じ文書の再組版のときだけプレビューの表示位置を引き継ぐための判定に使う（Issue #256）
+   */
+  const previewKeyRef = useRef("");
+  // PreviewPane へは state として渡す必要があるため、ref と同時に更新する
+  // （どちらも組版時に確定する。previewHtml が null の間は参照されない）
+  const [previewKey, setPreviewKey] = useState<string | null>(null);
   const editorViewRef = useRef<EditorView | null>(null);
 
   /** 版面（行数×字詰め）: テーマCSSから抽出。ページ数概算に使う */
@@ -205,6 +220,9 @@ export function VerticalEditor({
       assetUrl,
     });
     previewTitleRef.current = fileName(current.path);
+    const key = previewKeyFor(okNow.branch, current.path);
+    previewKeyRef.current = key;
+    setPreviewKey(key);
     setPreviewHtml(html);
     setTypesetting(true);
     setFullPreview(false);
@@ -525,6 +543,9 @@ export function VerticalEditor({
         assetUrl,
       });
       previewTitleRef.current = "全体プレビュー";
+      const key = previewKeyFor(ok.branch, FULL_PREVIEW_KEY);
+      previewKeyRef.current = key;
+      setPreviewKey(key);
       setPreviewHtml(html);
       setTypesetting(true);
       setFullPreview(true);
@@ -673,6 +694,7 @@ export function VerticalEditor({
     previewHtml,
     fullPreview,
     previewTitleRef,
+    previewKeyRef,
     onPages: setActualPages,
   });
 
@@ -910,6 +932,7 @@ export function VerticalEditor({
                   <div className="min-h-0 flex-1">
                     <PreviewPane
                       html={previewHtml}
+                      documentKey={previewKey}
                       typesetting={typesetting}
                       onLoaded={() => setTypesetting(false)}
                       // 実ページ数は編集章の部分プレビューのみ反映（全体プレビューは書籍全体の値になるため）

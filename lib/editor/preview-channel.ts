@@ -12,6 +12,11 @@ export type PreviewChannelMessage =
       full: boolean;
       /** ウィンドウタイトル用の表示名（章ファイル名 or 全体プレビュー） */
       title: string;
+      /**
+       * 組版対象の文書の同一性（章のパス or 全体プレビュー）。
+       * 窓側が「同じ文書の再組版か」を判別し、表示位置を引き継ぐかを決める（Issue #256）
+       */
+      documentKey: string;
     }
   /** エディタ → プレビュー窓: エディタ起動通知。開いたままの窓は ready を返して再接続する */
   | { type: "hello" }

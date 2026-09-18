@@ -86,6 +86,7 @@ Phase 1 完了（2026-07-16）により以下が揃っている:
 
 - **Vivliostyle Viewer の自前ホスト**: `@vivliostyle/viewer` の静的ビルドを `public/vivliostyle/` へ配置（postinstall スクリプトで node_modules からコピー）。CDN参照はしない
 - **再組版タイミング**: 打鍵ごとではなく**数秒のデバウンス**＋保存時（親SPEC §4.4）。組版中はプレビュー上に「組版中…」を薄く表示
+- **表示位置の維持**（Issue #256）: 再組版はViewerの再読み込みになるため、そのままでは毎回先頭ページに戻る。Viewer が現在位置として自身のハッシュに書き出す EPUB CFI（`f=` パラメータ）を差し替え直前に読み取り、新しいViewer URLへ引き継ぐ。**同じ文書の再組版のときだけ**引き継ぎ、章切替・全体プレビューとの切替・ブランチ切替では先頭から表示する（文書の同一性は「ブランチ＋章のパス／全体プレビュー」のキーで判定）
 - **判型**: `book.config.js` の `theme` が指すCSS（文庫A6）を既定とする。A6/B6の切替UIはPhase 2では持たない（`book.config.js` の theme を差し替えれば追従する）
 - ⚠️ **実装ステップ1で技術スパイク**（§10）: `@vivliostyle/vfm` のブラウザバンドル可否・Blob URLをViewerのiframeが読めるか、を最初に検証する。不成立なら `@vivliostyle/core`（CoreViewer API）での直接埋め込みに切り替える
 
