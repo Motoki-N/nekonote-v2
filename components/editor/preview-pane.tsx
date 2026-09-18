@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { Loader2 } from "lucide-react";
 
-import { viewerUrl } from "@/lib/editor/preview";
+import { fragmentFromViewerHash, viewerUrl } from "@/lib/editor/preview";
 
 /**
  * プレビューペイン（SPEC-vertical-editor-phase2 §5.1）。
@@ -12,12 +12,19 @@ import { viewerUrl } from "@/lib/editor/preview";
  */
 export function PreviewPane({
   html,
+  documentKey,
   typesetting,
   onLoaded,
   onPageCount,
 }: {
   /** 組版対象の完成HTML。null はまだ章を開いていない状態 */
   html: string | null;
+  /**
+   * 組版対象の文書の同一性（章のパス / 全体プレビュー）。同じキーのまま html が変われば
+   * 「同じ文書の再組版」とみなして表示位置を引き継ぐ（Issue #256）。
+   * 章切替・全体プレビュー切替ではキーが変わり、先頭から表示する
+   */
+  documentKey: string | null;
   /** 組版中インジケータ（親が変換開始で立て、iframe ロードで下ろす） */
   typesetting: boolean;
   onLoaded: () => void;
@@ -28,6 +35,8 @@ export function PreviewPane({
   // 読み込み完了前に revoke すると Viewer の取得が失敗するため、旧URLはロード完了まで保持する
   const currentUrlRef = useRef<string | null>(null);
   const staleUrlsRef = useRef<string[]>([]);
+  // 現在 iframe に載っている文書のキー（表示位置を引き継いでよいかの判定用）
+  const documentKeyRef = useRef<string | null>(null);
   const pagePollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const onPageCountRef = useRef(onPageCount);
   useEffect(() => {
@@ -67,13 +76,32 @@ export function PreviewPane({
     }, 500);
   }, []);
 
+  /**
+   * 再組版のたびに Viewer を読み込み直すため、そのままでは毎回先頭ページに戻る。
+   * Viewer は現在位置を自身のハッシュへ `f=epubcfi(...)` として書き出しており、
+   * Viewer は同一オリジンなのでそれを読める。差し替え直前に読み取って新URLへ引き継ぐ（Issue #256）
+   */
+  const currentFragment = useCallback((): string | null => {
+    try {
+      const hash = iframeRef.current?.contentWindow?.location.hash;
+      return hash ? fragmentFromViewerHash(hash) : null;
+    } catch {
+      // 読めない状況（未ロード等）では先頭から表示する
+      return null;
+    }
+  }, []);
+
   useEffect(() => {
     if (html === null || !iframeRef.current) return;
     const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    // 別の文書に切り替わったときは前の文書の位置を持ち込まない
+    const sameDocument = documentKeyRef.current === documentKey;
+    documentKeyRef.current = documentKey;
+    const fragment = sameDocument ? currentFragment() : null;
     if (currentUrlRef.current) staleUrlsRef.current.push(currentUrlRef.current);
     currentUrlRef.current = url;
-    iframeRef.current.src = viewerUrl(url);
-  }, [html]);
+    iframeRef.current.src = viewerUrl(url, fragment);
+  }, [html, documentKey, currentFragment]);
 
   useEffect(() => {
     const stale = staleUrlsRef.current;

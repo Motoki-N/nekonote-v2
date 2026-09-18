@@ -175,8 +175,34 @@ ${sections.join("\n")}
  * 自前ホストの Vivliostyle Viewer でBlob URLの文書を開くURL（§5.1）。
  * `#src=` はエンコードしない——Viewerはハッシュを復号せずに解決するため、
  * エンコードすると相対パス扱いになり404になる（スパイクで実地確認）。
- * Blob URLは `&`/`#` を含まないのでそのまま連結して安全
+ * Blob URLは `&`/`#` を含まないのでそのまま連結して安全。
+ *
+ * `fragment` は Viewer が現在位置として自身のハッシュに書き出す EPUB CFI（`f=` パラメータ）。
+ * 再組版でViewerを読み込み直しても表示位置を保つために引き継ぐ（Issue #256）
  */
-export function viewerUrl(documentUrl: string): string {
-  return `/vivliostyle/viewer/index.html#src=${documentUrl}&bookMode=false&renderAllPages=true`;
+export function viewerUrl(
+  documentUrl: string,
+  fragment?: string | null,
+): string {
+  const base = `/vivliostyle/viewer/index.html#src=${documentUrl}&bookMode=false&renderAllPages=true`;
+  // Viewer が書き出した値をそのまま渡す（Viewer側でエンコード済み）。想定外の文字列で
+  // ハッシュを壊さないよう、CFIの書式に合うものだけを通す
+  return fragment && isViewerFragment(fragment)
+    ? `${base}&f=${fragment}`
+    : base;
+}
+
+/** `f=` の値が EPUB CFI として妥当か（`&`/`#` はハッシュの区切りなので許さない） */
+function isViewerFragment(fragment: string): boolean {
+  return /^epubcfi\([^\s&#]*\)$/.test(fragment);
+}
+
+/**
+ * Viewer のハッシュ（`#src=...&f=epubcfi(...)`）から現在の表示位置を取り出す。
+ * Viewer はページ移動のたびに `f=` を書き換えるため、これが「いま見ているところ」になる
+ */
+export function fragmentFromViewerHash(hash: string): string | null {
+  const match = hash.match(/[#&]f=([^&]*)/);
+  if (!match) return null;
+  return isViewerFragment(match[1]) ? match[1] : null;
 }
