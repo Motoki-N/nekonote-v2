@@ -3,12 +3,14 @@ import { streamObject } from "ai";
 import { resolveModel } from "@/lib/ai/models";
 import { recordAiUsage } from "@/lib/ai/usage";
 import {
+  buildRejectedSuggestionsGuidance,
   buildReviewSystemPrompt,
   PROOFREAD_COMMENT_GUIDANCE,
 } from "@/lib/ai/prompts";
 import { AppError, errorResponse } from "@/lib/errors";
 import { resolveRepoGit } from "@/lib/git/project-context";
 import { sortByGenrePriority } from "@/lib/genre-priority";
+import { suggestionKey } from "@/lib/proofread-apply";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import { getFileContent, getLatestCommitSha } from "@/lib/git/github";
 import {
@@ -26,6 +28,11 @@ export const maxDuration = 120;
 // 断片の冒頭・末尾を「文が途中」と誤指摘させない）
 const PROOFREAD_SELECTION_GUIDANCE =
   "今回の入力は原稿ファイルの一部（作者が選択した範囲）である。文章が途中から始まり途中で終わることがあるが、それ自体は問題にせず、渡された範囲内の本文だけを校正すること。";
+
+// 拒否済み提案を「プロンプトへ載せる」上限件数（Issue #262）。
+// 1ファイルの拒否が積み上がってもプロンプトが肥大しないよう直近ぶんに絞る。
+// 保存前の除外フィルタは取りこぼしが許されないため、この上限を掛けず全件で効かせる
+const REJECTED_PROMPT_LIMIT = 50;
 
 /**
  * AI校正（SPEC-proofreading §3.3・§3.5）。
@@ -82,6 +89,30 @@ export async function POST(req: Request) {
       );
     }
 
+    // 一度拒否した指摘は繰り返さない（Issue #262）。作者が「このままでよい」と判断した提案を
+    // AIへ渡して蒸し返させず、保存前にも同一の提案（原文抜粋＋修正案の一致）を除外する二段構え。
+    // 拒否は再校正でも消えない（pending のみ置き換え）ため、この一覧が作者の判断の履歴になる
+    const { data: rejectedRows, error: rejectedError } = await supabase
+      .from("revision_suggestions")
+      .select("original_text, suggested_text")
+      .eq("manuscript_link_id", link.id)
+      .eq("status", "rejected")
+      // 拒否が新しい順。プロンプトへ載せる分を直近から選ぶための並び
+      .order("updated_at", { ascending: false });
+    if (rejectedError) throw new AppError("internal", rejectedError.message);
+    const rejected = rejectedRows ?? [];
+    // 除外フィルタは全件で効かせる（上限を掛けると古い拒否がすり抜ける）
+    const rejectedKeys = new Set(rejected.map(suggestionKey));
+    // 選択範囲校正では範囲内の拒否済みだけを伝える（範囲外は入力に現れず文脈として無意味）
+    const rejectedForPrompt = (
+      selection === undefined
+        ? rejected
+        : rejected.filter(
+            (s) =>
+              s.original_text !== "" && selection.includes(s.original_text),
+          )
+    ).slice(0, REJECTED_PROMPT_LIMIT);
+
     // 校正プロファイルのサーバー側ジャンル解決（SPEC-genre-profiles §校正）。
     // 選択UIはなく、標準行（is_default）限定＝従来の「実質標準固定」セマンティクスを保ったまま、
     // プロジェクトの執筆ジャンルに合う標準プロファイル（技術書→技術書校正）を自動選択する。
@@ -137,6 +168,9 @@ export async function POST(req: Request) {
         "",
         PROOFREAD_COMMENT_GUIDANCE,
         ...(selection !== undefined ? ["", PROOFREAD_SELECTION_GUIDANCE] : []),
+        ...(rejectedForPrompt.length > 0
+          ? ["", buildRejectedSuggestionsGuidance(rejectedForPrompt)]
+          : []),
       ].join("\n"),
       // 校正さんの reference_scope は「原稿テキストのみ」（企画書・ノート・シーンは渡さない）。
       // 選択範囲校正では選択部分だけを渡す（SPEC-proofread-selection §2）
@@ -157,6 +191,10 @@ export async function POST(req: Request) {
         });
         // スキーマ検証に失敗した場合は object が undefined（既存 pending は温存する）
         if (!object) return;
+        // プロンプトで抑止しきれなかった蒸し返しをここで確実に落とす（Issue #262）
+        const toSave = object.filter(
+          (s) => !rejectedKeys.has(suggestionKey(s)),
+        );
         try {
           // 再校正は pending のみ置き換え（on_hold / accepted / rejected は残す。SPEC §2）。
           // 選択範囲校正は原文抜粋が選択範囲内に見つかる pending だけ置き換え、
@@ -198,11 +236,11 @@ export async function POST(req: Request) {
               return;
             }
           }
-          if (object.length > 0) {
+          if (toSave.length > 0) {
             const { error: insertError } = await supabase
               .from("revision_suggestions")
               .insert(
-                object.map((s) => ({
+                toSave.map((s) => ({
                   manuscript_link_id: link.id,
                   granularity: "sentence",
                   original_text: s.original_text,
