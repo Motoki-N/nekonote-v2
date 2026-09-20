@@ -412,6 +412,31 @@ export const PROOFREAD_COMMENT_GUIDANCE = [
   "- `[ネコノテ校正・保留]` コメントは作者が判断を保留した提案の記録。同じ箇所へ同趣旨の提案を繰り返さない",
 ].join("\n");
 
+/**
+ * 一度拒否した指摘を蒸し返させないための指示（Issue #262）。
+ * 作者が「このままでよい」と判断して却下した提案を一覧で渡し、同じ指摘を出させない。
+ * 確実性はサーバー側の保存前フィルタ（suggestionKey の一致）が担保し、
+ * このプロンプトは言い回しを変えただけの再提案まで抑える二段目として効かせる。
+ * 一覧が空なら空文字を返す（system プロンプトに節を足さない）
+ */
+export function buildRejectedSuggestionsGuidance(
+  rejected: { original_text: string; suggested_text: string }[],
+): string {
+  if (rejected.length === 0) return "";
+  // 原文・修正案に改行が含まれると箇条書きが壊れるため1行へ畳む
+  const flatten = (text: string) => text.replace(/\r?\n/g, " ");
+  return [
+    "# 作者が却下済みの指摘",
+    "以下は過去の校正で提案し、作者が「このままでよい」と判断して却下した指摘である。",
+    "- 同じ箇所へ同趣旨の指摘を繰り返さない（言い回しや修正案を変えただけの再提案も不可）",
+    "- 却下された箇所でも、明確に別の観点の問題がある場合に限り指摘してよい",
+    ...rejected.map(
+      (s) =>
+        `- 「${flatten(s.original_text)}」→「${flatten(s.suggested_text)}」`,
+    ),
+  ].join("\n");
+}
+
 /** 講評の入力に含める企画書情報の範囲（ペルソナの reference_scope から決まる） */
 export type CritiqueProposalScope = "none" | "target_only" | "full";
 

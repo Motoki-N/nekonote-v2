@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useObject } from "@ai-sdk/react";
 import {
   CircleStop,
@@ -19,7 +19,7 @@ import {
   writeBackOnHoldSuggestions,
   type SuggestionRecord,
 } from "@/lib/actions/manuscripts";
-import { isApplicable } from "@/lib/proofread-apply";
+import { isApplicable, suggestionKey } from "@/lib/proofread-apply";
 import type { SuggestionStatus } from "@/lib/schemas/enums";
 import {
   PROOFREAD_SELECTION_MIN_CHARS,
@@ -135,7 +135,31 @@ export function ProofreadPanel({
 
   const busy =
     isLoading || refreshing || committing || writingBack || updatingId !== null;
-  const streaming = isLoading ? (object ?? []) : null;
+  // 拒否済みと同じ内容の提案はサーバーが保存しない（Issue #262）。
+  // ストリーミング中のカードにも同じ判定をかけ、一瞬だけ表示されるのを防ぐ
+  const rejectedKeys = useMemo(
+    () =>
+      new Set(
+        suggestions
+          .filter((s) => s.status === "rejected")
+          .map((s) => suggestionKey(s)),
+      ),
+    [suggestions],
+  );
+  const streaming = isLoading
+    ? (object ?? []).filter(
+        (s) =>
+          // 生成途中で修正案が未確定のカードは判定せずそのまま出す
+          s?.original_text === undefined ||
+          s.suggested_text === undefined ||
+          !rejectedKeys.has(
+            suggestionKey({
+              original_text: s.original_text,
+              suggested_text: s.suggested_text,
+            }),
+          ),
+      )
+    : null;
   const pendingCount = suggestions.filter((s) => s.status === "pending").length;
   const acceptedUncommitted = suggestions.filter(
     (s) => s.status === "accepted" && s.committed_sha === null,

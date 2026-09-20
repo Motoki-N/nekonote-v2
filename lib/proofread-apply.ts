@@ -25,6 +25,15 @@ export type ProofreadPatch = {
   suggested_text: string;
 };
 
+/**
+ * 「同じ内容の指摘」の同一性キー（Issue #262）。
+ * 原文抜粋と修正案の両方が一致するものを同一の指摘とみなす（前後の空白差は無視）。
+ * サーバーの保存前フィルタとクライアントのストリーミング表示フィルタが同じ判定を通る
+ */
+export function suggestionKey(patch: ProofreadPatch): string {
+  return `${patch.original_text.trim()}\u0000${patch.suggested_text.trim()}`;
+}
+
 export type ApplySuggestionsResult =
   { ok: true; content: string } | { ok: false; failedOriginal: string };
 
