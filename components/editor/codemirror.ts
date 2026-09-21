@@ -2,7 +2,11 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
 import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
-import { EditorSelection, EditorState } from "@codemirror/state";
+import {
+  EditorSelection,
+  EditorState,
+  RangeSetBuilder,
+} from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import {
   Decoration,
@@ -33,6 +37,51 @@ const rubyHighlight = ViewPlugin.fromClass(
     }
     update(update: ViewUpdate) {
       this.decorations = rubyDecorator.updateDeco(update, this.decorations);
+    }
+  },
+  { decorations: (v) => v.decorations },
+);
+
+/** 字下げなしの改行（行末の半角スペース2つ以上）の装飾（Issue #248） */
+const hardBreakMark = Decoration.mark({ class: "cm-vfm-hard-break" });
+
+/**
+ * 可視範囲の各行を走査し、行末の半角スペース2つ以上に装飾を付ける。
+ * ルビと違い行末アンカーで判定するため、MatchDecorator（チャンク単位で正規表現を
+ * 回す）ではなく行単位で見る——可視範囲は行境界とは限らず、チャンクの切れ目を
+ * 行末と誤認しうるため
+ */
+function hardBreakDecorations(view: EditorView): DecorationSet {
+  const builder = new RangeSetBuilder<Decoration>();
+  for (const { from, to } of view.visibleRanges) {
+    for (let pos = from; pos <= to;) {
+      const line = view.state.doc.lineAt(pos);
+      const match = / {2,}$/.exec(line.text);
+      // 空白だけの行は段落の区切りであって `<br>` にはならないので対象外。
+      // 空白の判定は半角スペースとタブのみ（全角スペースだけの行は本文行として
+      // 扱われ `<br>` が出るため、`trim()` では落としすぎる）。
+      // 逆に、段落の最終行のように `<br>` にならない位置の2スペースにも印は出す
+      // ——「あるはずのないスペースが残っている」ことに気付くのも本Issueの目的
+      if (match && /[^ \t]/.test(line.text.slice(0, match.index))) {
+        builder.add(line.from + match.index, line.to, hardBreakMark);
+      }
+      pos = line.to + 1;
+    }
+  }
+  return builder.finish();
+}
+
+// 行末の半角スペース2つ＝字下げなしの改行（`<br>`）は、そのままでは画面に何も出ず
+// 入れ忘れ・消し込みに気付けない。ドキュメントの文字列は変えずに印だけを重ねる
+const hardBreakHighlight = ViewPlugin.fromClass(
+  class {
+    decorations: DecorationSet;
+    constructor(view: EditorView) {
+      this.decorations = hardBreakDecorations(view);
+    }
+    update(update: ViewUpdate) {
+      if (update.docChanged || update.viewportChanged)
+        this.decorations = hardBreakDecorations(update.view);
     }
   },
   { decorations: (v) => v.decorations },
@@ -73,6 +122,17 @@ const editorTheme = EditorView.theme({
     color: "var(--primary)",
     backgroundColor: "color-mix(in oklab, var(--primary) 8%, transparent)",
     borderRadius: "3px",
+  },
+  // 字下げなしの改行（Issue #248）。スペース自体を地色で見せ、末尾に印を出す。
+  // 印は疑似要素なので原稿の文字列には入らない
+  ".cm-vfm-hard-break": {
+    backgroundColor: "color-mix(in oklab, var(--primary) 16%, transparent)",
+    borderRadius: "3px",
+  },
+  ".cm-vfm-hard-break::after": {
+    content: '"↵"',
+    color: "var(--muted-foreground)",
+    fontSize: "0.85em",
   },
   ".cm-scroller": { overflow: "auto" },
 
@@ -349,6 +409,7 @@ export function buildEditorExtensions(handlers: {
     markdown({ base: markdownLanguage }),
     syntaxHighlighting(vfmHighlightStyle),
     rubyHighlight,
+    hardBreakHighlight,
     EditorView.lineWrapping,
     editorTheme,
     placeholder("本文をVFM（Markdown）で入力…"),
