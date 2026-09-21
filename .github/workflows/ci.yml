@@ -1,4 +1,4 @@
-# 最小CI: 型チェックとリント（CLAUDE.md の検証コマンドと同一）。
+# 最小CI: 型チェック・リント・整形確認（CLAUDE.md の検証コマンドと同一）。
 # 外部PRを受けるため pull_request_target は使わない（フォークのコードを
 # シークレット付きで実行しないため）
 name: CI
@@ -23,3 +23,5 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
+      # eslint は prettier を見ないため、整形崩れはこの手順でしか検出できない
+      - run: npm run format:check

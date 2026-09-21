@@ -13,8 +13,9 @@
 
 ## 検証コマンド
 
-- 型チェック: `npm run typecheck` ／ リント: `npm run lint`
-- 実装後は必ず両方を実行し、エラーを解消してから完了とする
+- 型チェック: `npm run typecheck` ／ リント: `npm run lint` ／ 整形確認: `npm run format:check`
+- 実装後は必ず3つとも実行し、エラーを解消してから完了とする（崩れは `npm run format` で直す）
+- リントは prettier を見ないため、整形崩れは `format:check` でしか検出できない
 
 ## 規約
 
