@@ -232,32 +232,32 @@ export async function createChapter(
 }
 
 /**
- * 全体プレビュー用に全章の本文を entry 順で返す（明示操作時のみ。SPEC §5.2）。
+ * 全章の本文を entry 順で返す（明示操作時のみ。SPEC §5.2）。
+ * 全体プレビューと、全ファイル置換の対象収集（Issue #263）が使う。
+ * blob SHA も返すのは、置換結果を待避に書くとき楽観ロックの基準が要るため。
  * 目次ページ（{ rel: 'contents' }）はCLIビルド時の生成物のためプレビューには含まれない
  */
 export async function getAllChapterContents(
   projectId: string,
   branch?: string,
-): Promise<ActionResult<{ chapters: { path: string; content: string }[] }>> {
+): Promise<ActionResult<{ chapters: ChapterData[] }>> {
   try {
     const ctx = await loadEditorContext(projectId);
     const ref = parseBranch(branch);
     const { chapters } = await listChapters(ctx, ref);
     // 章数は高々数十の想定。5並列で順序を保って取得する
-    const results: { path: string; content: string }[] = new Array(
-      chapters.length,
-    );
+    const results: ChapterData[] = new Array(chapters.length);
     let index = 0;
     async function worker() {
       while (index < chapters.length) {
         const i = index++;
-        const { content } = await getFileContent(
+        const { content, sha } = await getFileContent(
           ctx.token,
           ctx.repo,
           chapters[i].path,
           ref,
         );
-        results[i] = { path: chapters[i].path, content };
+        results[i] = { path: chapters[i].path, content, sha };
       }
     }
     await Promise.all(

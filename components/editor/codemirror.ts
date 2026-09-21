@@ -1,7 +1,8 @@
 import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { EditorSelection } from "@codemirror/state";
+import { openSearchPanel, search, searchKeymap } from "@codemirror/search";
+import { EditorSelection, EditorState } from "@codemirror/state";
 import type { Extension } from "@codemirror/state";
 import {
   Decoration,
@@ -74,7 +75,85 @@ const editorTheme = EditorView.theme({
     borderRadius: "3px",
   },
   ".cm-scroller": { overflow: "auto" },
+
+  // 検索置換パネル（Issue #263）。CodeMirror の既定色はテーマに追従しないため、
+  // 枠・入力欄・ボタン・一致のハイライトをすべてCSS変数で上書きする（プロジェクト規約）
+  ".cm-panels": {
+    backgroundColor: "var(--card)",
+    color: "var(--card-foreground)",
+    borderColor: "var(--border)",
+  },
+  ".cm-panels.cm-panels-top": { borderBottom: "1px solid var(--border)" },
+  ".cm-panels.cm-panels-bottom": { borderTop: "1px solid var(--border)" },
+  ".cm-panel.cm-search": { padding: "6px 8px", fontFamily: "var(--font-sans)" },
+  ".cm-panel.cm-search label": { fontSize: "12px" },
+  ".cm-textfield": {
+    backgroundColor: "var(--background)",
+    color: "var(--foreground)",
+    border: "1px solid var(--border)",
+    borderRadius: "4px",
+    padding: "3px 6px",
+    fontFamily: "var(--font-sans)",
+  },
+  ".cm-textfield:focus-visible": {
+    outline: "2px solid var(--ring)",
+    outlineOffset: "-1px",
+  },
+  ".cm-button": {
+    backgroundColor: "var(--secondary)",
+    backgroundImage: "none",
+    color: "var(--secondary-foreground)",
+    border: "1px solid var(--border)",
+    borderRadius: "4px",
+    padding: "3px 8px",
+    fontFamily: "var(--font-sans)",
+  },
+  ".cm-button:hover": {
+    backgroundColor: "color-mix(in oklab, var(--secondary) 80%, var(--accent))",
+  },
+  ".cm-panel.cm-search [name='close']": {
+    color: "var(--muted-foreground)",
+    fontSize: "16px",
+    padding: "0 4px",
+  },
+  // 正規表現チェックボックスは出さない。全ファイル置換（置換ダイアログ）が
+  // 単純な文字列置換のみを扱うため、開いている章だけ挙動が変わるのを避ける
+  ".cm-panel.cm-search label:has(input[name='re'])": { display: "none" },
+  ".cm-searchMatch": {
+    backgroundColor: "color-mix(in oklab, var(--primary) 22%, transparent)",
+  },
+  ".cm-searchMatch.cm-searchMatch-selected": {
+    backgroundColor: "color-mix(in oklab, var(--primary) 45%, transparent)",
+  },
 });
+
+/**
+ * 検索置換パネルの日本語化（Issue #263）。
+ * `@codemirror/search` の標準パネルは英語のため phrases で差し替える
+ */
+const searchPhrases = EditorState.phrases.of({
+  Find: "検索",
+  Replace: "置換",
+  next: "次へ",
+  previous: "前へ",
+  all: "すべて",
+  "match case": "大文字小文字を区別",
+  "by word": "単語単位",
+  regexp: "正規表現",
+  replace: "置換",
+  "replace all": "すべて置換",
+  close: "閉じる",
+  "current match": "現在の一致",
+  "replaced $ matches": "$件を置換しました",
+  "replaced match on line $": "$行目を置換しました",
+  "on line": "行目",
+});
+
+/** 検索パネルを開く（ツールバーの「検索」ボタンから。`Cmd/Ctrl+F` と同じ動作） */
+export function openSearch(view: EditorView): boolean {
+  openSearchPanel(view);
+  return true;
+}
 
 /**
  * コメントのトグル（SPEC-vertical-editor-phase3 §3。`Cmd/Ctrl+/`・ツールバー共用）。
@@ -259,9 +338,14 @@ export function buildEditorExtensions(handlers: {
         },
       },
       { key: "Mod-/", preventDefault: true, run: toggleVfmComment },
+      ...searchKeymap,
       ...defaultKeymap,
       ...historyKeymap,
     ]),
+    // 開いている章の検索置換（Issue #263）。全ファイル置換は別ダイアログの担当。
+    // パネルは本文の上に出す（下端だとプレビューとの境目で見失いやすい）
+    search({ top: true }),
+    searchPhrases,
     markdown({ base: markdownLanguage }),
     syntaxHighlighting(vfmHighlightStyle),
     rubyHighlight,

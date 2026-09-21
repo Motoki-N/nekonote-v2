@@ -9,6 +9,7 @@ import {
   insertPageBreak,
   insertRubyText,
   insertWarichuText,
+  openSearch,
   toggleVfmComment,
   wrapSelectionWithSpan,
 } from "@/components/editor/codemirror";
@@ -141,6 +142,14 @@ export function EditorToolbar({
         onClick={() => {
           const view = viewRef.current;
           if (view) insertPageBreak(view);
+        }}
+      />
+      <ToolbarButton
+        label="検索"
+        title="この章の中を検索・置換する（Cmd/Ctrl+F）"
+        onClick={() => {
+          const view = viewRef.current;
+          if (view) openSearch(view);
         }}
       />
       <ToolbarButton
