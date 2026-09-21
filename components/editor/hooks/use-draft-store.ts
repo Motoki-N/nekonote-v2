@@ -13,6 +13,21 @@ import type { CurrentChapter } from "@/components/editor/editor-state";
 // 待避（IndexedDB）のデバウンス（SPEC-vertical-editor-phase2 §5.1・§7）
 const DRAFT_DEBOUNCE_MS = 1000;
 
+/** 永続化要求は1タブにつき1回でよい（結果は拒否でも構わない） */
+let persistRequested = false;
+
+/**
+ * 待避領域を永続バケットへ昇格させる（Issue #255-1）。
+ * 既定の best-effort バケットはディスク逼迫時にオリジンごと退去されうる。
+ * 未コミットの本文はまだ GitHub に無いため、退去＝原稿の消失になる。
+ * 非対応ブラウザ・拒否時は何もしない（待避が消えうる前提は変わらない）
+ */
+function requestPersistentStorage(): void {
+  if (persistRequested) return;
+  persistRequested = true;
+  navigator.storage?.persist?.().catch(() => {});
+}
+
 /**
  * 未保存編集の IndexedDB 待避（SPEC-vertical-editor-phase2 §7）。
  * 待避キー解決・章ごとの未保存印・デバウンス書き込み・即時確定を担う。
@@ -42,6 +57,7 @@ export function useDraftStore({
   // 未保存待避のある章に印をつける（SPEC §3.3）
   useEffect(() => {
     if (repo === null || branch === null) return;
+    requestPersistentStorage();
     const prefix = `${repo}:${branch}:`;
     listDraftKeys(prefix)
       .then((keys) =>

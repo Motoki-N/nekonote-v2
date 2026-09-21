@@ -103,7 +103,8 @@ export function VerticalEditor({
   /** エディタ作り直し時の初期本文（以後の打鍵は contentRef が正） */
   const [editorDoc, setEditorDoc] = useState("");
   const [dirty, setDirty] = useState(false);
-  const [restorePrompt, setRestorePrompt] = useState<Draft | null>(null);
+  /** 自動復元した待避（バナーでの事後通知＋破棄のため保持する。Issue #255-1） */
+  const [restoredDraft, setRestoredDraft] = useState<Draft | null>(null);
   const [merge, setMerge] = useState<MergeState | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -272,7 +273,7 @@ export function VerticalEditor({
       setSelectedPath(path);
       setChapterLoading(true);
       setChapterError(null);
-      setRestorePrompt(null);
+      setRestoredDraft(null);
       setMerge(null);
       setDirty(false);
       // 取得待ちの間にブランチが切り替わったら、旧ブランチの内容で状態を上書きしない
@@ -294,28 +295,34 @@ export function VerticalEditor({
           baseSha: data.sha,
           remoteContent: data.content,
         };
-        contentRef.current = data.content;
-        refreshDerived(data.content);
         setActualPages(null);
 
+        // 待避があれば自動で復元する（Issue #255-1。SPEC §7-2）。
+        // 章を行き来するたび復元ボタンを押させないため、バナーは事後通知＋破棄のみ
         const draft = await getDraft(keyFor(path)).catch(() => null);
+        let content = data.content;
         if (draft && draft.content !== data.content) {
           if (draft.baseSha !== data.sha) {
-            // 待避中に他所が更新 → 競合フロー（SPEC §7-3 → §8）
+            // 待避中に他所が更新 → 競合フロー（SPEC §7-3 → §8）。
+            // 本文はリモートのまま据え置き、取り込みはマージペインに委ねる
             setMerge({
               remoteContent: data.content,
               remoteSha: data.sha,
               localContent: draft.content,
             });
           } else {
-            setRestorePrompt(draft);
+            content = draft.content;
+            setRestoredDraft(draft);
           }
         } else if (draft) {
           // リモートと同一の待避は不要（正は常にGitHub）
           deleteDraft(keyFor(path)).catch(() => {});
           markDraft(path, false);
         }
-        setEditorDoc(data.content);
+        contentRef.current = content;
+        refreshDerived(content);
+        setDirty(content !== data.content);
+        setEditorDoc(content);
         setEditorEpoch((epoch) => epoch + 1);
         compilePreview();
       } finally {
@@ -351,27 +358,23 @@ export function VerticalEditor({
     return () => clearTimeout(timer);
   }, [openChapterFlow]);
 
-  /** 復元バナー: 待避を取り込む（SPEC §7-2） */
-  const restoreDraft = useCallback(() => {
-    const current = currentRef.current;
-    if (!current || !restorePrompt) return;
-    contentRef.current = restorePrompt.content;
-    setDirty(restorePrompt.content !== current.remoteContent);
-    refreshDerived(restorePrompt.content);
-    setRestorePrompt(null);
-    setEditorDoc(restorePrompt.content);
-    setEditorEpoch((epoch) => epoch + 1);
-    compilePreview();
-  }, [restorePrompt, compilePreview, refreshDerived]);
-
-  /** 復元バナー: 待避を破棄する */
+  /**
+   * 復元バナー: 自動復元を取り消し、リモート最新へ巻き戻す（SPEC §7-2）。
+   * 自動復元後の「破棄」は待避の削除だけでは足りず、本文も戻す必要がある
+   */
   const discardDraft = useCallback(() => {
     const current = currentRef.current;
     if (!current) return;
     deleteDraft(keyFor(current.path)).catch(() => {});
     markDraft(current.path, false);
-    setRestorePrompt(null);
-  }, [keyFor, markDraft]);
+    contentRef.current = current.remoteContent;
+    setDirty(false);
+    refreshDerived(current.remoteContent);
+    setRestoredDraft(null);
+    setEditorDoc(current.remoteContent);
+    setEditorEpoch((epoch) => epoch + 1);
+    compilePreview();
+  }, [keyFor, markDraft, compilePreview, refreshDerived]);
 
   const requestSave = useCallback(() => {
     if (!currentRef.current || saving) return;
@@ -456,6 +459,8 @@ export function VerticalEditor({
         setDirty(false);
         deleteDraft(keyFor(current.path)).catch(() => {});
         markDraft(current.path, false);
+        // コミット済みの内容について「復元しました」を出し続けない
+        setRestoredDraft(null);
         setSaveDialogOpen(false);
         toast.success("コミットしました");
         compilePreview();
@@ -620,7 +625,7 @@ export function VerticalEditor({
     setPreviewHtml(null);
     setFullPreview(false);
     setMerge(null);
-    setRestorePrompt(null);
+    setRestoredDraft(null);
     setDirty(false);
     setCharCount(null);
     setActualPages(null);
@@ -816,7 +821,7 @@ export function VerticalEditor({
                       currentRef.current = null;
                       setPreviewHtml(null);
                       setMerge(null);
-                      setRestorePrompt(null);
+                      setRestoredDraft(null);
                       setDirty(false);
                       setCharCount(null);
                       setActualPages(null);
@@ -832,12 +837,12 @@ export function VerticalEditor({
                   </span>
                 </div>
 
-                {restorePrompt && (
+                {restoredDraft && (
                   <div className="flex flex-wrap items-center gap-2 border-b border-border bg-secondary px-4 py-2 text-sm text-secondary-foreground">
                     <Info className="size-4 shrink-0" />
                     <span className="min-w-0">
-                      未保存の編集があります（
-                      {new Date(restorePrompt.updatedAt).toLocaleString(
+                      未保存の編集を復元しました（
+                      {new Date(restoredDraft.updatedAt).toLocaleString(
                         "ja-JP",
                       )}{" "}
                       時点）
@@ -849,9 +854,6 @@ export function VerticalEditor({
                         onClick={discardDraft}
                       >
                         破棄する
-                      </Button>
-                      <Button size="sm" onClick={restoreDraft}>
-                        復元する
                       </Button>
                     </span>
                   </div>
