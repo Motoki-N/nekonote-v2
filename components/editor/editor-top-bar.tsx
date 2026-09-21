@@ -13,6 +13,7 @@ import {
   PanelLeft,
   PanelRight,
   PictureInPicture2,
+  Replace,
   Save,
   Settings,
   SpellCheck,
@@ -49,6 +50,7 @@ export function EditorTopBar({
   onToggleSidebar,
   onRequestSave,
   onOpenBulkCommit,
+  onOpenReplace,
   onOpenProofread,
   onOpenCritique,
   onOpenSettings,
@@ -82,6 +84,8 @@ export function EditorTopBar({
   onToggleSidebar: () => void;
   onRequestSave: () => void;
   onOpenBulkCommit: () => void;
+  /** 検索置換ダイアログを開く（Issue #263） */
+  onOpenReplace: () => void;
   onOpenProofread: () => void;
   onOpenCritique: () => void;
   onOpenSettings: () => void;
@@ -170,6 +174,20 @@ export function EditorTopBar({
           </span>
         )}
         <div className="ml-auto flex items-center gap-1.5">
+          {/* 検索置換（Issue #263）。開いている章の逐次検索は Cmd/Ctrl+F のパネル、
+              こちらは件数を確認してから一括で置き換えるための入口 */}
+          <Button
+            size="sm"
+            variant="outline"
+            title="検索して置換する（現在のファイル／全ファイル）"
+            disabled={
+              chaptersCount === 0 || chapterLoading || saving || merging
+            }
+            onClick={onOpenReplace}
+          >
+            <Replace data-icon="inline-start" />
+            置換
+          </Button>
           {/* エディタ内から校正・講評を直接起動（Issue #18。校正は開いている章が対象） */}
           <Button
             size="sm"

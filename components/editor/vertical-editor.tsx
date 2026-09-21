@@ -17,10 +17,12 @@ import { EditorView } from "@codemirror/view";
 
 import { extractComments } from "@/lib/editor/comments";
 import type { ManuscriptComment } from "@/lib/editor/comments";
-import { deleteDraft, getDraft } from "@/lib/editor/draft-store";
+import { deleteDraft, getDraft, setDraft } from "@/lib/editor/draft-store";
 import type { LinkedScene } from "@/lib/board";
 import type { Draft } from "@/lib/editor/draft-store";
 import { buildPreviewHtml, extractChapterTitle } from "@/lib/editor/preview";
+import { planReplace } from "@/lib/editor/search-replace";
+import type { FileReplacePlan } from "@/lib/editor/search-replace";
 import {
   countManuscriptChars,
   extractKumiSettings,
@@ -40,6 +42,8 @@ import { ImageUploadDialog } from "@/components/editor/image-upload-dialog";
 import { MergePane } from "@/components/editor/merge-pane";
 import { NewChapterDialog } from "@/components/editor/new-chapter-dialog";
 import { PreviewPane } from "@/components/editor/preview-pane";
+import { ReplaceDialog } from "@/components/editor/replace-dialog";
+import type { ReplaceScope } from "@/components/editor/replace-dialog";
 import { SaveDialog } from "@/components/editor/save-dialog";
 import { SettingsDialog } from "@/components/editor/settings-dialog";
 import type {
@@ -112,6 +116,20 @@ export function VerticalEditor({
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkDrafts, setBulkDrafts] = useState<DraftEntry[] | null>(null);
   const [bulkCommitting, setBulkCommitting] = useState(false);
+  /** 検索置換（Issue #263）。plans は null の間が未検索 */
+  const [replaceOpen, setReplaceOpen] = useState(false);
+  const [replaceScope, setReplaceScope] = useState<ReplaceScope>("all");
+  const [replaceSearching, setReplaceSearching] = useState(false);
+  const [replacing, setReplacing] = useState(false);
+  const [replacePlans, setReplacePlans] = useState<FileReplacePlan[] | null>(
+    null,
+  );
+  const [replaceTerm, setReplaceTerm] = useState("");
+  const [replaceReplacement, setReplaceReplacement] = useState("");
+  /** 置換の適用に使う、プラン作成時点の各ファイルの基準（楽観ロックと未保存判定） */
+  const replaceBaseRef = useRef<
+    Map<string, { baseSha: string; remoteContent: string }>
+  >(new Map());
   const [newChapterOpen, setNewChapterOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -441,6 +459,187 @@ export function VerticalEditor({
     },
     [bulkDrafts, projectId, keyFor, markDraft, openChapterFlow],
   );
+
+  /**
+   * 「現在のファイル」を置換対象にできるか（Issue #263）。
+   * 読み込み中・読み込み失敗中は開いている章が確定していないため選ばせない
+   * （ダイアログの表示と実際の対象がずれるのを防ぐ）
+   */
+  const canReplaceCurrent =
+    selectedPath !== null && !chapterLoading && chapterError === null;
+
+  /** 検索置換を開く（Issue #263）。前回の結果は持ち越さない */
+  const openReplace = useCallback(() => {
+    setReplacePlans(null);
+    setReplaceTerm("");
+    setReplaceReplacement("");
+    replaceBaseRef.current = new Map();
+    setReplaceScope(canReplaceCurrent ? "current" : "all");
+    setReplaceOpen(true);
+  }, [canReplaceCurrent]);
+
+  /**
+   * 置換対象の本文を集める（Issue #263）。取得できなければ null。
+   * 未コミット待避がある章は待避の本文を対象にする——ユーザーが画面で見ている
+   * のはそちらであり、GitHub の本文に対して置換すると編集が消える。
+   * 楽観ロックの基準も待避の baseSha を引き継ぐ（競合はコミット時に検知される）
+   */
+  const collectReplaceTargets = useCallback(async (): Promise<
+    | {
+        path: string;
+        content: string;
+        baseSha: string;
+        remoteContent: string;
+      }[]
+    | null
+  > => {
+    const okNow = okRef.current;
+    const current = currentRef.current;
+    if (!okNow) return null;
+    if (replaceScope === "current") {
+      if (current === null) {
+        toast.error("置換の対象にする章が開かれていません");
+        return null;
+      }
+      return [
+        {
+          path: current.path,
+          content: contentRef.current,
+          baseSha: current.baseSha,
+          remoteContent: current.remoteContent,
+        },
+      ];
+    }
+    const result = await getAllChapterContents(projectId, okNow.branch);
+    if (!result.ok || !result.data) {
+      toast.error(
+        result.ok ? "章の読み込みに失敗しました" : result.error.message,
+      );
+      return null;
+    }
+    return Promise.all(
+      result.data.chapters.map(async ({ path, content, sha }) => {
+        // 開いている章はエディタが正。ここで取り直した新しい SHA を基準にすると、
+        // 次の打鍵の待避（currentRef の古い baseSha）と食い違ってコミットが弾かれる
+        if (current !== null && current.path === path) {
+          return {
+            path,
+            content: contentRef.current,
+            baseSha: current.baseSha,
+            remoteContent: current.remoteContent,
+          };
+        }
+        const draft = await getDraft(keyFor(path)).catch(() => null);
+        return draft !== null && draft.content !== content
+          ? {
+              path,
+              content: draft.content,
+              baseSha: draft.baseSha,
+              remoteContent: content,
+            }
+          : { path, content, baseSha: sha, remoteContent: content };
+      }),
+    );
+  }, [replaceScope, projectId, keyFor]);
+
+  /** 該当を探す（置換はまだしない。件数と該当行を出して確認してもらう） */
+  const runReplaceSearch = useCallback(
+    async (search: string, replacement: string) => {
+      setReplaceSearching(true);
+      setReplacePlans(null);
+      try {
+        // 編集中の章の打鍵を待避へ確定してから集める（デバウンス中の分を落とさない）
+        await flushDraft();
+        const targets = await collectReplaceTargets();
+        // 取得に失敗したら plans は null のまま（「該当なし」と区別する）
+        if (targets === null) return;
+        replaceBaseRef.current = new Map(
+          targets.map(({ path, baseSha, remoteContent }) => [
+            path,
+            { baseSha, remoteContent },
+          ]),
+        );
+        setReplaceTerm(search);
+        setReplaceReplacement(replacement);
+        setReplacePlans(planReplace(targets, search, replacement));
+      } catch {
+        toast.error("該当の検索に失敗しました");
+      } finally {
+        setReplaceSearching(false);
+      }
+    },
+    [flushDraft, collectReplaceTargets],
+  );
+
+  /**
+   * 置換を適用する（Issue #263）。コミットはせず未コミット待避に書くだけ。
+   * ユーザーは本文を確かめたうえで「まとめてコミット」から自分の判断でコミットする
+   */
+  const applyReplace = useCallback(async () => {
+    const plans = replacePlans;
+    if (plans === null || plans.length === 0) return;
+    setReplacing(true);
+    try {
+      const current = currentRef.current;
+      let applied = 0;
+      // 開いていない章の置換結果は待避（IndexedDB）が唯一の置き場所なので、
+      // 書き込みに失敗したらその章は「置換できていない」。印も立てず、後でまとめて知らせる
+      const failed: string[] = [];
+      for (const plan of plans) {
+        const base = replaceBaseRef.current.get(plan.path);
+        if (base === undefined) continue;
+        try {
+          if (plan.nextContent === base.remoteContent) {
+            // 置換の結果リモートと同じになった章は待避を持たない（正は常にGitHub）
+            await deleteDraft(keyFor(plan.path));
+            markDraft(plan.path, false);
+          } else {
+            await setDraft(keyFor(plan.path), {
+              content: plan.nextContent,
+              baseSha: base.baseSha,
+              updatedAt: Date.now(),
+            });
+            markDraft(plan.path, true);
+          }
+          applied += plan.count;
+        } catch {
+          // 開いている章はエディタ上に本文が残る（そのまま保存できる）ため失敗に数えない
+          if (current === null || current.path !== plan.path) {
+            failed.push(plan.path);
+            continue;
+          }
+          applied += plan.count;
+        }
+      }
+      // 開いている章が対象に含まれていたら、入力ペインの表示も置換後に差し替える
+      const currentPlan =
+        current === null
+          ? undefined
+          : plans.find((plan) => plan.path === current.path);
+      if (current !== null && currentPlan !== undefined) {
+        contentRef.current = currentPlan.nextContent;
+        refreshDerived(currentPlan.nextContent);
+        setDirty(currentPlan.nextContent !== current.remoteContent);
+        setRestoredDraft(null);
+        setEditorDoc(currentPlan.nextContent);
+        setEditorEpoch((epoch) => epoch + 1);
+        compilePreview();
+      }
+      setReplaceOpen(false);
+      if (failed.length > 0) {
+        toast.error(
+          `${failed.length}件の章は置換を保存できませんでした（ブラウザの保存領域に書き込めません）`,
+        );
+      }
+      if (applied > 0) {
+        toast.success(
+          `${applied}件を置換しました（未コミット。内容を確認してコミットしてください）`,
+        );
+      }
+    } finally {
+      setReplacing(false);
+    }
+  }, [replacePlans, keyFor, markDraft, refreshDerived, compilePreview]);
 
   const {
     reviewOpen,
@@ -801,6 +1000,7 @@ export function VerticalEditor({
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
         onRequestSave={requestSave}
         onOpenBulkCommit={openBulkCommit}
+        onOpenReplace={openReplace}
         onOpenProofread={() => void openProofread()}
         onOpenCritique={openCritique}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -1057,6 +1257,28 @@ export function VerticalEditor({
         )}
       </div>
 
+      <ReplaceDialog
+        open={replaceOpen}
+        scope={replaceScope}
+        chaptersCount={chapters.length}
+        hasCurrentChapter={canReplaceCurrent}
+        currentName={selectedName}
+        searching={replaceSearching}
+        replacing={replacing}
+        plans={replacePlans}
+        searchedTerm={replaceTerm}
+        searchedReplacement={replaceReplacement}
+        onScopeChange={(next) => {
+          setReplaceScope(next);
+          // 対象が変われば結果も別物になる（古い件数のまま置換させない）
+          setReplacePlans(null);
+        }}
+        onSearch={(search, replacement) =>
+          void runReplaceSearch(search, replacement)
+        }
+        onReplace={() => void applyReplace()}
+        onOpenChange={setReplaceOpen}
+      />
       <BulkCommitDialog
         open={bulkOpen}
         branch={okWs.branch}
