@@ -6,6 +6,7 @@ import {
   BookOpenText,
   ExternalLink,
   FileDown,
+  GitCommitVertical,
   Loader2,
   Maximize2,
   Minimize2,
@@ -40,12 +41,14 @@ export function EditorTopBar({
   actualPages,
   kumi,
   chaptersCount,
+  draftCount,
   projectId,
   fullPreviewLoading,
   detached,
   previewOpen,
   onToggleSidebar,
   onRequestSave,
+  onOpenBulkCommit,
   onOpenProofread,
   onOpenCritique,
   onOpenSettings,
@@ -70,12 +73,15 @@ export function EditorTopBar({
   actualPages: number | null;
   kumi: KumiSettings | null;
   chaptersCount: number;
+  /** 未コミットの待避がある章の数（まとめてコミットの対象数。Issue #255-2） */
+  draftCount: number;
   projectId: string;
   fullPreviewLoading: boolean;
   detached: boolean;
   previewOpen: boolean;
   onToggleSidebar: () => void;
   onRequestSave: () => void;
+  onOpenBulkCommit: () => void;
   onOpenProofread: () => void;
   onOpenCritique: () => void;
   onOpenSettings: () => void;
@@ -282,6 +288,17 @@ export function EditorTopBar({
             onClick={onEnterFocus}
           >
             <Maximize2 />
+          </Button>
+          {/* 作業の節目に、未コミットの章をまとめて1コミットにする（Issue #255-2） */}
+          <Button
+            size="sm"
+            variant="outline"
+            title="未コミットの章をまとめて1コミットにする"
+            disabled={draftCount === 0 || saving || merging}
+            onClick={onOpenBulkCommit}
+          >
+            <GitCommitVertical data-icon="inline-start" />
+            まとめて{draftCount > 0 && `（${draftCount}）`}
           </Button>
           <Button
             size="sm"
