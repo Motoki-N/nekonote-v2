@@ -20,10 +20,7 @@ import type { ManuscriptComment } from "@/lib/editor/comments";
 import { deleteDraft, getDraft } from "@/lib/editor/draft-store";
 import type { LinkedScene } from "@/lib/board";
 import type { Draft } from "@/lib/editor/draft-store";
-import {
-  buildPreviewHtml,
-  extractChapterTitle,
-} from "@/lib/editor/preview";
+import { buildPreviewHtml, extractChapterTitle } from "@/lib/editor/preview";
 import {
   countManuscriptChars,
   extractKumiSettings,
@@ -223,8 +220,7 @@ export function VerticalEditor({
       chapters: [{ path: current.path, content: contentRef.current }],
       theme: okNow.theme,
       // 柱（env(doc-title)）が参照するため、入稿ビルドと同じ「章の見出し」を入れる（Issue #237）
-      title:
-        extractChapterTitle(contentRef.current) ?? fileName(current.path),
+      title: extractChapterTitle(contentRef.current) ?? fileName(current.path),
       origin: window.location.origin,
       assetUrl,
     });

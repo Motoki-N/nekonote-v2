@@ -249,10 +249,7 @@ function normalizeSlotValue(value: string): string {
   });
   return masked
     .replace(/\s+/g, "")
-    .replace(
-      /\u0000(\d+)\u0000/g,
-      (_whole, index: string) => quoted[+index],
-    );
+    .replace(/\u0000(\d+)\u0000/g, (_whole, index: string) => quoted[+index]);
 }
 
 /** スロット値 → 何が入っているか。組み立て可能な値でなければ null（＝手書き扱い） */
@@ -266,7 +263,8 @@ function parseSlotValue(
   if (normalized === normalizeSlotValue(TITLE_CONTENT))
     return { page: false, title: true };
   if (
-    normalized === normalizeSlotValue(`${PAGE_CONTENT} ${JOINER} ${TITLE_CONTENT}`)
+    normalized ===
+    normalizeSlotValue(`${PAGE_CONTENT} ${JOINER} ${TITLE_CONTENT}`)
   )
     return { page: true, title: true };
   return null;

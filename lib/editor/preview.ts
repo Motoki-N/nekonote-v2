@@ -54,9 +54,7 @@ export function extractChapterTitle(markdown: string): string | null {
   const heading = withoutFences.match(/^#\s+(.+)$/m);
   if (!heading) return null;
   // VFM の <title> はテキストのみになるため、強調・コードのマーカーを落とす
-  const text = heading[1]
-    .replace(/[*_`]/g, "")
-    .trim();
+  const text = heading[1].replace(/[*_`]/g, "").trim();
   return text === "" ? null : text;
 }
 
