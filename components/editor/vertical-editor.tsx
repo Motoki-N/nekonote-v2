@@ -10,6 +10,7 @@ import {
   getEditorWorkspace,
   openChapter,
   saveChapter,
+  saveChapters,
 } from "@/lib/actions/editor";
 import type { EditorChapter, EditorWorkspaceData } from "@/lib/actions/editor";
 import { EditorView } from "@codemirror/view";
@@ -34,6 +35,7 @@ import { ProofreadPanel } from "@/components/manuscript/proofread-panel";
 import { AozoraExportDialog } from "@/components/editor/aozora-export-dialog";
 import { BranchCreateDialog } from "@/components/editor/branch-create-dialog";
 import { BuildDialog } from "@/components/editor/build-dialog";
+import { BulkCommitDialog } from "@/components/editor/bulk-commit-dialog";
 import { EditorPane } from "@/components/editor/editor-pane";
 import { PrCreateDialog } from "@/components/editor/pr-create-dialog";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
@@ -51,6 +53,7 @@ import { useBranchState } from "@/components/editor/hooks/use-branch-state";
 import type { OkWorkspace } from "@/components/editor/hooks/use-branch-state";
 import { useDetachedPreview } from "@/components/editor/hooks/use-detached-preview";
 import { useDraftStore } from "@/components/editor/hooks/use-draft-store";
+import type { DraftEntry } from "@/components/editor/hooks/use-draft-store";
 import { usePaneLayout } from "@/components/editor/hooks/use-pane-layout";
 import { useCommentActions } from "@/components/editor/hooks/use-comment-actions";
 import { useImageUpload } from "@/components/editor/hooks/use-image-upload";
@@ -108,6 +111,10 @@ export function VerticalEditor({
   const [merge, setMerge] = useState<MergeState | null>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  /** まとめてコミット（Issue #255-2）。drafts は null の間が読み込み中 */
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkDrafts, setBulkDrafts] = useState<DraftEntry[] | null>(null);
+  const [bulkCommitting, setBulkCommitting] = useState(false);
   const [newChapterOpen, setNewChapterOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -176,6 +183,7 @@ export function VerticalEditor({
     persistDraft,
     flushDraft,
     scheduleDraft,
+    collectDrafts,
   } = useDraftStore({
     repo: ok?.repo ?? null,
     branch: ok?.branch ?? null,
@@ -381,6 +389,62 @@ export function VerticalEditor({
     flushDraft();
     setSaveDialogOpen(true);
   }, [saving, flushDraft]);
+
+  /** まとめてコミット: 待避を集めてダイアログを開く（Issue #255-2） */
+  const openBulkCommit = useCallback(() => {
+    setBulkDrafts(null);
+    setBulkOpen(true);
+    void collectDrafts()
+      .then(setBulkDrafts)
+      .catch(() => setBulkDrafts([]));
+  }, [collectDrafts]);
+
+  /**
+   * まとめてコミット: 選んだ章を1コミットで反映する（Issue #255-2）。
+   * 1章でも競合していれば何もコミットされない（サーバー側で事前に照合する）
+   */
+  const confirmBulkCommit = useCallback(
+    async (paths: string[], message: string) => {
+      const targets = (bulkDrafts ?? []).filter((draft) =>
+        paths.includes(draft.path),
+      );
+      if (targets.length === 0) return;
+      setBulkCommitting(true);
+      try {
+        const result = await saveChapters(projectId, {
+          files: targets.map(({ path, content, baseSha }) => ({
+            path,
+            content,
+            baseSha,
+          })),
+          message,
+          branch: okRef.current?.branch,
+        });
+        if (!result.ok || !result.data) {
+          toast.error(
+            result.ok ? "コミットに失敗しました" : result.error.message,
+          );
+          return;
+        }
+        const committed = result.data.paths;
+        // 開き直しより先に待避を消す（残っていると自動復元で戻ってしまう）
+        await Promise.all(
+          committed.map((path) => deleteDraft(keyFor(path)).catch(() => {})),
+        );
+        for (const path of committed) markDraft(path, false);
+        setBulkOpen(false);
+        toast.success(`${committed.length}件の章をコミットしました`);
+        // 開いている章が含まれていたら開き直して基準SHAを進める
+        const current = currentRef.current;
+        if (current && committed.includes(current.path)) {
+          await openChapterFlow(current.path);
+        }
+      } finally {
+        setBulkCommitting(false);
+      }
+    },
+    [bulkDrafts, projectId, keyFor, markDraft, openChapterFlow],
+  );
 
   const {
     reviewOpen,
@@ -733,12 +797,14 @@ export function VerticalEditor({
         actualPages={actualPages}
         kumi={kumi}
         chaptersCount={chapters.length}
+        draftCount={draftPaths.size}
         projectId={projectId}
         fullPreviewLoading={fullPreviewLoading}
         detached={detached}
         previewOpen={previewOpen}
         onToggleSidebar={() => setSidebarOpen((open) => !open)}
         onRequestSave={requestSave}
+        onOpenBulkCommit={openBulkCommit}
         onOpenProofread={() => void openProofread()}
         onOpenCritique={openCritique}
         onOpenSettings={() => setSettingsOpen(true)}
@@ -995,6 +1061,14 @@ export function VerticalEditor({
         )}
       </div>
 
+      <BulkCommitDialog
+        open={bulkOpen}
+        branch={okWs.branch}
+        drafts={bulkDrafts}
+        committing={bulkCommitting}
+        onConfirm={(paths, message) => void confirmBulkCommit(paths, message)}
+        onOpenChange={setBulkOpen}
+      />
       <SaveDialog
         open={saveDialogOpen}
         branch={okWs.branch}

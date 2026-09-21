@@ -9,10 +9,11 @@ export type { EditorWorkspaceData } from "./editor/workspace";
 export {
   openChapter,
   saveChapter,
+  saveChapters,
   createChapter,
   getAllChapterContents,
 } from "./editor/chapters";
-export type { ChapterData } from "./editor/chapters";
+export type { BulkCommitFile, ChapterData } from "./editor/chapters";
 
 export {
   getBookSettings,

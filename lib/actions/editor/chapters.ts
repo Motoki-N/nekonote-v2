@@ -6,10 +6,17 @@ import { joinRepoPath } from "@/lib/editor/book-config";
 import { appendChapterToEntry } from "@/lib/editor/entry-sync";
 import { chapterScaffold } from "@/lib/editor/manuscript-scaffold";
 import {
+  createCommit,
   createFileContent,
+  createTree,
+  getBranchHeadShaOrNull,
+  getDefaultBranch,
   getFileContent,
+  getFullTree,
   putFileContent,
+  updateBranchRef,
 } from "@/lib/git/github";
+import type { SetupTreeEntry } from "@/lib/git/github";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import {
   blobShaSchema,
@@ -81,6 +88,112 @@ export async function saveChapter(
       branch,
     });
     return { ok: true, data: result };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/** 一括コミットの上限（章は高々数十。ツリー1本に載る範囲で暴発を抑える） */
+const MAX_BULK_FILES = 50;
+
+export type BulkCommitFile = {
+  path: string;
+  content: string;
+  /** 編集開始時点の blob SHA（ファイルごとの楽観ロック基準） */
+  baseSha: string;
+};
+
+/**
+ * 未コミットの章をまとめて1コミットにする（Issue #255 の「やりたいこと 2」）。
+ * 1ファイルずつの `saveChapter` と違い Git Data API のツリーを使うため、
+ * 何章あってもコミットは1つ・履歴も1行で済む（一日の終わりの区切りコミット用）。
+ *
+ * ファイルごとに `baseSha` を HEAD のツリーと照合し、1つでもずれていれば
+ * **何もコミットせず** conflict を返す（部分的に反映されると、どこまで入ったかを
+ * ユーザーが追えなくなる）。競合の解消は従来どおり章単位のマージ支援で行う
+ */
+export async function saveChapters(
+  projectId: string,
+  params: {
+    files: BulkCommitFile[];
+    message: string;
+    branch?: string;
+  },
+): Promise<ActionResult<{ commitSha: string; paths: string[] }>> {
+  try {
+    const ctx = await loadEditorContext(projectId);
+    // 何章まとめても1コミット＝1回だけ消費する
+    enforceRateLimit(ctx.userId, "editor-save", { perMinute: 12, perDay: 600 });
+    const branch = parseBranch(params.branch);
+    const message = commitMessageSchema.parse(params.message);
+    if (params.files.length === 0) {
+      throw new AppError("validation", "コミットする章がありません");
+    }
+    if (params.files.length > MAX_BULK_FILES) {
+      throw new AppError(
+        "validation",
+        `一度にコミットできるのは${MAX_BULK_FILES}章までです`,
+      );
+    }
+    // 開く/保存と同じ検証を通す（多層防御）
+    const files = params.files.map((file) => ({
+      path: validateChapterPath(ctx.basePath, file.path),
+      content: contentSchema.parse(file.content),
+      baseSha: blobShaSchema.parse(file.baseSha),
+    }));
+    const paths = new Set(files.map((file) => file.path));
+    if (paths.size !== files.length) {
+      throw new AppError("validation", "同じ章が重複しています");
+    }
+
+    // 衝突チェックとコミットの base_tree を同じ HEAD に揃える
+    // （ずれていると、その間に入った他所の変更を無警告で巻き戻しうる）
+    const targetBranch =
+      branch ?? (await getDefaultBranch(ctx.token, ctx.repo));
+    const headSha = await getBranchHeadShaOrNull(
+      ctx.token,
+      ctx.repo,
+      targetBranch,
+    );
+    if (headSha === null) {
+      throw new AppError("validation", "コミット先のブランチが見つかりません");
+    }
+    const { treeSha: baseTreeSha, files: baseFiles } = await getFullTree(
+      ctx.token,
+      ctx.repo,
+      headSha,
+    );
+    const shaByPath = new Map(baseFiles.map((file) => [file.path, file.sha]));
+    const conflicted = files.filter(
+      (file) => shaByPath.get(file.path) !== file.baseSha,
+    );
+    if (conflicted.length > 0) {
+      const names = conflicted
+        .map((file) => file.path.split("/").pop() ?? file.path)
+        .join("・");
+      throw new AppError(
+        "conflict",
+        `${names} がリモートで更新されています。章を開いて差分を取り込んでから、もう一度まとめてコミットしてください`,
+      );
+    }
+
+    const entries: SetupTreeEntry[] = files.map((file) => ({
+      path: file.path,
+      mode: "100644",
+      type: "blob",
+      content: file.content,
+    }));
+    const treeSha = await createTree(ctx.token, ctx.repo, entries, baseTreeSha);
+    const commitSha = await createCommit(ctx.token, ctx.repo, {
+      message,
+      treeSha,
+      parentSha: headSha,
+    });
+    await updateBranchRef(ctx.token, ctx.repo, targetBranch, commitSha);
+    return {
+      ok: true,
+      data: { commitSha, paths: files.map((file) => file.path) },
+    };
   } catch (error) {
     return toActionError(error);
   }

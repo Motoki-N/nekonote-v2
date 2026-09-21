@@ -5,10 +5,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   deleteDraft,
   draftKey,
+  getDraft,
   listDraftKeys,
   setDraft,
 } from "@/lib/editor/draft-store";
+import type { Draft } from "@/lib/editor/draft-store";
 import type { CurrentChapter } from "@/components/editor/editor-state";
+
+/** 待避1件（一括コミットの対象。`path` はリポジトリルートからのパス） */
+export type DraftEntry = Draft & { path: string };
 
 // 待避（IndexedDB）のデバウンス（SPEC-vertical-editor-phase2 §5.1・§7）
 const DRAFT_DEBOUNCE_MS = 1000;
@@ -78,32 +83,55 @@ export function useDraftStore({
     });
   }, []);
 
-  /** 現在の内容で待避を即時確定する（デバウンス中の分を落とさない） */
-  const persistDraft = useCallback(() => {
+  /**
+   * 現在の内容で待避を即時確定する（デバウンス中の分を落とさない）。
+   * 書き込みの完了を待てるよう Promise を返す（一括コミットの収集が使う）
+   */
+  const persistDraft = useCallback((): Promise<void> => {
     const current = currentRef.current;
-    if (!current) return;
+    if (!current) return Promise.resolve();
     const content = contentRef.current;
     const key = keyFor(current.path);
     if (content === current.remoteContent) {
-      deleteDraft(key).catch(() => {});
       markDraft(current.path, false);
-    } else {
-      setDraft(key, {
-        content,
-        baseSha: current.baseSha,
-        updatedAt: Date.now(),
-      }).catch(() => {});
-      markDraft(current.path, true);
+      return deleteDraft(key).catch(() => {});
     }
+    markDraft(current.path, true);
+    return setDraft(key, {
+      content,
+      baseSha: current.baseSha,
+      updatedAt: Date.now(),
+    }).catch(() => {});
   }, [keyFor, markDraft, currentRef, contentRef]);
 
-  const flushDraft = useCallback(() => {
+  const flushDraft = useCallback((): Promise<void> => {
     if (draftTimerRef.current) {
       clearTimeout(draftTimerRef.current);
       draftTimerRef.current = null;
     }
-    persistDraft();
+    return persistDraft();
   }, [persistDraft]);
+
+  /**
+   * 待避中の章をすべて集める（一括コミットの対象。Issue #255-2）。
+   * 編集中の章を取りこぼさないよう、確定の完了を待ってから読み出す。
+   * 一覧の順序は章のパス昇順（サイドバーの並びとは別物だが安定する）
+   */
+  const collectDrafts = useCallback(async (): Promise<DraftEntry[]> => {
+    await flushDraft();
+    if (repo === null || branch === null) return [];
+    const prefix = `${repo}:${branch}:`;
+    const keys = await listDraftKeys(prefix);
+    const entries = await Promise.all(
+      keys.sort().map(async (key) => {
+        const draft = await getDraft(key);
+        return draft === null
+          ? null
+          : { ...draft, path: key.slice(prefix.length) };
+      }),
+    );
+    return entries.filter((entry): entry is DraftEntry => entry !== null);
+  }, [flushDraft, repo, branch]);
 
   /** 打鍵側から呼ぶデバウンス待避（DRAFT_DEBOUNCE_MS 後に確定） */
   const scheduleDraft = useCallback(() => {
@@ -126,5 +154,6 @@ export function useDraftStore({
     persistDraft,
     flushDraft,
     scheduleDraft,
+    collectDrafts,
   };
 }
