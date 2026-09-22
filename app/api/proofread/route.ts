@@ -6,6 +6,7 @@ import {
   buildRejectedSuggestionsGuidance,
   buildReviewSystemPrompt,
   PROOFREAD_COMMENT_GUIDANCE,
+  PROOFREAD_EXHAUSTIVE_GUIDANCE,
 } from "@/lib/ai/prompts";
 import { AppError, errorResponse } from "@/lib/errors";
 import { resolveRepoGit } from "@/lib/git/project-context";
@@ -21,8 +22,9 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { aiCapabilities, parseEnum, writingGenres } from "@/lib/schemas/enums";
 
-// 原稿全文の校正はレビュー文書より提案数が多くなりうるため実行上限を延長
-export const maxDuration = 120;
+// 原稿全文の校正はレビュー文書より提案数が多くなりうるため実行上限を延長。
+// 網羅性の指示（Issue #281）で1回あたりの出力件数がさらに増えるため /api/review と同じ300秒にする
+export const maxDuration = 300;
 
 // 選択範囲校正の追加指針（SPEC-proofread-selection §4。選択部分だけが入力になる旨を明示し、
 // 断片の冒頭・末尾を「文が途中」と誤指摘させない）
@@ -159,12 +161,15 @@ export async function POST(req: Request) {
       model,
       output: "array",
       schema: proofreadSuggestionSchema,
-      // コメントは作者のメモとして文脈に使わせ、校正対象からは外す（Issue #17）
+      // コメントは作者のメモとして文脈に使わせ、校正対象からは外す（Issue #17）。
+      // 網羅性の指示は、再校正のたびに別の指摘が出てくるのを抑えるため（Issue #281）
       system: [
         buildReviewSystemPrompt({
           personaDescription: profile.personas.description,
           promptTemplate: profile.prompt_template,
         }),
+        "",
+        PROOFREAD_EXHAUSTIVE_GUIDANCE,
         "",
         PROOFREAD_COMMENT_GUIDANCE,
         ...(selection !== undefined ? ["", PROOFREAD_SELECTION_GUIDANCE] : []),

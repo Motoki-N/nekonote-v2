@@ -49,7 +49,7 @@ selection 指定時のサーバー処理:
 
 1. 認証・レート制限・RLS越し所有確認・PAT取得・最新原稿取得は従来と共通
 2. `selection` を検証: 10文字以上、かつ最新原稿に部分文字列として存在すること（なければ AppError validation）
-3. `streamObject` の prompt に **selection のみ**を渡す（system は従来と同じ: 校正さん＋校正プロファイル＋コメント指針）
+3. `streamObject` の prompt に **selection のみ**を渡す（system は全文校正と同じ構成: 校正さん＋校正プロファイル＋網羅性の指示〈Issue #281〉＋コメント指針＋本節の選択範囲指針＋却下済みの抑止〈Issue #262。範囲内のものだけ〉）
 4. onFinish の保存:
    - 該当リンクの pending を取得し、`selection.includes(original_text)` が真のものだけ削除（範囲内置き換え）
    - 新提案を一括 insert（granularity='sentence'・status='pending'）
