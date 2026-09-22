@@ -92,6 +92,32 @@ const STATUS_VARIANT: Record<
 };
 
 /**
+ * 提案一覧の絞り込み（Issue #285）。多段校正で1回の指摘件数が増え、
+ * 一覧のどこに手をつければよいかが埋もれるようになったため、既定は未処理だけを見せる。
+ * 保留は「判断を先送りした」状態＝まだ対応が必要なので未処理側に含める
+ */
+type SuggestionFilter = "all" | "unprocessed" | "processed";
+
+/** 未処理＝これから作者の判断が要るもの（保留を含む） */
+function isUnprocessed(status: SuggestionStatus): boolean {
+  return status === "pending" || status === "on_hold";
+}
+
+const FILTER_LABEL: Record<SuggestionFilter, string> = {
+  all: "すべて",
+  unprocessed: "未処理",
+  processed: "処理済み",
+};
+
+const FILTER_EMPTY_MESSAGE: Record<SuggestionFilter, string> = {
+  all: "提案はありません",
+  unprocessed: "未処理の提案はありません",
+  processed: "処理済みの提案はありません",
+};
+
+const FILTER_ORDER: SuggestionFilter[] = ["all", "unprocessed", "processed"];
+
+/**
  * 校正パネル（SPEC-proofreading §3.3）。
  * lg以上は右サイドパネル、lg未満はボトムシート（レビューパネルと同じレイアウト言語）。
  * streamObject の配列を useObject で受け、確定した提案から順にカード表示する
@@ -125,6 +151,8 @@ export function ProofreadPanel({
   onClose: () => void;
 }) {
   const [hasRun, setHasRun] = useState(false);
+  // 既定は未処理のみ（Issue #285）。絞り込みは表示だけの都合なのでクライアント状態で持つ
+  const [filter, setFilter] = useState<SuggestionFilter>("unprocessed");
   const [refreshing, setRefreshing] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [writingBack, setWritingBack] = useState(false);
@@ -191,7 +219,26 @@ export function ProofreadPanel({
           ),
       )
     : null;
-  const pendingCount = suggestions.filter((s) => s.status === "pending").length;
+  // 絞り込みの件数バッジと表示対象（コミット・書き戻しの対象は suggestions 全体のままで、絞り込みの影響を受けない）
+  const filterCounts = useMemo(() => {
+    const unprocessed = suggestions.filter((s) =>
+      isUnprocessed(s.status),
+    ).length;
+    return {
+      all: suggestions.length,
+      unprocessed,
+      processed: suggestions.length - unprocessed,
+    } satisfies Record<SuggestionFilter, number>;
+  }, [suggestions]);
+  const visibleSuggestions = useMemo(
+    () =>
+      filter === "all"
+        ? suggestions
+        : suggestions.filter(
+            (s) => isUnprocessed(s.status) === (filter === "unprocessed"),
+          ),
+    [suggestions, filter],
+  );
   const acceptedUncommitted = suggestions.filter(
     (s) => s.status === "accepted" && s.committed_sha === null,
   );
@@ -207,6 +254,14 @@ export function ProofreadPanel({
     (s) => !isApplicable(content, s.original_text),
   ).length;
   const displayError = error ? toDisplayError(error) : streamError;
+  // 実行直後の「指摘なし」案内。絞り込みの空表示と二重に出さないための判定にも使う。
+  // 保留が残っているうちは「指摘なし」ではない（保留は未処理扱い。Issue #285）
+  const showNoFindings =
+    hasRun &&
+    !busy &&
+    filterCounts.unprocessed === 0 &&
+    streaming === null &&
+    !displayError;
 
   const handleUpdateStatus = async (id: string, status: SuggestionStatus) => {
     setUpdatingId(id);
@@ -283,6 +338,27 @@ export function ProofreadPanel({
         </div>
       </header>
 
+      {streaming === null && suggestions.length > 0 && (
+        <div
+          role="group"
+          aria-label="提案の絞り込み"
+          className="flex items-center gap-1 border-b border-border px-3 py-2"
+        >
+          {FILTER_ORDER.map((value) => (
+            <Button
+              key={value}
+              size="xs"
+              variant={filter === value ? "secondary" : "ghost"}
+              aria-pressed={filter === value}
+              className={filter === value ? undefined : "text-muted-foreground"}
+              onClick={() => setFilter(value)}
+            >
+              {FILTER_LABEL[value]} {filterCounts[value]}
+            </Button>
+          ))}
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-3">
         <div className="flex flex-col gap-3">
           {suggestions.length === 0 && streaming === null && !hasRun && (
@@ -290,17 +366,21 @@ export function ProofreadPanel({
               「校正を受ける」で、校正さんが誤字脱字・表記揺れ・文法をチェックします
             </p>
           )}
-          {hasRun &&
-            !busy &&
-            pendingCount === 0 &&
-            streaming === null &&
-            !displayError && (
+          {showNoFindings && (
+            <p className="p-2 text-sm text-muted-foreground">
+              指摘事項はありません
+            </p>
+          )}
+          {streaming === null &&
+            suggestions.length > 0 &&
+            visibleSuggestions.length === 0 &&
+            !showNoFindings && (
               <p className="p-2 text-sm text-muted-foreground">
-                指摘事項はありません
+                {FILTER_EMPTY_MESSAGE[filter]}
               </p>
             )}
           {streaming === null &&
-            suggestions.map((s) => (
+            visibleSuggestions.map((s) => (
               <SavedSuggestionCard
                 key={s.id}
                 suggestion={s}
