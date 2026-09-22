@@ -433,6 +433,33 @@ export const PROOFREAD_EXHAUSTIVE_GUIDANCE = [
 ].join("\n");
 
 /**
+ * 多段校正の2周目以降に添える「すでに出した指摘」の一覧（Issue #281）。
+ * 同じ原稿を何周も見せて漏れを拾わせるため、前の周までの検出結果を渡して
+ * 同じ指摘を繰り返させず、見落とし箇所だけに注意を向けさせる。
+ * 却下済み（buildRejectedSuggestionsGuidance）が「作者が要らないと判断したもの」なのに対し、
+ * こちらは「今回の校正で既に挙がっているもの」で、作者の判断はまだ入っていない。
+ * 一覧が空なら空文字を返す（1周目は節を足さない）
+ */
+export function buildAlreadyFoundGuidance(
+  found: { original_text: string; suggested_text: string }[],
+): string {
+  if (found.length === 0) return "";
+  // 原文・修正案に改行が含まれると箇条書きが壊れるため1行へ畳む
+  const flatten = (text: string) => text.replace(/\r?\n/g, " ");
+  return [
+    "# すでに挙げた指摘（今回の校正の前の周で検出済み）",
+    "同じ原稿をもう一度見直している。以下はこの校正で既に挙げた指摘である。",
+    "- これらと同じ指摘は繰り返さない（言い回しや修正案を変えただけの再提案も不可）",
+    "- 前の周で見落とした別の箇所・別の観点の問題だけを挙げる",
+    "- 見落としが見つからなければ、無理に挙げず空の一覧を返す",
+    ...found.map(
+      (s) =>
+        `- 「${flatten(s.original_text)}」→「${flatten(s.suggested_text)}」`,
+    ),
+  ].join("\n");
+}
+
+/**
  * 一度拒否した指摘を蒸し返させないための指示（Issue #262）。
  * 作者が「このままでよい」と判断して却下した提案を一覧で渡し、同じ指摘を出させない。
  * 確実性はサーバー側の保存前フィルタ（suggestionKey の一致）が担保し、

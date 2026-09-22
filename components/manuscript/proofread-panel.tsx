@@ -12,7 +12,6 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
-import { z } from "zod";
 
 import {
   commitAcceptedSuggestions,
@@ -22,8 +21,10 @@ import {
 import { isApplicable, suggestionKey } from "@/lib/proofread-apply";
 import type { SuggestionStatus } from "@/lib/schemas/enums";
 import {
+  PROOFREAD_MAX_PASSES,
   PROOFREAD_SELECTION_MIN_CHARS,
-  proofreadSuggestionSchema,
+  proofreadStreamSchema,
+  type ProofreadStopReason,
 } from "@/lib/schemas/manuscript";
 import {
   AlertDialog,
@@ -39,8 +40,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 
-const suggestionsSchema = z.array(proofreadSuggestionSchema);
-
 /** /api/proofread の errorResponse（JSON）からユーザー向けメッセージを取り出す */
 function toDisplayError(error: Error): string {
   try {
@@ -52,6 +51,27 @@ function toDisplayError(error: Error): string {
     // JSON でなければ汎用文言にフォールバック
   }
   return "校正の実行に失敗しました。時間をおいて再試行してください";
+}
+
+/**
+ * 多段校正の打ち切り理由ごとの案内（Issue #281）。
+ * 「出し切ったのか、まだ続きがあるのか」が作者に伝わらないと、
+ * 結局また手で再校正することになるため、周回の結末を明示する
+ */
+function runOutcomeMessage(
+  passes: number,
+  reason: ProofreadStopReason,
+): string {
+  switch (reason) {
+    case "converged":
+      return `${passes}周チェックし、これ以上の指摘は出なくなりました`;
+    case "max_passes":
+      return `上限の${PROOFREAD_MAX_PASSES}周までチェックしました。まだ指摘が出続けている状態のため、もう一度校正すると追加の指摘が出る可能性があります`;
+    case "time_limit":
+      return `実行時間の上限により${passes}周で打ち切りました。もう一度校正すると続きの指摘が出る可能性があります`;
+    case "error":
+      return `${passes}周目で中断しました。そこまでに見つかった指摘は保存されています`;
+  }
 }
 
 const STATUS_LABEL: Record<SuggestionStatus, string> = {
@@ -110,10 +130,15 @@ export function ProofreadPanel({
   const [writingBack, setWritingBack] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [streamError, setStreamError] = useState<string | null>(null);
+  // 多段校正の結末（何周まわして、なぜ止まったか。Issue #281）
+  const [runOutcome, setRunOutcome] = useState<{
+    passes: number;
+    stopReason: ProofreadStopReason;
+  } | null>(null);
 
   const { object, submit, isLoading, stop, error } = useObject({
     api: "/api/proofread",
-    schema: suggestionsSchema,
+    schema: proofreadStreamSchema,
     onError: (err) => setStreamError(toDisplayError(err)),
     onFinish: ({ object: finished, error: finishError }) => {
       // ストリームは正常終了したが最終検証に失敗（プロバイダエラー等で空のまま終了）
@@ -122,9 +147,15 @@ export function ProofreadPanel({
           "校正の実行に失敗しました。時間をおいて再試行してください",
         );
       }
+      if (finished?.stopReason !== undefined) {
+        setRunOutcome({
+          passes: finished.passes ?? 0,
+          stopReason: finished.stopReason,
+        });
+      }
       // 保存済みの提案（statusつき）と最新原稿を取り直す。
-      // サーバー側の保存（onFinish）はストリーム終了後に完了するため、
-      // 即時の取り直しに加えて一拍おいてもう一度取り直す（レース対策）
+      // 多段化以降、サーバーはストリームを閉じる前に保存を済ませる（SPEC-proofreading §5）ので
+      // 1回目の取り直しで足りるはずだが、一拍おいた再取得は保険として残す
       setRefreshing(true);
       void onCompleted()
         .then(() => new Promise((resolve) => setTimeout(resolve, 1200)))
@@ -147,7 +178,7 @@ export function ProofreadPanel({
     [suggestions],
   );
   const streaming = isLoading
-    ? (object ?? []).filter(
+    ? (object?.suggestions ?? []).filter(
         (s) =>
           // 生成途中で修正案が未確定のカードは判定せずそのまま出す
           s?.original_text === undefined ||
@@ -301,9 +332,14 @@ export function ProofreadPanel({
               ))}
               <div className="flex items-center gap-2 p-2 text-xs text-muted-foreground">
                 <Loader2 className="size-3 animate-spin" />
-                校正中…
+                校正中…（{streaming.length}件）
               </div>
             </>
+          )}
+          {runOutcome && streaming === null && !busy && !displayError && (
+            <p className="p-2 text-xs text-muted-foreground">
+              {runOutcomeMessage(runOutcome.passes, runOutcome.stopReason)}
+            </p>
           )}
           {displayError && (
             <p className="text-sm text-destructive">{displayError}</p>
@@ -428,6 +464,7 @@ export function ProofreadPanel({
                   onClick={() => {
                     setHasRun(true);
                     setStreamError(null);
+                    setRunOutcome(null);
                     submit({ manuscriptLinkId: linkId, selection });
                   }}
                 >
@@ -440,6 +477,7 @@ export function ProofreadPanel({
               onClick={() => {
                 setHasRun(true);
                 setStreamError(null);
+                setRunOutcome(null);
                 submit({ manuscriptLinkId: linkId });
               }}
             >

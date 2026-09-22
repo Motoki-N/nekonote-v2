@@ -3,6 +3,7 @@
 作成日: 2026-07-24（Issue #32 のインタビュー駆動で策定）
 ステータス: **確定**（2026-07-24 レビュー済み）
 親SPEC: SPEC-proofreading（§7スコープ外項目のうち「選択範囲の校正」を切り出し。「長文の自動分割」は本SPECの対象外＝Issue #32 に残置）
+改訂: 2026-09-22 多段校正（Issue #281・SPEC-proofreading §3.5）へ追随。選択範囲校正も同じ周回に乗る
 
 ## 1. 目的
 
@@ -50,11 +51,13 @@ selection 指定時のサーバー処理:
 1. 認証・レート制限・RLS越し所有確認・PAT取得・最新原稿取得は従来と共通
 2. `selection` を検証: 10文字以上、かつ最新原稿に部分文字列として存在すること（なければ AppError validation）
 3. `streamObject` の prompt に **selection のみ**を渡す（system は全文校正と同じ構成: 校正さん＋校正プロファイル＋網羅性の指示〈Issue #281〉＋コメント指針＋本節の選択範囲指針＋却下済みの抑止〈Issue #262。範囲内のものだけ〉）
-4. onFinish の保存:
+4. **周回も全文校正と同じ**（Issue #281。収束まで最大6周・2周目以降は既出の指摘を添える）。
+   選択範囲は入力が短く1周で収束しやすいため、実際の周回数は全文校正より少なくなる
+5. 全周終了後の保存:
    - 該当リンクの pending を取得し、`selection.includes(original_text)` が真のものだけ削除（範囲内置き換え）
    - 新提案を一括 insert（granularity='sentence'・status='pending'）
    - `last_reviewed_commit` は**更新しない**
-5. 使用量記録（recordAiUsage・feature='proofread'）は従来どおり
+6. 使用量記録（recordAiUsage・feature='proofread'）は従来どおり（**全周ぶんのトークンを合算**して1行に記録する）
 
 全文校正（selection なし）のパスは一切変更しない（全 pending 置き換え・SHA更新を維持）。
 

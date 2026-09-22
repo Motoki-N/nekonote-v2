@@ -77,6 +77,34 @@ export const proofreadSuggestionSchema = z.object({
 });
 export type ProofreadSuggestion = z.infer<typeof proofreadSuggestionSchema>;
 
+// 多段校正の打ち切り理由（Issue #281。UIの案内文言の出し分けに使う）。
+// converged=新規指摘0件で収束 / max_passes=上限周回に到達 /
+// time_limit=実行時間の予算切れ / error=途中でプロバイダエラー
+export const proofreadStopReasons = [
+  "converged",
+  "max_passes",
+  "time_limit",
+  "error",
+] as const;
+export type ProofreadStopReason = (typeof proofreadStopReasons)[number];
+
+/**
+ * /api/proofread の応答スキーマ（Issue #281・SPEC-proofreading §3.5）。
+ * 多段化にあたり「提案の配列」から「配列＋実行メタ情報」へ変更した。
+ * サーバーは suggestions を先に流し切ってから passes / stopReason を書き出すため、
+ * ストリーミング中のクライアントには suggestions だけが順に見える
+ */
+export const proofreadStreamSchema = z.object({
+  suggestions: z.array(proofreadSuggestionSchema),
+  /** 実際に走った周回数 */
+  passes: z.number().int().min(0).optional(),
+  stopReason: z.enum(proofreadStopReasons).optional(),
+});
+
+// 多段校正の上限周回数（Issue #281）。実測で5〜6周で収束するため6を上限に取る。
+// 新規指摘が0件になった時点で早期終了するので、収束が早ければここまで回さない
+export const PROOFREAD_MAX_PASSES = 6;
+
 // 選択範囲校正の最小長（SPEC-proofread-selection §2。UIのボタン表示とサーバー検証で共用）
 export const PROOFREAD_SELECTION_MIN_CHARS = 10;
 
