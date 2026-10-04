@@ -1,5 +1,6 @@
 "use server";
 
+import { after } from "next/server";
 import { z } from "zod";
 
 import { AppError, toActionError } from "@/lib/errors";
@@ -185,18 +186,21 @@ export async function openManuscriptFile(
       .sort((a, b) => a.created_at.localeCompare(b.created_at));
 
     // 原稿読み込み時に当日の総文字数を進捗として記録する（SPEC-proofreading §3.4）。
-    // 補助機能なので、失敗しても原稿の読み込み自体は成功させる
-    try {
-      await recordWritingProgress(supabase, {
-        projectId: pid,
-        repo,
-        basePath,
-        token,
-        openedFile: { path, content },
-      });
-    } catch (progressError) {
-      console.error("進捗の記録に失敗:", progressError);
-    }
+    // 全原稿ファイルを GitHub から取り直すため重く、応答を待たせないよう応答後に実行する
+    // （Issue #290）。補助機能なので、失敗しても原稿の読み込み自体は成功させる
+    after(async () => {
+      try {
+        await recordWritingProgress(supabase, {
+          projectId: pid,
+          repo,
+          basePath,
+          token,
+          openedFile: { path, content },
+        });
+      } catch (progressError) {
+        console.error("進捗の記録に失敗:", progressError);
+      }
+    });
 
     return {
       ok: true,
