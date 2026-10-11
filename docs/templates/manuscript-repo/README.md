@@ -83,8 +83,10 @@ node scripts/check-pages.mjs output/ryu-no-su-a6.pdf  # ページ数検査
 GS_OPTIONS=-dNOSAFER npx press-ready build --input output/ryu-no-su-a6.pdf --output output/ryu-no-su-a6-press.pdf
 ```
 
-macOS でのプレビューは組版に游明朝、CI（Linux）では Noto Serif CJK JP が使われる。
-書体は変わるが版面設計（行数×字数）は同一。
+本文書体は Noto Serif CJK JP を優先する（CI（Linux）の入稿PDFと同じ書体）。
+プレビュー端末にも Noto Serif CJK JP を入れておくと、改ページ位置がPDFと揃う。
+Google Fonts 配布の「Noto Serif JP」は別名で登録されるため一致しない。CJK版（notofonts/noto-cjk の `NotoSerifCJK*.otf` / `.ttc`）を入れること。
+未インストールの macOS では游明朝で組まれる（版面設計＝行数×字数は同一だが、改ページ位置はずれ得る）。
 
 ## 入稿
 

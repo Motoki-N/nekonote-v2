@@ -10,8 +10,9 @@
   --nekonote--trim-width: 105mm;  /* 仕上がり寸法（判型テーマで上書き） */
   --nekonote--trim-height: 148mm;
 
-  /* GitHub Actions（Linux）には游明朝がないため Noto Serif CJK JP へフォールバック */
-  --vs-font-family: '游明朝', 'YuMincho', 'Noto Serif CJK JP', serif;
+  /* 入稿PDF（GitHub Actions＝Linux）と同じ書体でプレビューを組むため Noto Serif CJK JP を先頭に置く。
+     プレビュー端末に未インストールなら游明朝へフォールバックする（改ページ位置がPDFとずれ得る） */
+  --vs-font-family: 'Noto Serif CJK JP', '游明朝', 'YuMincho', serif;
 }
 
 /* ---- ノンブル・柱 ---- */
