@@ -73,6 +73,8 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 
 ## ローカルビルド
 
+`package-lock.json` は CI（`npm ci`・`setup-node` の npm キャッシュ）が必須とするため、削除せずコミットしておくこと。
+
 ```bash
 npm install
 npx vivliostyle build -c book.config.js       # 文庫判A6 → output/*.pdf
