@@ -3,6 +3,7 @@
 作成日: 2026-07-16
 ステータス: **確定**（2026-07-16 インタビュー済み。§13 参照）
 親SPEC: [SPEC-vertical-editor.md](SPEC-vertical-editor.md) §5.1 Phase 3
+改訂: 2026-10-15 §7 設定フォームに「目次」区画を追加（Issue #307・SPEC-toc-settings。目次の有無・見出し・深さ・外す章・見た目）
 
 ## 1. 目的・完了条件
 

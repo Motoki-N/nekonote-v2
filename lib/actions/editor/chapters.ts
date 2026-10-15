@@ -3,6 +3,7 @@
 import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
 import { joinRepoPath } from "@/lib/editor/book-config";
+import type { PreviewTocSource } from "@/lib/editor/preview";
 import { appendChapterToEntry } from "@/lib/editor/entry-sync";
 import { chapterScaffold } from "@/lib/editor/manuscript-scaffold";
 import {
@@ -235,16 +236,19 @@ export async function createChapter(
  * 全章の本文を entry 順で返す（明示操作時のみ。SPEC §5.2）。
  * 全体プレビューと、全ファイル置換の対象収集（Issue #263）が使う。
  * blob SHA も返すのは、置換結果を待避に書くとき楽観ロックの基準が要るため。
- * 目次ページ（{ rel: 'contents' }）はCLIビルド時の生成物のためプレビューには含まれない
+ * 目次ページ（{ rel: 'contents' }）はCLIビルド時の生成物のため、差し込み位置と設定だけを返し、
+ * プレビュー側で再現する（SPEC-toc-settings §7）
  */
 export async function getAllChapterContents(
   projectId: string,
   branch?: string,
-): Promise<ActionResult<{ chapters: ChapterData[] }>> {
+): Promise<
+  ActionResult<{ chapters: ChapterData[]; toc: PreviewTocSource | null }>
+> {
   try {
     const ctx = await loadEditorContext(projectId);
     const ref = parseBranch(branch);
-    const { chapters } = await listChapters(ctx, ref);
+    const { chapters, toc } = await listChapters(ctx, ref);
     // 章数は高々数十の想定。5並列で順序を保って取得する
     const results: ChapterData[] = new Array(chapters.length);
     let index = 0;
@@ -263,7 +267,7 @@ export async function getAllChapterContents(
     await Promise.all(
       Array.from({ length: Math.min(5, chapters.length) }, worker),
     );
-    return { ok: true, data: { chapters: results } };
+    return { ok: true, data: { chapters: results, toc } };
   } catch (error) {
     return toActionError(error);
   }

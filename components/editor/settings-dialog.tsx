@@ -10,10 +10,23 @@ import {
   saveNombreVars,
   saveOkuzuke,
   saveThemeVars,
+  saveTocSettings,
 } from "@/lib/actions/editor";
-import type { BookSettingsData, ThemeSettings } from "@/lib/actions/editor";
+import type {
+  BookSettingsData,
+  ThemeSettings,
+  TocSettingsData,
+} from "@/lib/actions/editor";
 import { NOMBRE_SLOTS, NOMBRE_SLOT_LABELS } from "@/lib/editor/book-config";
 import type { EntryItem, NombreSlot } from "@/lib/editor/book-config";
+import {
+  DEFAULT_TOC_TITLE,
+  TOC_DEPTH_OPTIONS,
+  TOC_LEADER_OPTIONS,
+  TOC_PAGE_NUMBER_OPTIONS,
+  isValidTocTitle,
+} from "@/lib/editor/toc";
+import type { TocLeader, TocPageNumber } from "@/lib/editor/toc";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +39,7 @@ import {
 import { Input } from "@/components/ui/input";
 
 /**
- * 設定フォーム（SPEC-vertical-editor-phase3 §7）。4区画（書誌・章構成・組み設定・奥付）を
+ * 設定フォーム（SPEC-vertical-editor-phase3 §7）。区画（書誌・章構成・目次・組み設定・奥付）を
  * それぞれ独立に保存＝コミットする。書き換えは正規表現置換＋置換後検証（サーバー側）。
  * 対応できない構造のセクションは読み取り専用の案内になる（フェイルソフト）
  */
@@ -114,13 +127,25 @@ export function SettingsDialog({
                     config={data.config}
                     onSaved={handleSaved}
                   />
+                  {/* 目次の保存でも entry が変わるため、設定ファイルの版ごとに作り直して
+                      古い並び（目次要素の有無）のまま上書きコミットしないようにする（Issue #307） */}
                   <EntrySection
+                    key={data.config.sha}
                     projectId={projectId}
                     branch={branch}
                     config={data.config}
                     candidates={data.entryCandidates}
                     onSaved={handleSaved}
                   />
+                  {data.toc && (
+                    <TocSection
+                      key={Object.values(data.toc.baseShas).join(",")}
+                      projectId={projectId}
+                      branch={branch}
+                      toc={data.toc}
+                      onSaved={handleSaved}
+                    />
+                  )}
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
@@ -543,6 +568,411 @@ function EntrySection({
           <Button
             size="sm"
             disabled={!dirty}
+            onClick={() => setConfirming(true)}
+          >
+            変更を確認
+          </Button>
+        </div>
+      )}
+    </SectionFrame>
+  );
+}
+
+// ---- 2-2. 目次（SPEC-toc-settings。Issue #307） ----
+
+const onOffLabel = (value: boolean, on: string, off: string) =>
+  value ? on : off;
+
+function depthLabel(depth: number): string {
+  return (
+    TOC_DEPTH_OPTIONS.find((option) => option.value === depth)?.label ??
+    `その他（${depth}）`
+  );
+}
+
+function optionLabel<T extends string>(
+  options: readonly { value: T; label: string }[],
+  value: T,
+): string {
+  return options.find((option) => option.value === value)?.label ?? value;
+}
+
+/**
+ * 目次の有無・見出し・深さ（book.config.js と EPUB 設定）と、外す章・見た目（判型テーマCSSの
+ * 目次ブロック）を1区画で扱い、変わったファイルだけを1コミットで保存する（SPEC §6）
+ */
+function TocSection({
+  projectId,
+  branch,
+  toc,
+  onSaved,
+}: {
+  projectId: string;
+  branch: string;
+  toc: TocSettingsData;
+  onSaved: () => void;
+}) {
+  const initialConfig = toc.config;
+  // 外す章は entry にあるものだけを扱う（ファイル名を変えた章の古い指定は保存で落ちる）
+  const initialStyle = toc.style
+    ? {
+        ...toc.style,
+        excludedPaths: toc.chapters.filter((path) =>
+          toc.style?.excludedPaths.includes(path),
+        ),
+      }
+    : null;
+
+  const [enabled, setEnabled] = useState(initialConfig?.enabled ?? false);
+  const [title, setTitle] = useState(initialConfig?.title ?? DEFAULT_TOC_TITLE);
+  const [depth, setDepth] = useState(initialConfig?.depth ?? 0);
+  const [excluded, setExcluded] = useState<string[]>(
+    initialStyle?.excludedPaths ?? [],
+  );
+  const [showBookTitle, setShowBookTitle] = useState(
+    initialStyle?.showBookTitle ?? true,
+  );
+  const [pageNumber, setPageNumber] = useState<TocPageNumber>(
+    initialStyle?.pageNumber ?? "arabic",
+  );
+  const [leader, setLeader] = useState<TocLeader>(
+    initialStyle?.leader ?? "dots",
+  );
+  const [confirming, setConfirming] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  if (initialConfig === null && initialStyle === null) {
+    return (
+      <SectionFrame title="目次">
+        <p className="text-sm text-muted-foreground">
+          book.config.js
+          の目次設定（toc）とテーマCSSの目次ブロックを、フォームで扱えない形です。
+          VS Code等で直接編集してください。
+        </p>
+      </SectionFrame>
+    );
+  }
+
+  const trimmedTitle = title.trim();
+  const configChanges = initialConfig
+    ? [
+        ...(enabled !== initialConfig.enabled
+          ? [
+              {
+                label: "目次",
+                before: onOffLabel(initialConfig.enabled, "入れる", "入れない"),
+                after: onOffLabel(enabled, "入れる", "入れない"),
+              },
+            ]
+          : []),
+        ...(enabled && trimmedTitle !== initialConfig.title
+          ? [
+              {
+                label: "見出し",
+                before: initialConfig.title,
+                after: trimmedTitle,
+              },
+            ]
+          : []),
+        ...(enabled && depth !== initialConfig.depth
+          ? [
+              {
+                label: "載せる見出し",
+                before: depthLabel(initialConfig.depth),
+                after: depthLabel(depth),
+              },
+            ]
+          : []),
+      ]
+    : [];
+  const fileName = (path: string) => path.split("/").pop() ?? path;
+  const excludedText = (paths: string[]) =>
+    paths.length === 0 ? "なし" : paths.map(fileName).join("・");
+  const styleChanges = initialStyle
+    ? [
+        ...(excluded.join("\n") !== initialStyle.excludedPaths.join("\n")
+          ? [
+              {
+                label: "目次から外す章",
+                before: excludedText(initialStyle.excludedPaths),
+                after: excludedText(excluded),
+              },
+            ]
+          : []),
+        ...(showBookTitle !== initialStyle.showBookTitle
+          ? [
+              {
+                label: "書名",
+                before: onOffLabel(
+                  initialStyle.showBookTitle,
+                  "出す",
+                  "出さない",
+                ),
+                after: onOffLabel(showBookTitle, "出す", "出さない"),
+              },
+            ]
+          : []),
+        ...(pageNumber !== initialStyle.pageNumber
+          ? [
+              {
+                label: "ページ番号",
+                before: optionLabel(
+                  TOC_PAGE_NUMBER_OPTIONS,
+                  initialStyle.pageNumber,
+                ),
+                after: optionLabel(TOC_PAGE_NUMBER_OPTIONS, pageNumber),
+              },
+            ]
+          : []),
+        ...(leader !== initialStyle.leader
+          ? [
+              {
+                label: "リーダー",
+                before: optionLabel(TOC_LEADER_OPTIONS, initialStyle.leader),
+                after: optionLabel(TOC_LEADER_OPTIONS, leader),
+              },
+            ]
+          : []),
+      ]
+    : [];
+  // 判型テーマ間の食い違いは、見た目を変えていなくても保存で揃える（SPEC §5）
+  const sendStyle =
+    initialStyle !== null && (styleChanges.length > 0 || toc.stylesDiffer);
+  const sendConfig = initialConfig !== null && configChanges.length > 0;
+  const titleInvalid = enabled && !isValidTocTitle(trimmedTitle);
+
+  const toggleExcluded = (path: string, checked: boolean) => {
+    setExcluded((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(path);
+      else next.delete(path);
+      // entry の順を保つ（差分表示・書き込みの順序を安定させる）
+      return toc.chapters.filter((chapter) => next.has(chapter));
+    });
+  };
+
+  const commit = async () => {
+    setSaving(true);
+    try {
+      const result = await saveTocSettings(projectId, {
+        config: sendConfig ? { enabled, title: trimmedTitle, depth } : null,
+        style: sendStyle
+          ? { showBookTitle, pageNumber, leader, excludedPaths: excluded }
+          : null,
+        baseShas: toc.baseShas,
+        branch,
+      });
+      if (!result.ok) {
+        toast.error(result.error.message);
+        return;
+      }
+      toast.success("目次の設定をコミットしました");
+      if (result.data?.epubSkipped) {
+        toast.warning(
+          "EPUB設定（book.config.epub.js）は書き換えられない構造のため、印刷用だけを更新しました。EPUB設定は直接編集してください",
+        );
+      }
+      setConfirming(false);
+      onSaved();
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const styleDisabled = initialStyle === null || !enabled;
+
+  return (
+    <SectionFrame title="目次">
+      <p className="text-xs text-muted-foreground">
+        目次ページは入稿ビルドで自動生成されます。項目は章の見出しから作られ、ページ番号も組版時に入ります。
+        差し込み位置は「章構成（entry）」の上下ボタンで調整してください。
+      </p>
+      {initialConfig === null ? (
+        <p className="text-sm text-muted-foreground">
+          book.config.js
+          の目次設定（toc・entry）がフォームで扱えない形のため、目次の有無・見出し・
+          載せる見出しは直接編集してください。
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-3.5 shrink-0 accent-primary"
+              checked={enabled}
+              onChange={(event) => setEnabled(event.target.checked)}
+            />
+            目次を入れる
+          </label>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-sm">
+              見出し
+              <Input
+                value={title}
+                disabled={!enabled}
+                maxLength={30}
+                aria-invalid={titleInvalid}
+                onChange={(event) => setTitle(event.target.value)}
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              載せる見出し
+              <select
+                className={selectClass}
+                value={depth}
+                disabled={!enabled}
+                onChange={(event) => setDepth(Number(event.target.value))}
+              >
+                {TOC_DEPTH_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+                {TOC_DEPTH_OPTIONS.every(
+                  (option) => option.value !== initialConfig.depth,
+                ) && (
+                  <option value={initialConfig.depth}>
+                    {depthLabel(initialConfig.depth)}
+                  </option>
+                )}
+              </select>
+            </label>
+          </div>
+          {titleInvalid && (
+            <p className="text-xs text-destructive">
+              見出しは30字以内で、引用符・改行を含めずに入力してください
+            </p>
+          )}
+        </div>
+      )}
+      {initialStyle === null ? (
+        <p className="text-sm text-muted-foreground">
+          テーマCSSの目次ブロックが手で編集されているため、外す章と見た目はフォームで扱えません。
+          CSSを直接編集してください。
+        </p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
+            <p className="text-sm">目次から外す章</p>
+            <ul className="flex max-h-48 flex-col gap-0.5 overflow-y-auto rounded-md border border-border p-2">
+              {toc.chapters.map((path) => (
+                <li key={path}>
+                  <label className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      className="size-3.5 shrink-0 accent-primary"
+                      checked={excluded.includes(path)}
+                      disabled={styleDisabled}
+                      onChange={(event) =>
+                        toggleExcluded(path, event.target.checked)
+                      }
+                    />
+                    <span className="min-w-0 flex-1 break-all">
+                      {fileName(path)}
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground">
+              扉・奥付など、目次に載せたくない章にチェックを入れます。「載せる見出し」を節以上にすると、
+              HTMLで直接書いた見出し（id
+              のないもの）はページ番号が付かないため自動で外れます。
+            </p>
+          </div>
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              className="size-3.5 shrink-0 accent-primary"
+              checked={showBookTitle}
+              disabled={styleDisabled}
+              onChange={(event) => setShowBookTitle(event.target.checked)}
+            />
+            目次ページに書名を出す
+          </label>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <label className="flex flex-col gap-1 text-sm">
+              ページ番号
+              <select
+                className={selectClass}
+                value={pageNumber}
+                disabled={styleDisabled}
+                onChange={(event) =>
+                  setPageNumber(event.target.value as TocPageNumber)
+                }
+              >
+                {TOC_PAGE_NUMBER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="flex flex-col gap-1 text-sm">
+              リーダー
+              <select
+                className={selectClass}
+                value={leader}
+                disabled={styleDisabled || pageNumber === "none"}
+                onChange={(event) => setLeader(event.target.value as TocLeader)}
+              >
+                {TOC_LEADER_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {toc.styleAbsent && (
+            <p className="text-xs text-muted-foreground">
+              テーマCSSに目次の設定がまだないため、今の見た目を表示しています。保存するとテーマCSSの末尾に目次ブロックを追記します。
+            </p>
+          )}
+          {toc.stylesDiffer && (
+            <p className="text-xs text-muted-foreground">
+              判型（A6・B6）のテーマで目次の設定が食い違っています。ここに表示しているのはプレビューに使うテーマの設定で、保存すると両方がこの内容に揃います。
+            </p>
+          )}
+        </div>
+      )}
+      {toc.epub === "present" && (
+        <p className="text-xs text-muted-foreground">
+          目次の有無・見出し・載せる見出しは EPUB
+          設定（book.config.epub.js）にも同時に反映します。外す章と見た目は印刷用（PDF）だけに効きます。
+        </p>
+      )}
+      {toc.epub === "unsupported" && (
+        <p className="text-xs text-muted-foreground">
+          EPUB
+          設定（book.config.epub.js）はフォームで扱えない形のため、印刷用だけを書き換えます。EPUB
+          の目次は直接編集してください。
+        </p>
+      )}
+      {confirming ? (
+        <ConfirmDiff
+          changes={[
+            ...configChanges,
+            ...styleChanges,
+            ...(sendStyle && styleChanges.length === 0
+              ? [
+                  {
+                    label: "判型テーマ",
+                    before: "食い違いあり",
+                    after: "表示中の設定に揃える",
+                  },
+                ]
+              : []),
+          ]}
+          saving={saving}
+          onCommit={() => void commit()}
+          onBack={() => setConfirming(false)}
+        />
+      ) : (
+        <div className="flex justify-end">
+          <Button
+            size="sm"
+            disabled={(!sendConfig && !sendStyle) || titleInvalid}
             onClick={() => setConfirming(true)}
           >
             変更を確認

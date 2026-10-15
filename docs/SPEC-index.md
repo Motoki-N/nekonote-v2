@@ -53,6 +53,7 @@
 | [phase4](SPEC-vertical-editor-phase4.md) | 07-17 | ネコノテ連携（相互リンク・校正の保留提案／講評のコメント書き戻し） |
 | [phase5](SPEC-vertical-editor-phase5.md) | 07-23 | ブランチ切替・作成・PR作成 |
 | [SPEC-aozora-export](SPEC-aozora-export.md) | 07-30 | 青空文庫／カクヨム／なろう形式への書き出し |
+| [SPEC-toc-settings](SPEC-toc-settings.md) | 10-15 | 目次ページの調整・表示切り替え（設定ダイアログの目次区画・テーマCSSの目次ブロック・全体プレビューの目次） |
 
 ## 5. AIエージェント・対話・設定
 

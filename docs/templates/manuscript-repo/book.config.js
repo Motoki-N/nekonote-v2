@@ -16,6 +16,7 @@ module.exports = {
   ],
   toc: {
     title: '目次',
+    sectionDepth: 0,
   },
   output: ['output/ryu-no-su-a6.pdf'],
   workspaceDir: '.vivliostyle',
