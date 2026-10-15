@@ -232,6 +232,7 @@ export function tocInsertIndex(source: string): number | null {
 export const TOC_PAGE_NUMBER_OPTIONS = [
   { value: "kanji", label: "漢数字（一二）" },
   { value: "arabic", label: "算用数字（12）" },
+  { value: "arabic-tcy", label: "算用数字・縦中横（12）" },
   { value: "none", label: "出さない" },
 ] as const;
 export type TocPageNumber = (typeof TOC_PAGE_NUMBER_OPTIONS)[number]["value"];
@@ -263,6 +264,8 @@ export const DEFAULT_TOC_STYLE: TocStyle = {
 const PAGE_NUMBER_VARS: Record<TocPageNumber, [string, string]> = {
   kanji: ["inline", "cjk-decimal"],
   arabic: ["inline", "decimal"],
+  // 変数は算用数字と同じ。数字を立てる指定は TCY_PAGE_NUMBER_RULE で足す
+  "arabic-tcy": ["inline", "decimal"],
   none: ["none", "decimal"],
 };
 const LEADER_VARS: Record<TocLeader, string> = {
@@ -280,6 +283,12 @@ const BLOCK_RE =
 const TOC_SCOPE = ":is(#toc, [role='doc-toc'])";
 /** 書名（CLI が目次 nav の直前に出す h1）を隠す。プレビューの構造にも当たる形にしている */
 const HIDE_BOOK_TITLE_RULE = `h1:has(+ ${TOC_SCOPE}) {\n  display: none;\n}`;
+/**
+ * ページ番号を縦中横にする（縦組みで算用数字が横倒しになるのを防ぐ）。theme-base はリーダーと
+ * 番号を同じ ::after に出すが、Vivliostyle ではリーダーを保ったまま番号だけが1字分に組まれる。
+ * 3桁以上は1字の幅に詰まる（試しビルドで確認済み）
+ */
+const TCY_PAGE_NUMBER_RULE = `${TOC_SCOPE} li > a::after {\n  text-combine-upright: all;\n}`;
 /** リンクのない項目（id のない見出し）はページ番号が付かないため常に隠す（SPEC §5） */
 const HIDE_LINKLESS_RULE = `${TOC_SCOPE} li:not(:has(a)) {\n  display: none;\n}`;
 
@@ -311,6 +320,7 @@ export function buildTocBlock(style: TocStyle): string {
   const [display, counterStyle] = PAGE_NUMBER_VARS[style.pageNumber];
   const rules = [
     `:root {\n  --vs-toc--page-counter-display: ${display};\n  --vs-toc--page-counter-style: ${counterStyle};\n  --vs-toc--page-leader-content: ${LEADER_VARS[style.leader]};\n}`,
+    ...(style.pageNumber === "arabic-tcy" ? [TCY_PAGE_NUMBER_RULE] : []),
     ...(style.showBookTitle ? [] : [HIDE_BOOK_TITLE_RULE]),
     HIDE_LINKLESS_RULE,
     ...style.excludedPaths.map(excludeRule),
@@ -339,11 +349,16 @@ export function parseTocStyle(css: string): TocStyle | "absent" | null {
   const display = varValue("--vs-toc--page-counter-display");
   const counterStyle = varValue("--vs-toc--page-counter-style");
   const leaderValue = varValue("--vs-toc--page-leader-content");
-  const pageNumber = findKey(
+  const fromVars = findKey(
     PAGE_NUMBER_VARS,
     (value) =>
       Array.isArray(value) && value[0] === display && value[1] === counterStyle,
   );
+  // 算用数字と縦中横は変数が同じなので、縦中横の指定の有無で見分ける
+  const pageNumber =
+    fromVars === "arabic" && block.includes(TCY_PAGE_NUMBER_RULE)
+      ? "arabic-tcy"
+      : fromVars;
   const leader = findKey(LEADER_VARS, (value) => value === leaderValue);
   if (pageNumber === null || leader === null) return null;
   const excludedPaths = extractTocExcludedPaths(block);
