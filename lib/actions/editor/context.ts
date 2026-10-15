@@ -4,9 +4,14 @@ import { AppError } from "@/lib/errors";
 import {
   extractEntryPaths,
   extractPageSizeCss,
+  extractStringValue,
   extractThemePath,
+  isContentsItem,
   joinRepoPath,
+  parseEntryItems,
 } from "@/lib/editor/book-config";
+import type { PreviewTocSource } from "@/lib/editor/preview";
+import { parseTocConfig } from "@/lib/editor/toc";
 import { getFileContent, getManuscriptTree } from "@/lib/git/github";
 import { loadProjectGitContext } from "@/lib/git/project-context";
 import {
@@ -118,6 +123,8 @@ export async function listChapters(
   themePath: string | null;
   /** book.config.js の size（CSS値）。プレビューの @page size に注入する */
   pageSizeCss: string | null;
+  /** 全体プレビューに差し込む目次（SPEC-toc-settings §7）。目次を入れない設定なら null */
+  toc: PreviewTocSource | null;
 }> {
   const tree = await getManuscriptTree(ctx.token, ctx.repo, ctx.basePath, ref);
   const prefix = ctx.basePath === "" ? "" : `${ctx.basePath}/`;
@@ -132,6 +139,7 @@ export async function listChapters(
   let entryPaths: string[] = [];
   let themePath: string | null = null;
   let pageSizeCss: string | null = null;
+  let configContent: string | null = null;
   const configPath = joinRepoPath(ctx.basePath, "book.config.js");
   if (configPath) {
     try {
@@ -139,6 +147,7 @@ export async function listChapters(
       entryPaths = extractEntryPaths(config.content);
       themePath = extractThemePath(config.content);
       pageSizeCss = extractPageSizeCss(config.content);
+      configContent = config.content;
     } catch {
       // book.config.js がないリポジトリも許容する（テーマは既定・章順はファイル名昇順）
     }
@@ -157,5 +166,41 @@ export async function listChapters(
   for (const path of files) {
     if (fileSet.has(path)) ordered.push({ path, inEntry: false });
   }
-  return { chapters: ordered, themePath, pageSizeCss };
+  return {
+    chapters: ordered,
+    themePath,
+    pageSizeCss,
+    toc: configContent ? previewTocSource(ctx, configContent, ordered) : null,
+  };
+}
+
+/**
+ * 全体プレビュー用の目次情報（SPEC-toc-settings §7）。差し込み位置は「目次より前にある
+ * entry の章（実在するもの）の数」＝ chapters 配列のインデックス。`{ rel: 'contents' }` がなく
+ * toc だけある場合は先頭（CLI と同じ）
+ */
+function previewTocSource(
+  ctx: EditorContext,
+  configContent: string,
+  chapters: EditorChapter[],
+): PreviewTocSource | null {
+  const config = parseTocConfig(configContent);
+  if (!config?.enabled) return null;
+  const items = parseEntryItems(configContent) ?? [];
+  const at = items.findIndex((item) => isContentsItem(item.raw));
+  const before = new Set(
+    (at === -1 ? [] : items.slice(0, at)).flatMap((item) =>
+      item.path ? [joinRepoPath(ctx.basePath, item.path) ?? ""] : [],
+    ),
+  );
+  const entryChapters = chapters.filter((chapter) => chapter.inEntry);
+  return {
+    position: entryChapters.filter((chapter) => before.has(chapter.path))
+      .length,
+    title: config.title,
+    depth: config.depth,
+    // CLI は目次ページの h1 に書名（book.config.js の title）を出す
+    bookTitle: extractStringValue(configContent, "title") ?? "",
+    entryPaths: entryChapters.map((chapter) => chapter.path),
+  };
 }

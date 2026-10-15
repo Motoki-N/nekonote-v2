@@ -45,12 +45,28 @@ export function extractPageSizeCss(source: string): string | null {
 /** 書誌情報のキー（値が単純な文字列リテラルのもののみ対象） */
 export type BiblioKey = "title" | "author";
 
+/**
+ * `toc: { ... }`（入れ子の `{}` を含まない単純なオブジェクト）に一致する正規表現。
+ * 目次設定の読み書き（lib/editor/toc.ts）と、書名の抽出から toc ブロックを除く処理で共用する
+ */
+export const TOC_BLOCK_RE = /\btoc\s*:\s*\{([^{}]*)\}/;
+
+/**
+ * toc ブロックを同じ長さの空白で塗りつぶす（Issue #307）。
+ * 書誌の `title` と目次の `toc.title` は同じキー名のため、書名の抽出・置換が
+ * 目次の見出しを拾わないよう、toc ブロックの外だけを探す。長さを保つのは
+ * 塗りつぶした文字列で見つけた位置を、元の文字列の置換にそのまま使うため
+ */
+function maskTocBlock(source: string): string {
+  return source.replace(TOC_BLOCK_RE, (block) => " ".repeat(block.length));
+}
+
 /** `key: '値'` の文字列リテラル値を抽出する。見つからなければ null */
 export function extractStringValue(
   source: string,
   key: BiblioKey,
 ): string | null {
-  const match = source.match(
+  const match = maskTocBlock(source).match(
     new RegExp(`\\b${key}\\s*:\\s*(['"\`])([^'"\`\\n]*)\\1`),
   );
   return match ? match[2] : null;
@@ -67,13 +83,16 @@ export function replaceStringValue(
 ): string | null {
   if (/['"`\n\\]/.test(value)) return null;
   const regex = new RegExp(`(\\b${key}\\s*:\\s*)(['"\`])[^'"\`\\n]*\\2`);
-  if (!regex.test(source)) return null;
-  // 置換は関数形式にする（値に `$&` 等が含まれても置換テンプレート展開されない。
+  // 位置は toc ブロックを除いた文字列で探し、置換は元の文字列に対して行う
+  const match = regex.exec(maskTocBlock(source));
+  if (!match) return null;
+  const [whole, prefix, quote] = match;
+  // 値は文字列連結で埋め込む（`$&` 等の置換テンプレート展開を経由しない。
   // security-review 2026-07-16 L-1）
-  return source.replace(
-    regex,
-    (_whole, prefix: string, quote: string) =>
-      `${prefix}${quote}${value}${quote}`,
+  return (
+    source.slice(0, match.index) +
+    `${prefix}${quote}${value}${quote}` +
+    source.slice(match.index + whole.length)
   );
 }
 
@@ -122,6 +141,58 @@ function pushEntryItem(items: EntryItem[], text: string): void {
   if (raw === "") return;
   const literal = raw.match(/^['"`]([^'"`\n]+\.md)['"`]$/);
   items.push({ raw, path: literal ? literal[1] : null });
+}
+
+/** `{ rel: 'contents' }` 等の目次差し込み要素か */
+export function isContentsItem(raw: string): boolean {
+  return /\brel\s*:\s*['"`]contents['"`]/.test(raw);
+}
+
+/**
+ * entry 配列を書き戻しても壊れないか。
+ *
+ * `parseEntryItems` は各行の `//` 以降を行コメントとして無条件に落とすため、
+ * 文字列リテラルの中に `//` があると（`href: 'https://example.com/toc'` 等）
+ * 要素の raw が途中で切れ、**構文の壊れた book.config.js を書き戻してしまう**。
+ * 書き戻し後の再抽出は `.md` パスしか見ないので、この破損は検知できない。
+ *
+ * そこで entry 配列を引用符の状態を追いながら走査し、文字列の中に `//` が
+ * 現れるときだけ「書き換え不可」と判定する。テンプレートが使う行末コメント
+ * （`{ rel: 'contents' }, // 目次（自動生成）...`）は文字列の外なので通る
+ */
+export function canRewriteEntry(source: string): boolean {
+  const body = source.match(/\bentry\s*:\s*\[([\s\S]*?)\]/)?.[1];
+  if (body === undefined) return false;
+  let quote: string | null = null;
+  for (let i = 0; i < body.length; i += 1) {
+    const char = body[i];
+    if (quote !== null) {
+      if (char === "\\") {
+        i += 1; // エスケープの次の1文字は読み飛ばす
+        continue;
+      }
+      if (char === quote) quote = null;
+      else if (char === "/" && body[i + 1] === "/") return false;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === "`") quote = char;
+    // 文字列の外の `//` は本物の行コメント。落として問題ない
+    else if (char === "/" && body[i + 1] === "/") {
+      const end = body.indexOf("\n", i);
+      if (end === -1) break;
+      i = end;
+    }
+    // ブロックコメントも読み飛ばす。中の引用符を数えてしまうと以降の
+    // 文字列判定が反転し、壊れる config を「安全」と誤判定する
+    else if (char === "/" && body[i + 1] === "*") {
+      const end = body.indexOf("*/", i + 2);
+      if (end === -1) return false;
+      i = end + 1;
+    }
+  }
+  // 引用符が閉じずに終わるのは走査モデルが破綻している証拠なので書き換えない
+  // （entry 内のパスに `]` が混ざって配列の切り出しがずれた場合もここで落ちる）
+  return quote === null;
 }
 
 /**

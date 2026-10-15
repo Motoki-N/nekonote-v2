@@ -22,3 +22,23 @@
   --nekonote--slot-bottom-outer: none;
   --nekonote--slot-bottom-center: none;
 }
+
+/* nekonote-toc: begin — 目次（ネコノテAI の設定フォームが管理。begin〜end の間を手で編集するとフォームは読み取り専用になる） */
+:root {
+  --vs-toc--page-counter-display: inline;
+  --vs-toc--page-counter-style: cjk-decimal;
+  --vs-toc--page-leader-content: leader('.') ' ';
+}
+h1:has(+ :is(#toc, [role='doc-toc'])) {
+  display: none;
+}
+:is(#toc, [role='doc-toc']) li:not(:has(a)) {
+  display: none;
+}
+:is(#toc, [role='doc-toc']) li:has(> a:is([href="manuscripts/00-tobira.html"], [href^="manuscripts/00-tobira.html#"])) {
+  display: none;
+}
+:is(#toc, [role='doc-toc']) li:has(> a:is([href="manuscripts/99-okuzuke.html"], [href^="manuscripts/99-okuzuke.html#"])) {
+  display: none;
+}
+/* nekonote-toc: end */

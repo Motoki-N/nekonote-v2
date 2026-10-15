@@ -21,8 +21,13 @@ export {
   saveThemeVars,
   saveNombreVars,
   saveOkuzuke,
+  saveTocSettings,
 } from "./editor/book-settings";
-export type { ThemeSettings, BookSettingsData } from "./editor/book-settings";
+export type {
+  ThemeSettings,
+  BookSettingsData,
+  TocSettingsData,
+} from "./editor/book-settings";
 
 export { uploadImage } from "./editor/assets";
 

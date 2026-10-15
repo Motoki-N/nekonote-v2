@@ -7,7 +7,9 @@ import "server-only";
 // 共有ヘルパはこの層に置く（SPEC-manuscript-bridge §5.4）
 
 import {
+  canRewriteEntry,
   extractEntryPaths,
+  isContentsItem,
   joinRepoPath,
   parseEntryItems,
   replaceEntryItems,
@@ -59,58 +61,6 @@ export type EntryInsertion = {
   /** ボード順で直前にある、既に entry に載っているパス。なければ null */
   afterRelPath: string | null;
 };
-
-/** `{ rel: 'contents' }` 等の目次差し込み要素か */
-function isContentsItem(raw: string): boolean {
-  return /\brel\s*:\s*['"`]contents['"`]/.test(raw);
-}
-
-/**
- * entry 配列を書き戻しても壊れないか。
- *
- * `parseEntryItems` は各行の `//` 以降を行コメントとして無条件に落とすため、
- * 文字列リテラルの中に `//` があると（`href: 'https://example.com/toc'` 等）
- * 要素の raw が途中で切れ、**構文の壊れた book.config.js を書き戻してしまう**。
- * 書き戻し後の再抽出は `.md` パスしか見ないので、この破損は検知できない。
- *
- * そこで entry 配列を引用符の状態を追いながら走査し、文字列の中に `//` が
- * 現れるときだけ「書き換え不可」と判定する。テンプレートが使う行末コメント
- * （`{ rel: 'contents' }, // 目次（自動生成）...`）は文字列の外なので通る
- */
-function canRewriteEntry(source: string): boolean {
-  const body = source.match(/\bentry\s*:\s*\[([\s\S]*?)\]/)?.[1];
-  if (body === undefined) return false;
-  let quote: string | null = null;
-  for (let i = 0; i < body.length; i += 1) {
-    const char = body[i];
-    if (quote !== null) {
-      if (char === "\\") {
-        i += 1; // エスケープの次の1文字は読み飛ばす
-        continue;
-      }
-      if (char === quote) quote = null;
-      else if (char === "/" && body[i + 1] === "/") return false;
-      continue;
-    }
-    if (char === "'" || char === '"' || char === "`") quote = char;
-    // 文字列の外の `//` は本物の行コメント。落として問題ない
-    else if (char === "/" && body[i + 1] === "/") {
-      const end = body.indexOf("\n", i);
-      if (end === -1) break;
-      i = end;
-    }
-    // ブロックコメントも読み飛ばす。中の引用符を数えてしまうと以降の
-    // 文字列判定が反転し、壊れる config を「安全」と誤判定する
-    else if (char === "/" && body[i + 1] === "*") {
-      const end = body.indexOf("*/", i + 2);
-      if (end === -1) return false;
-      i = end + 1;
-    }
-  }
-  // 引用符が閉じずに終わるのは走査モデルが破綻している証拠なので書き換えない
-  // （entry 内のパスに `]` が混ざって配列の切り出しがずれた場合もここで落ちる）
-  return quote === null;
-}
 
 /**
  * entry 配列へ複数パスを挿入した book.config.js の中身を返す（コミットは呼び出し側）。

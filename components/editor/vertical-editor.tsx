@@ -21,6 +21,7 @@ import { deleteDraft, getDraft, setDraft } from "@/lib/editor/draft-store";
 import type { LinkedScene } from "@/lib/board";
 import type { Draft } from "@/lib/editor/draft-store";
 import { buildPreviewHtml, extractChapterTitle } from "@/lib/editor/preview";
+import { toPreviewToc } from "@/lib/editor/toc";
 import { planReplace } from "@/lib/editor/search-replace";
 import type { FileReplacePlan } from "@/lib/editor/search-replace";
 import {
@@ -805,6 +806,10 @@ export function VerticalEditor({
           "全体プレビュー",
         origin: window.location.origin,
         assetUrl,
+        // 目次ページは入稿ビルドの生成物なので、設定から再現して差し込む（SPEC-toc-settings §7）
+        toc: result.data.toc
+          ? toPreviewToc(result.data.toc, ok.theme.inlineCss, ok.basePath)
+          : null,
       });
       previewTitleRef.current = "全体プレビュー";
       const key = previewKeyFor(ok.branch, FULL_PREVIEW_KEY);
@@ -1181,7 +1186,7 @@ export function VerticalEditor({
                     <div className="flex items-center gap-2 border-b border-border bg-secondary px-3 py-1.5 text-xs text-secondary-foreground">
                       <Info className="size-3.5 shrink-0" />
                       <span className="min-w-0">
-                        全体プレビュー（目次ページは入稿ビルドでのみ生成されます。扉・奥付の専用様式と章ごとの柱は章単体プレビューで確認してください）
+                        全体プレビュー（目次ページはプレビュー用に再現したもので、改ページ位置が入稿PDFと異なる場合があります。扉・奥付の専用様式と章ごとの柱は章単体プレビューで確認してください）
                       </span>
                       <Button
                         size="sm"

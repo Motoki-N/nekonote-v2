@@ -18,6 +18,7 @@ module.exports = {
   ],
   toc: {
     title: '目次',
+    sectionDepth: 0,
   },
   output: [{ path: 'output/ryu-no-su.epub', format: 'epub' }],
   // PDFビルド（.vivliostyle）と作業ディレクトリを分けて相互干渉を避ける
