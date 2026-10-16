@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 
 import { resolveModel } from "@/lib/ai/models";
+import { WHOLE_PROOFREAD_PROFILE_ID } from "@/lib/ai/personas";
 import { recordAiUsage } from "@/lib/ai/usage";
 import {
   buildCharacterNoteReviewInput,
@@ -30,7 +31,7 @@ import {
 } from "@/lib/git/project-context";
 import {
   countChars,
-  fetchAllManuscriptContents,
+  fetchCritiqueManuscriptContents,
 } from "@/lib/manuscript-content";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import type { ReviewVerdict, StructureTemplate } from "@/lib/schemas/enums";
@@ -85,15 +86,16 @@ function parseVerdict(text: string): ReviewVerdict {
 async function fetchProposalContext(
   supabase: Supabase,
   projectId: string,
-): Promise<ProposalContext> {
+): Promise<ProposalContext & { id: string }> {
   const { data, error } = await supabase
     .from("proposals")
-    .select("writing_genre, purpose, genre, target_audience, content")
+    .select("id, writing_genre, purpose, genre, target_audience, content")
     .eq("project_id", projectId)
     .maybeSingle();
   if (error) throw new AppError("internal", error.message);
   if (!data) throw new AppError("not_found", "企画書が見つかりません");
   return {
+    id: data.id,
     writingGenre: parseEnum(
       writingGenres,
       data.writing_genre,
@@ -128,12 +130,20 @@ async function fetchProposalWithNotes(
     throw new AppError("not_found", "企画書が見つかりません");
   }
 
+  return { proposal, notes: await fetchProposalNotes(supabase, proposal.id) };
+}
+
+/** 企画書の紐づけノート全文（ごみ箱中は除外）。企画書レビュー系と講評（参照範囲 all）で共用する */
+async function fetchProposalNotes(
+  supabase: Supabase,
+  proposalId: string,
+): Promise<(NoteContext & { id: string })[]> {
   const { data: links, error: linksError } = await supabase
     .from("proposal_notes")
     .select("notes (id, title, content, deleted_at, note_tags (tags (name)))")
-    .eq("proposal_id", proposal.id);
+    .eq("proposal_id", proposalId);
   if (linksError) throw new AppError("internal", linksError.message);
-  const notes: (NoteContext & { id: string })[] = (links ?? [])
+  return (links ?? [])
     .flatMap((row) => (row.notes ? [row.notes] : []))
     .filter((note) => note.deleted_at === null)
     .map((note) => ({
@@ -142,8 +152,6 @@ async function fetchProposalWithNotes(
       content: note.content,
       tags: note.note_tags.flatMap((nt) => (nt.tags ? [nt.tags.name] : [])),
     }));
-
-  return { proposal, notes };
 }
 
 /** プロジェクトの構成テンプレートを取得（構成・シーンレビューのコンテキスト用。Issue #54） */
@@ -296,7 +304,7 @@ export async function POST(req: Request) {
     const { data: session, error: sessionError } = await supabase
       .from("review_sessions")
       .select(
-        "id, status, target_ref, note_id, project_id, personas (description, ai_capability, reference_scope), review_profiles (prompt_template, target_phase)",
+        "id, status, target_ref, note_id, project_id, review_profile_id, personas (description, ai_capability, reference_scope), review_profiles (prompt_template, target_phase)",
       )
       .eq("id", sessionId)
       .maybeSingle();
@@ -516,7 +524,13 @@ export async function POST(req: Request) {
       const project = await fetchProjectGitFields(supabase, session.project_id);
       const { repo, basePath, token } = await resolveRepoGit(supabase, project);
 
-      const files = await fetchAllManuscriptContents(token, repo, basePath);
+      // 本としての並び（book.config.js の entry 順・entry に載ったファイルのみ）で結合する。
+      // 時系列の判定（全体校正）は並び順に依存するため（Issue #310・SPEC §3.5）
+      const files = await fetchCritiqueManuscriptContents(
+        token,
+        repo,
+        basePath,
+      );
       if (files.length === 0) {
         throw new AppError(
           "validation",
@@ -524,7 +538,9 @@ export async function POST(req: Request) {
         );
       }
 
-      // 文字数ガード二段構え: 30万字超は実行不可、15万字超は了承済みフラグ必須
+      // 文字数ガード二段構え: 30万字超は実行不可、15万字超は了承済みフラグ必須。
+      // 15万字確認はクライアントの事前確認と一致させるため原稿の文字数だけで判定する
+      // （30万字の上限は企画書・ノートを足した入力全体でも下で再判定する）
       const totalChars = files.reduce(
         (sum, file) => sum + countChars(file.content),
         0,
@@ -550,9 +566,26 @@ export async function POST(req: Request) {
       );
       let proposalScope: CritiqueProposalScope = "none";
       let proposal: ProposalContext | null = null;
+      let notes: NoteContext[] = [];
       if (scope === "all") {
+        // 企画書全文＋紐づけノート（企画書レビューと同じ資料一式）。全体校正では名称の「正」になる（Issue #310）
         proposalScope = "full";
-        proposal = await fetchProposalContext(supabase, session.project_id);
+        const fetched = await fetchProposalContext(
+          supabase,
+          session.project_id,
+        );
+        proposal = fetched;
+        notes = await fetchProposalNotes(supabase, fetched.id);
+        const inputChars =
+          totalChars +
+          countChars(fetched.content) +
+          notes.reduce((sum, note) => sum + countChars(note.content), 0);
+        if (inputChars > CRITIQUE_MAX_CHARS) {
+          throw new AppError(
+            "validation",
+            `原稿・企画書・紐づけノートの合計が約${inputChars.toLocaleString("ja-JP")}字あり、講評の上限（${CRITIQUE_MAX_CHARS.toLocaleString("ja-JP")}字）を超えています。紐づけノートを減らすか、別の担当ペルソナで実行してください`,
+          );
+        }
       } else if (scope === "manuscript_plus_target") {
         proposalScope = "target_only";
         proposal = await fetchProposalContext(supabase, session.project_id);
@@ -575,6 +608,7 @@ export async function POST(req: Request) {
         })),
         proposalScope,
         proposal,
+        notes,
       });
     } else {
       throw new AppError("validation", "このレビュー種別には未対応です");
@@ -616,6 +650,14 @@ export async function POST(req: Request) {
         promptTemplate: session.review_profiles.prompt_template,
       }),
       prompt,
+      // 全体校正は作品全体（数万字）を横断して矛盾を探すため、Anthropic の adaptive thinking
+      // （既定 effort: high）だと本文の出力前の思考が maxDuration（300秒）を超える（Issue #310 で実測）。
+      // effort を一段下げて思考時間を抑える。他の講評は既定のまま動いている実績があるので対象外。
+      // 判定は標準プロファイルの固定ID（ユーザーが複製したプロファイルは対象外）。
+      // Anthropic 以外のプロバイダはこの指定を無視する
+      ...(session.review_profile_id === WHOLE_PROOFREAD_PROFILE_ID && {
+        providerOptions: { anthropic: { effort: "medium" } },
+      }),
       // stop によるクライアント切断で生成そのものを中断する（Issue #98。中断時は onAbort へ）
       abortSignal: req.signal,
       // 生成完了時にフィードバックを保存する

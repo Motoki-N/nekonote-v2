@@ -13,6 +13,28 @@ export function extractEntryPaths(source: string): string[] {
   return paths;
 }
 
+/**
+ * 原稿ファイル（リポジトリパス）のうち entry に載ったものだけを entry の出現順に並べる
+ * （講評の結合順。Issue #310）。entry のパスは basePath からの相対で解決し、
+ * 実在しないもの・重複は飛ばす。1件も拾えなければ null（呼び出し側がフォールバックを決める）
+ */
+export function entryOrderedPaths(
+  filePaths: readonly string[],
+  entryPaths: readonly string[],
+  basePath: string,
+): string[] | null {
+  const remaining = new Set(filePaths);
+  const ordered: string[] = [];
+  for (const entry of entryPaths) {
+    const full = joinRepoPath(basePath, entry);
+    if (full && remaining.has(full)) {
+      ordered.push(full);
+      remaining.delete(full);
+    }
+  }
+  return ordered.length > 0 ? ordered : null;
+}
+
 /** theme のCSSパス（文字列リテラル）を抽出する。見つからなければ null */
 export function extractThemePath(source: string): string | null {
   const match = source.match(/\btheme\s*:\s*['"`]([^'"`\n]+)['"`]/);

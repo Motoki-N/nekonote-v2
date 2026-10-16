@@ -49,7 +49,7 @@ review_profiles: id, name, target_phase（proposal|character|structure|scene|pro
 - テンプレあり＋自由編集可：標準プロファイルを同梱しつつ、ユーザーが複製・編集・新規作成できる
 - プロンプト差し替えでレビューフレームワーク自体を変更できる設計（別の指南書への切り替え等）
 
-## 標準プロファイル（12種）
+## 標準プロファイル（13種）
 
 小説向け（writing_genre: novel）:
 
@@ -61,16 +61,17 @@ review_profiles: id, name, target_phase（proposal|character|structure|scene|pro
 6. **売り込み分析**（manuscript、書店員）— どの棚・どの客層・何を推すか
 7. **あらすじ作成**（manuscript、書店員）
 8. **キャッチコピー作成**（manuscript、書店員）
+9. **全体校正**（manuscript、担当編集）— ファイルをまたいだ名称・呼称のブレ・時系列の矛盾・設定の食い違い・企画書/ノートとの食い違い（文書型。Issue #310）
 
 全ジャンル共通（writing_genre: null）:
 
-9. **校正・校閲**（proofreading、校正さん）— 表記揺れ・誤字脱字・一貫性＋文体・表現（構造化出力）
+10. **校正・校閲**（proofreading、校正さん）— 表記揺れ・誤字脱字・一貫性＋文体・表現（構造化出力）
 
 技術書向け（writing_genre: tech_book。Issue #95・SPEC-genre-profiles）:
 
-10. **技術書企画書レビュー**（proposal、技術書編集者）— テーマ・対象読者と前提知識・本のゴール・スコープ実現可能性
-11. **技術書講評**（manuscript、エンジニア読者）— 前提知識の穴・コード例の追従可能性・学びの実感
-12. **技術書校正**（proofreading、校正さん）— 技術用語の表記統一＋コードブロック校正除外（構造化出力）
+11. **技術書企画書レビュー**（proposal、技術書編集者）— テーマ・対象読者と前提知識・本のゴール・スコープ実現可能性
+12. **技術書講評**（manuscript、エンジニア読者）— 前提知識の穴・コード例の追従可能性・学びの実感
+13. **技術書校正**（proofreading、校正さん）— 技術用語の表記統一＋コードブロック校正除外（構造化出力）
 
 小説系チェックリストの詳細な観点は story-engineering スキルを参照。
 
