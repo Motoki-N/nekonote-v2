@@ -649,6 +649,12 @@ export async function POST(req: Request) {
         promptTemplate: session.review_profiles.prompt_template,
       }),
       prompt,
+      // 講評は作品全体（数万字）を読むため、Anthropic の adaptive thinking（既定 effort: high）だと
+      // 本文の出力前の思考が maxDuration（300秒）を超えうる（Issue #310 の全体校正で実測）。
+      // effort を一段下げて思考時間を抑える。Anthropic 以外のプロバイダはこの指定を無視する
+      ...(phase === "manuscript" && {
+        providerOptions: { anthropic: { effort: "medium" } },
+      }),
       // stop によるクライアント切断で生成そのものを中断する（Issue #98。中断時は onAbort へ）
       abortSignal: req.signal,
       // 生成完了時にフィードバックを保存する
