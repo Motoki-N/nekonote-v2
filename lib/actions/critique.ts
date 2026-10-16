@@ -14,7 +14,7 @@ import {
 import { sortByGenrePriority } from "@/lib/genre-priority";
 import {
   countChars,
-  fetchAllManuscriptContents,
+  fetchCritiqueManuscriptContents,
 } from "@/lib/manuscript-content";
 import {
   resolveProfileForPhase,
@@ -142,13 +142,14 @@ export async function getCritiqueBootstrap(
     if (personasResult.error)
       throw new AppError("internal", personasResult.error.message);
 
-    // 概算文字数（15万字確認の事前提示用）。補助情報なので失敗しても講評パネル自体は開ける
+    // 概算文字数（15万字確認の事前提示用）。補助情報なので失敗しても講評パネル自体は開ける。
+    // /api/review の講評と同じファイル集合（entry 順・entry に載ったもののみ）で数える
     let totalChars: number | null = null;
     if (project.repo) {
       try {
         const credential = await patCredentialProvider.getCredential(supabase);
         if (credential) {
-          const files = await fetchAllManuscriptContents(
+          const files = await fetchCritiqueManuscriptContents(
             credential.token,
             project.repo,
             project.base_path ?? "",

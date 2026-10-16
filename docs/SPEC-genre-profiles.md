@@ -59,6 +59,7 @@
 | プロファイル | 校正・校閲 | 共通（null） |
 | プロファイル | **技術書企画書レビュー**（proposal→技術書編集者）/ **技術書講評**（manuscript→エンジニア読者）/ **技術書校正**（proofreading→校正さん） | tech_book（新規） |
 | プロファイル | **技術書構成レビュー**（structure→技術書編集者。#96・20260725000004 で追加） | tech_book |
+| プロファイル | **全体校正**（manuscript→担当編集。#310・20261016000001 で追加。SPEC-dashboard-critique-settings §3.5） | novel |
 
 固定UUIDは `lib/ai/personas.ts` の定数群に追加（ペルソナ …0008/0009、プロファイル …1010〜1012）。
 シードは `supabase/migrations/20260725000003_genre_personas_and_profiles.sql`。

@@ -489,24 +489,32 @@ export type CritiqueProposalScope = "none" | "target_only" | "full";
 
 /**
  * 講評（作品全体）の user 入力（SPEC-dashboard-critique-settings §3.3）。
- * base_path 配下の全原稿ファイルをパス辞書順に見出し付きで結合する。
+ * 原稿ファイルを渡された順（book.config.js の entry 順。Issue #310）に見出し付きで結合する。
  * 企画書情報はペルソナの reference_scope で出し分ける:
- * manuscript_only = none / manuscript_plus_target = target_only / all = full
+ * manuscript_only = none / manuscript_plus_target = target_only / all = full（＋紐づけノート）
  */
 export function buildManuscriptCritiqueInput({
   files,
   proposalScope,
   proposal,
+  notes = [],
 }: {
   /** path は表示用の相対パス */
   files: { path: string; content: string }[];
   proposalScope: CritiqueProposalScope;
   proposal: ProposalContext | null;
+  /** 企画書の紐づけノート。proposalScope が full のときだけ載せる（Issue #310） */
+  notes?: NoteContext[];
 }): string {
   const lines: string[] = [];
 
   if (proposalScope === "full" && proposal) {
-    lines.push(...proposalSection(proposal), "");
+    lines.push(
+      ...proposalSection(proposal),
+      "",
+      ...notesSection("# 紐づけノート（設定資料）", notes),
+      "",
+    );
   } else if (proposalScope === "target_only" && proposal) {
     lines.push(
       "# 企画情報",

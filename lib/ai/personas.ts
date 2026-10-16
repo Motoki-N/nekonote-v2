@@ -7,6 +7,7 @@
 //   - イラストレーター: 20260717000002_illustrator_foundation.sql
 //   - 技術書ペルソナ2人＋技術書プロファイル3種: 20260725000003_genre_personas_and_profiles.sql
 //   - 技術書構成レビュー: 20260725000004_outline_board_chapter_part.sql
+//   - 全体校正: 20261016000001_whole_proofread_profile.sql
 
 export const ASSISTANT_PERSONA_ID = "e5a1c0de-0001-4000-8000-000000000001";
 export const CAFE_MASTER_PERSONA_ID = "e5a1c0de-0002-4000-8000-000000000002";
@@ -43,3 +44,6 @@ export const TECH_PROOFREADING_PROFILE_ID =
   "e5a1c0de-1012-4000-8000-000000001012";
 export const TECH_STRUCTURE_REVIEW_PROFILE_ID =
   "e5a1c0de-1013-4000-8000-000000001013";
+
+export const WHOLE_PROOFREAD_PROFILE_ID =
+  "e5a1c0de-1014-4000-8000-000000001014";
