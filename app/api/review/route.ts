@@ -7,6 +7,7 @@ import {
 import { z } from "zod";
 
 import { resolveModel } from "@/lib/ai/models";
+import { WHOLE_PROOFREAD_PROFILE_ID } from "@/lib/ai/personas";
 import { recordAiUsage } from "@/lib/ai/usage";
 import {
   buildCharacterNoteReviewInput,
@@ -303,7 +304,7 @@ export async function POST(req: Request) {
     const { data: session, error: sessionError } = await supabase
       .from("review_sessions")
       .select(
-        "id, status, target_ref, note_id, project_id, personas (description, ai_capability, reference_scope), review_profiles (prompt_template, target_phase)",
+        "id, status, target_ref, note_id, project_id, review_profile_id, personas (description, ai_capability, reference_scope), review_profiles (prompt_template, target_phase)",
       )
       .eq("id", sessionId)
       .maybeSingle();
@@ -649,10 +650,12 @@ export async function POST(req: Request) {
         promptTemplate: session.review_profiles.prompt_template,
       }),
       prompt,
-      // 講評は作品全体（数万字）を読むため、Anthropic の adaptive thinking（既定 effort: high）だと
-      // 本文の出力前の思考が maxDuration（300秒）を超えうる（Issue #310 の全体校正で実測）。
-      // effort を一段下げて思考時間を抑える。Anthropic 以外のプロバイダはこの指定を無視する
-      ...(phase === "manuscript" && {
+      // 全体校正は作品全体（数万字）を横断して矛盾を探すため、Anthropic の adaptive thinking
+      // （既定 effort: high）だと本文の出力前の思考が maxDuration（300秒）を超える（Issue #310 で実測）。
+      // effort を一段下げて思考時間を抑える。他の講評は既定のまま動いている実績があるので対象外。
+      // 判定は標準プロファイルの固定ID（ユーザーが複製したプロファイルは対象外）。
+      // Anthropic 以外のプロバイダはこの指定を無視する
+      ...(session.review_profile_id === WHOLE_PROOFREAD_PROFILE_ID && {
         providerOptions: { anthropic: { effort: "medium" } },
       }),
       // stop によるクライアント切断で生成そのものを中断する（Issue #98。中断時は onAbort へ）
