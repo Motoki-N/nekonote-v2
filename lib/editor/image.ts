@@ -38,12 +38,27 @@ export function fileToBase64(file: File): Promise<string> {
   });
 }
 
+/**
+ * 本文中カットのページ内配置（Issue #323）。"flow" は従来どおり本文の流れの中に置き、
+ * それ以外はテーマCSSの修飾クラス（.illust-top-right 等）でページの四隅へフロートさせる
+ */
+export type IllustPosition =
+  "flow" | "top-right" | "bottom-right" | "top-left" | "bottom-left";
+
 /** 挿入記法（親SPEC §4.6 の挿絵テンプレート。キャプションは記法を壊す文字を除去） */
 export function illustNotation(
   fileName: string,
   kind: "inline" | "full",
   caption: string,
+  position: IllustPosition = "flow",
 ): string {
   const safeCaption = caption.replace(/[[\]()\n]/g, "");
-  return `![${safeCaption}](../images/${fileName}){.illust-${kind === "full" ? "full" : "inline"}}`;
+  // 配置の修飾クラスは本文中カットにのみ付ける（全面挿絵は専用ページなので無関係）
+  const classes =
+    kind === "full"
+      ? ".illust-full"
+      : position === "flow"
+        ? ".illust-inline"
+        : `.illust-inline .illust-${position}`;
+  return `![${safeCaption}](../images/${fileName}){${classes}}`;
 }

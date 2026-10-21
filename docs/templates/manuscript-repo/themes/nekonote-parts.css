@@ -168,6 +168,30 @@ img.illust-inline {
   margin-inline: auto;
 }
 
+/* ---- 本文中カットの四隅配置（ページフロート）----
+ * {.illust-inline .illust-bottom-left} のように修飾クラスを重ねると、ページの四隅へ寄せる。
+ * 縦書きでは block-start がページの右端、block-end が左端、inline-start が天、inline-end が地。
+ * Vivliostyle は float に「block方向 inline方向」の2値を取れる（1値だと block-start は天・
+ * block-end は地に固定される）。画像の margin では天地は動かない。
+ * ページに収まらないときは次のページへ送られる（書いた位置から1ページずれることがある）。
+ * alt 空だと figure で包まれず <p> になるため、全面挿絵と同じく :is(figure, p) で拾う */
+:is(figure, p):has(> img.illust-inline:is(.illust-top-right, .illust-bottom-right, .illust-top-left, .illust-bottom-left)) {
+  float-reference: page;
+  margin: 0;
+}
+:is(figure, p):has(> img.illust-inline.illust-top-right) {
+  float: block-start inline-start;
+}
+:is(figure, p):has(> img.illust-inline.illust-bottom-right) {
+  float: block-start inline-end;
+}
+:is(figure, p):has(> img.illust-inline.illust-top-left) {
+  float: block-end inline-start;
+}
+:is(figure, p):has(> img.illust-inline.illust-bottom-left) {
+  float: block-end inline-end;
+}
+
 /* ---- 傍点（圏点）---- */
 .tenten {
   text-emphasis: filled sesame;
