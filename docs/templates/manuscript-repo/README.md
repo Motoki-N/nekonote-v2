@@ -67,9 +67,16 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 | 傍点 | `<span class="tenten">ここぞ</span>` |
 | 割注（2行組みの注記） | `<span class="warichu"><span>前半</span><span>後半</span></span>` |
 | 改ページ | `<div class="page-break"></div>`（独立行に置く） |
-| 全面挿絵（裁ち落とし） | `![キャプションは刷られない](../images/x.png){.illust-full}` |
+| 全面挿絵（裁ち落とし） | `![キャプションは刷られない](../images/x.png){.illust-full}`（alt 空の `![](../images/x.png){.illust-full}` も可） |
 | 本文中カット | `![キャプション](../images/x.png){.illust-inline}` |
 | 扉・奥付 | フロントマターで `class: titlepage` / `class: colophon` |
+
+### 全面挿絵の修正を既存リポジトリへ反映する
+
+以前の `nekonote-parts.css` は、alt 空の全面挿絵（`![](...){.illust-full}`。ネコノテAIから挿入するとこの形になる）を
+専用ページにできず、画像が右下にずれて切れていた。`themes/nekonote-parts.css` の「全面挿絵」節で、
+`figure:has(> img.illust-full) {` を `:is(figure, p):has(> img.illust-full) {` に置き換える
+（`> figcaption` が続くほうは figure 専用なのでそのまま）。ファイルごと置き換える場合は、上記「既存リポジトリへの反映（2ファイルをセットで）」の手順に従うこと。
 
 ## ローカルビルド
 
