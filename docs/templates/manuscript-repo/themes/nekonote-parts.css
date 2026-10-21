@@ -155,7 +155,9 @@ img.illust-full {
 }
 
 /* ---- 本文中カット ---- */
-figure:has(> img.illust-inline) {
+/* alt 空（![](src){.illust-inline}）だと figure で包まれず <p> になるため、全面挿絵と同じく
+ * :is(figure, p) で拾い、キャプションの有無で改ページ・余白の挙動を揃える */
+:is(figure, p):has(> img.illust-inline) {
   break-inside: avoid;
   max-width: none;
   max-height: 60%;
