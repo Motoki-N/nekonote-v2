@@ -124,9 +124,10 @@ body.colophon dl dd {
 }
 
 /* ---- 全面挿絵（裁ち落とし）---- */
-/* VFMは ![alt](src){.illust-full} を <figure><img class="illust-full">… に変換する。
- * 専用ページ（マージン0・ノンブルなし）に隔離し、仕上がり＋3mm塗り足しで全面配置 */
-figure:has(> img.illust-full) {
+/* VFMは ![alt](src){.illust-full} を <figure><img class="illust-full">… に変換するが、
+ * alt が空（![](src){.illust-full}）だと figure で包まず <p><img class="illust-full"></p> になる。
+ * どちらの形でも専用ページ（マージン0・ノンブルなし）に隔離し、仕上がり＋3mm塗り足しで全面配置 */
+:is(figure, p):has(> img.illust-full) {
   page: illust-full-page;
   break-before: page;
   break-after: page;
