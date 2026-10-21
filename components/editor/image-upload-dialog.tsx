@@ -13,16 +13,26 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import type { IllustPosition } from "@/lib/editor/image";
 
 /** 挿絵テンプレートの種別（親SPEC §4.6。テーマCSSのクラスに対応） */
 export type IllustKind = "inline" | "full";
+
+/** 本文中カットの配置の選択肢（縦書きのページを基準にした四隅。Issue #323） */
+const POSITION_OPTIONS: { value: IllustPosition; label: string }[] = [
+  { value: "flow", label: "本文の流れの中（天地中央）" },
+  { value: "top-right", label: "ページ右上" },
+  { value: "bottom-right", label: "ページ右下" },
+  { value: "top-left", label: "ページ左上" },
+  { value: "bottom-left", label: "ページ左下" },
+];
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXTENSIONS = /\.(png|jpe?g|webp|gif)$/i;
 
 /**
  * 画像アップロードの確認ダイアログ（SPEC-vertical-editor-phase3 §6）。
- * 種別（本文中カット／全面挿絵）とキャプションを決めて images/ へ即コミットする。
+ * 種別（本文中カット／全面挿絵）・配置・キャプションを決めて images/ へ即コミットする。
  * ダイアログは検証と入力のみを担い、アップロードと記法挿入は親の責務
  */
 export function ImageUploadDialog({
@@ -34,10 +44,15 @@ export function ImageUploadDialog({
   /** アップロード対象（null なら非表示） */
   file: File | null;
   uploading: boolean;
-  onConfirm: (params: { kind: IllustKind; caption: string }) => void;
+  onConfirm: (params: {
+    kind: IllustKind;
+    position: IllustPosition;
+    caption: string;
+  }) => void;
   onCancel: () => void;
 }) {
   const [kind, setKind] = useState<IllustKind>("inline");
+  const [position, setPosition] = useState<IllustPosition>("flow");
   const [caption, setCaption] = useState("");
 
   const sizeError = file !== null && file.size > MAX_IMAGE_BYTES;
@@ -115,6 +130,29 @@ export function ImageUploadDialog({
                 </fieldset>
                 {kind === "inline" && (
                   <label className="flex flex-col gap-1 text-sm">
+                    配置
+                    <select
+                      value={position}
+                      onChange={(event) =>
+                        setPosition(event.target.value as IllustPosition)
+                      }
+                      className="h-9 rounded-md border border-input bg-background px-2 text-sm text-foreground"
+                    >
+                      {POSITION_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    {position !== "flow" && (
+                      <span className="text-xs text-muted-foreground">
+                        ページに収まらないときは次のページへ送られます
+                      </span>
+                    )}
+                  </label>
+                )}
+                {kind === "inline" && (
+                  <label className="flex flex-col gap-1 text-sm">
                     キャプション（任意）
                     <Input
                       value={caption}
@@ -139,7 +177,9 @@ export function ImageUploadDialog({
           <Button
             type="button"
             disabled={uploading || error !== null}
-            onClick={() => onConfirm({ kind, caption: caption.trim() })}
+            onClick={() =>
+              onConfirm({ kind, position, caption: caption.trim() })
+            }
           >
             {uploading && (
               <Loader2 data-icon="inline-start" className="animate-spin" />

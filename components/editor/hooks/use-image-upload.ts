@@ -8,6 +8,7 @@ import {
   fileToBase64,
   illustNotation,
   sanitizeImageFileName,
+  type IllustPosition,
 } from "@/lib/editor/image";
 import { EditorSelection } from "@codemirror/state";
 import type { EditorView } from "@codemirror/view";
@@ -34,7 +35,15 @@ export function useImageUpload({
   const imageInputRef = useRef<HTMLInputElement>(null);
 
   const confirmImageUpload = useCallback(
-    async ({ kind, caption }: { kind: IllustKind; caption: string }) => {
+    async ({
+      kind,
+      position,
+      caption,
+    }: {
+      kind: IllustKind;
+      position: IllustPosition;
+      caption: string;
+    }) => {
       const file = pendingImage;
       if (!file) return;
       setUploadingImage(true);
@@ -58,7 +67,7 @@ export function useImageUpload({
         if (view) {
           const pos = view.state.selection.main.from;
           // 挿絵は独立した段落として前後を空行で区切る
-          const insert = `\n\n${illustNotation(result.data.fileName, kind, caption)}\n\n`;
+          const insert = `\n\n${illustNotation(result.data.fileName, kind, caption, position)}\n\n`;
           view.dispatch({
             changes: { from: pos, insert },
             selection: EditorSelection.cursor(pos + insert.length),

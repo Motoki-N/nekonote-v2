@@ -69,6 +69,7 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 | 改ページ | `<div class="page-break"></div>`（独立行に置く） |
 | 全面挿絵（裁ち落とし） | `![キャプションは刷られない](../images/x.png){.illust-full}`（alt 空の `![](../images/x.png){.illust-full}` も可） |
 | 本文中カット | `![キャプション](../images/x.png){.illust-inline}` |
+| 本文中カット（ページの四隅） | `![キャプション](../images/x.png){.illust-inline .illust-bottom-left}`（`.illust-top-right` / `.illust-bottom-right` / `.illust-top-left` / `.illust-bottom-left`。ページに収まらないと次のページへ送られる。EPUB では通常のカットとして表示） |
 | 扉・奥付 | フロントマターで `class: titlepage` / `class: colophon` |
 
 ### 全面挿絵の修正を既存リポジトリへ反映する
@@ -77,6 +78,12 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 専用ページにできず、画像が右下にずれて切れていた。`themes/nekonote-parts.css` の「全面挿絵」節で、
 `figure:has(> img.illust-full) {` を `:is(figure, p):has(> img.illust-full) {` に置き換える
 （`> figcaption` が続くほうは figure 専用なのでそのまま）。ファイルごと置き換える場合は、上記「既存リポジトリへの反映（2ファイルをセットで）」の手順に従うこと。
+
+### 本文中カットの四隅配置を既存リポジトリへ反映する
+
+ネコノテAIの画像ダイアログで配置（ページの右上・右下・左上・左下）を選ぶと、`{.illust-inline .illust-bottom-left}` のような修飾クラスを書き込む。
+以前の `nekonote-parts.css` にはこの指定がなく、選んでも本文の流れの中に置かれる（崩れはしない）。
+本テンプレートの `themes/nekonote-parts.css` から「本文中カットの四隅配置（ページフロート）」節を、既存リポジトリの同ファイルの「本文中カット」節の直後に追記する。
 
 ## ローカルビルド
 
