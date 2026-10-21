@@ -24,6 +24,10 @@ const imageBase64Schema = z
   .max(Math.ceil((MAX_IMAGE_BYTES / 3) * 4) + 8, {
     error: "画像が大きすぎます（上限10MB）",
   });
+// base64 は Server Action 引数配列の直下に置かずオブジェクトで包んで受ける。
+// React のデコーダは引数配列配下の文字列長を arraySizeLimit（1e6）に数えるため、
+// 直下に置くと約750KB超の画像が本体到達前に落ちる（Issue #316）
+const imagePayloadSchema = z.object({ base64Content: imageBase64Schema });
 
 /**
  * 画像を `images/` へ即コミットする（SPEC-phase3 §6・論点C）。
@@ -33,7 +37,7 @@ const imageBase64Schema = z
 export async function uploadImage(
   projectId: string,
   fileName: string,
-  base64Content: string,
+  image: { base64Content: string },
   targetBranch?: string,
 ): Promise<ActionResult<{ repoPath: string; fileName: string }>> {
   try {
@@ -44,7 +48,7 @@ export async function uploadImage(
     });
     const branch = parseBranch(targetBranch);
     const name = imageFileNameSchema.parse(fileName);
-    const content = imageBase64Schema.parse(base64Content);
+    const { base64Content: content } = imagePayloadSchema.parse(image);
     if (Buffer.from(content, "base64").length > MAX_IMAGE_BYTES) {
       throw new AppError("validation", "画像が大きすぎます（上限10MB）");
     }

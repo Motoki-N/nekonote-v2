@@ -245,7 +245,7 @@ alter table public.user_settings add column zenn_repo text;
 ### 11.2 Server Action（lib/actions/zenn.ts に追加）
 
 ```
-uploadZennImage(slug, fileName, base64Content):
+uploadZennImage(slug, fileName, { base64Content }):  // base64 はオブジェクトで包む（Issue #316）
   ActionResult<{ path: string; fileName: string }>
   // loadZennContext → enforceRateLimit(userId, 'zenn-upload', { perMinute: 6, perDay: 100 })
   //   （editor-upload と同水準）

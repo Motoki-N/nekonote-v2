@@ -43,7 +43,7 @@ export function useImageUpload({
         const result = await uploadImage(
           projectId,
           sanitizeImageFileName(file.name),
-          base64,
+          { base64Content: base64 },
           okRef.current?.branch,
         );
         if (!result.ok || !result.data) {
