@@ -63,7 +63,7 @@ Phase 2 完了（2026-07-16・PR #12・本番反映済み）により以下が�
   - サイズ上限: 10MB（超過は日本語エラー）
   - ファイル名はサニタイズ（英数字・`-`・`_`・`.` のみに正規化。衝突時は `-2` 連番）
 - 解像度・カラーの入稿検査は既存の Actions 内検査（`check-images.mjs`）の責務のまま（エディタでは行わない）
-- Server Action: `uploadImage(projectId, fileName, base64Content)` — `loadEditorContext`＋レート制限＋パス検証（`images/` 配下固定）。**security-reviewer 対象**（§10）
+- Server Action: `uploadImage(projectId, fileName, { base64Content }, targetBranch?)` — base64 はオブジェクトで包んで渡す（引数配列の直下に長い文字列を置くと React のデコーダ上限で約750KB超が落ちる。Issue #316）。`loadEditorContext`＋レート制限＋パス検証（`images/` 配下固定）。**security-reviewer 対象**（§10）
 
 ## 7. 設定フォーム（書誌・entry・組み設定・奥付）
 

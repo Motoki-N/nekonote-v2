@@ -178,11 +178,9 @@ export function ZennWorkspace({
     setUploadingImage(true);
     try {
       const base64 = await fileToBase64(file);
-      const result = await uploadZennImage(
-        slugCheck.data,
-        nameCheck.data,
-        base64,
-      );
+      const result = await uploadZennImage(slugCheck.data, nameCheck.data, {
+        base64Content: base64,
+      });
       if (!result.ok || !result.data) {
         toast.error(
           result.ok ? "画像のアップロードに失敗しました" : result.error.message,

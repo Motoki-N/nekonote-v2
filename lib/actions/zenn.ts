@@ -197,14 +197,17 @@ export async function saveZennArticle(
 export async function uploadZennImage(
   slug: string,
   fileName: string,
-  base64Content: string,
+  // 引数配列の直下に長い文字列を置かない（縦書きエディタの uploadImage と同じ。Issue #316）
+  image: { base64Content: string },
 ): Promise<ActionResult<{ path: string; fileName: string }>> {
   try {
     const ctx = await loadZennContext();
     enforceRateLimit(ctx.userId, "zenn-upload", { perMinute: 6, perDay: 100 });
     const safeSlug = zennSlugSchema.parse(slug);
     const name = zennImageFileNameSchema.parse(fileName);
-    const content = zennImageBase64Schema.parse(base64Content);
+    const { base64Content: content } = z
+      .object({ base64Content: zennImageBase64Schema })
+      .parse(image);
     // 粗い長さ検査（スキーマ）に加え、デコード後バイト数でZenn上限を再検査（二段）
     if (Buffer.from(content, "base64").length > ZENN_MAX_IMAGE_BYTES) {
       throw new AppError("validation", "画像が大きすぎます（Zennの上限3MB）");
