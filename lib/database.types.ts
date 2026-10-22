@@ -183,7 +183,10 @@ export type Database = {
         Row: {
           created_at: string
           id: string
+          is_favorite: boolean
           kind: string
+          placed_at: string | null
+          placed_image_path: string | null
           project_id: string
           prompt: string
           reference_illustration_id: string | null
@@ -196,7 +199,10 @@ export type Database = {
         Insert: {
           created_at?: string
           id?: string
+          is_favorite?: boolean
           kind: string
+          placed_at?: string | null
+          placed_image_path?: string | null
           project_id: string
           prompt: string
           reference_illustration_id?: string | null
@@ -209,7 +215,10 @@ export type Database = {
         Update: {
           created_at?: string
           id?: string
+          is_favorite?: boolean
           kind?: string
+          placed_at?: string | null
+          placed_image_path?: string | null
           project_id?: string
           prompt?: string
           reference_illustration_id?: string | null

@@ -2,10 +2,12 @@
 
 import { z } from "zod";
 
+import { getAllChapterContents } from "@/lib/actions/editor/chapters";
 import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import {
+  collectAtelierImageIds,
   ILLUSTRATION_EXTENSION_BY_MIME,
   ILLUSTRATION_KIND_LABEL,
   illustrationTitleSchema,
@@ -36,7 +38,7 @@ export async function listIllustrations(
     const { data: rows, error } = await supabase
       .from("illustrations")
       .select(
-        "id, project_id, kind, title, prompt, request, reference_illustration_id, storage_path, created_at",
+        "id, project_id, kind, title, prompt, request, reference_illustration_id, storage_path, created_at, is_favorite, placed_at, placed_image_path",
       )
       .eq("project_id", parsedId)
       .order("created_at", { ascending: false });
@@ -91,6 +93,9 @@ export async function listIllustrations(
         createdAt: row.created_at,
         signedUrl,
         referencedCount: referencedCount.get(row.id) ?? 0,
+        isFavorite: row.is_favorite,
+        placedAt: row.placed_at,
+        placedImagePath: row.placed_image_path,
       };
     });
     return { ok: true, data: items };
@@ -225,6 +230,9 @@ export async function uploadReferenceImage(
       createdAt: row.created_at,
       signedUrl: signed.signedUrl,
       referencedCount: 0, // アップロード直後を参照するイラストはまだ存在しない
+      isFavorite: false,
+      placedAt: null,
+      placedImagePath: null,
     };
     return { ok: true, data: item };
   } catch (error) {
@@ -295,6 +303,102 @@ export async function deleteIllustration(
       .eq("id", row.id);
     if (deleteError) throw new AppError("internal", deleteError.message);
     return { ok: true };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/** お気に入り☆の切り替え（SPEC §11）。RLSが所有確認を担う（updateIllustrationTitle と同じ形） */
+export async function setIllustrationFavorite(
+  illustrationId: string,
+  value: boolean,
+): Promise<ActionResult> {
+  try {
+    const parsedId = uuidSchema.parse(illustrationId);
+    const parsedValue = z.boolean().parse(value);
+    const supabase = await createClient();
+
+    const { data: updated, error } = await supabase
+      .from("illustrations")
+      .update({ is_favorite: parsedValue })
+      .eq("id", parsedId)
+      .select("id");
+    if (error) throw new AppError("internal", error.message);
+    if (!updated || updated.length === 0) {
+      throw new AppError("not_found", "イラストが見つかりません");
+    }
+    return { ok: true };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/**
+ * 原稿の配置状況の走査（SPEC §11）。既定ブランチの manuscripts/*.md を読み、
+ * `images/atelier-<UUID>` の記法があるイラストに⛳（placed_at）を付け、ないものから外す。
+ * 記録方式（配置時の記録）の「記法を消しても⛳が残る」「作業ブランチのマージ後に⛳が付かない」を補正する
+ */
+export async function syncIllustrationPlacements(
+  projectId: string,
+): Promise<ActionResult<{ added: number; removed: number }>> {
+  try {
+    const parsedProjectId = uuidSchema.parse(projectId);
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) throw new AppError("unauthorized", "ログインが必要です");
+
+    // 1回で「章数＋2回」程度の GitHub API 呼び出しになるため緩めすぎない
+    enforceRateLimit(user.id, "illustration-sync", {
+      perMinute: 2,
+      perDay: 30,
+    });
+
+    // ブランチ省略＝既定ブランチ（⛳は「本線の原稿に載っている」の意味。SPEC §11）。
+    // 認証・プロジェクト所有・PAT の確認は getAllChapterContents（loadEditorContext）が担う
+    const chapters = await getAllChapterContents(parsedProjectId);
+    if (!chapters.ok) return chapters;
+    const placedIds = new Set<string>();
+    for (const chapter of chapters.data?.chapters ?? []) {
+      for (const id of collectAtelierImageIds(chapter.content)) {
+        placedIds.add(id);
+      }
+    }
+
+    // RLS越し＝自分のイラストのみ
+    const { data: rows, error } = await supabase
+      .from("illustrations")
+      .select("id, placed_at")
+      .eq("project_id", parsedProjectId);
+    if (error) throw new AppError("internal", error.message);
+
+    const toAdd: string[] = [];
+    const toRemove: string[] = [];
+    for (const row of rows ?? []) {
+      const placed = placedIds.has(row.id.toLowerCase());
+      if (placed && row.placed_at === null) toAdd.push(row.id);
+      if (!placed && row.placed_at !== null) toRemove.push(row.id);
+    }
+
+    if (toAdd.length > 0) {
+      const { error: addError } = await supabase
+        .from("illustrations")
+        .update({ placed_at: new Date().toISOString() })
+        .in("id", toAdd);
+      if (addError) throw new AppError("internal", addError.message);
+    }
+    if (toRemove.length > 0) {
+      const { error: removeError } = await supabase
+        .from("illustrations")
+        .update({ placed_at: null })
+        .in("id", toRemove);
+      if (removeError) throw new AppError("internal", removeError.message);
+    }
+    return {
+      ok: true,
+      data: { added: toAdd.length, removed: toRemove.length },
+    };
   } catch (error) {
     return toActionError(error);
   }

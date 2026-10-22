@@ -14,9 +14,17 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import type { IllustPosition } from "@/lib/editor/image";
+import type { IllustrationItem } from "@/lib/schemas/illustration";
 
 /** 挿絵テンプレートの種別（親SPEC §4.6。テーマCSSのクラスに対応） */
 export type IllustKind = "inline" | "full";
+
+/**
+ * 挿入する画像。ローカルのファイル（D&D・ツールバー）か、アトリエのイラスト
+ * （SPEC-illustrator §11。サーバーが Storage から原稿リポジトリへコピーする）
+ */
+export type ImageTarget =
+  { type: "file"; file: File } | { type: "atelier"; item: IllustrationItem };
 
 /** 本文中カットの配置の選択肢（縦書きのページを基準にした四隅。Issue #323） */
 const POSITION_OPTIONS: { value: IllustPosition; label: string }[] = [
@@ -33,16 +41,17 @@ const ALLOWED_EXTENSIONS = /\.(png|jpe?g|webp|gif)$/i;
 /**
  * 画像アップロードの確認ダイアログ（SPEC-vertical-editor-phase3 §6）。
  * 種別（本文中カット／全面挿絵）・配置・キャプションを決めて images/ へ即コミットする。
- * ダイアログは検証と入力のみを担い、アップロードと記法挿入は親の責務
+ * ダイアログは検証と入力のみを担い、アップロードと記法挿入は親の責務。
+ * アトリエのイラスト（SPEC-illustrator §11）も同じ入力で挿入する（検証はファイルのときだけ）
  */
 export function ImageUploadDialog({
-  file,
+  target,
   uploading,
   onConfirm,
   onCancel,
 }: {
-  /** アップロード対象（null なら非表示） */
-  file: File | null;
+  /** 挿入する画像（null なら非表示） */
+  target: ImageTarget | null;
   uploading: boolean;
   onConfirm: (params: {
     kind: IllustKind;
@@ -55,6 +64,8 @@ export function ImageUploadDialog({
   const [position, setPosition] = useState<IllustPosition>("flow");
   const [caption, setCaption] = useState("");
 
+  const file = target?.type === "file" ? target.file : null;
+  const atelierItem = target?.type === "atelier" ? target.item : null;
   const sizeError = file !== null && file.size > MAX_IMAGE_BYTES;
   const extError = file !== null && !ALLOWED_EXTENSIONS.test(file.name);
   const error = sizeError
@@ -65,7 +76,7 @@ export function ImageUploadDialog({
 
   return (
     <Dialog
-      open={file !== null}
+      open={target !== null}
       onOpenChange={(open) => {
         if (!open && !uploading) onCancel();
       }}
@@ -74,17 +85,34 @@ export function ImageUploadDialog({
         <DialogHeader>
           <DialogTitle>画像を挿入</DialogTitle>
           <DialogDescription>
-            images/ へのコミットと、カーソル位置への挿入記法の追記を行います
+            {atelierItem
+              ? "アトリエの画像を images/ へコピーしてコミットし、カーソル位置に挿入記法を追記します"
+              : "images/ へのコミットと、カーソル位置への挿入記法の追記を行います"}
           </DialogDescription>
         </DialogHeader>
-        {file !== null && (
+        {target !== null && (
           <div className="flex flex-col gap-3">
-            <p className="min-w-0 break-all text-sm text-foreground">
-              {file.name}
-              <span className="ml-2 text-xs text-muted-foreground">
-                {(file.size / 1024 / 1024).toFixed(2)}MB
-              </span>
-            </p>
+            {file !== null && (
+              <p className="min-w-0 break-all text-sm text-foreground">
+                {file.name}
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {(file.size / 1024 / 1024).toFixed(2)}MB
+                </span>
+              </p>
+            )}
+            {atelierItem !== null && (
+              <div className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element -- 署名URL（短寿命・外部最適化不可）のため素の img を使う */}
+                <img
+                  src={atelierItem.signedUrl}
+                  alt={atelierItem.title}
+                  className="h-16 w-16 rounded object-cover"
+                />
+                <p className="min-w-0 break-all text-sm text-foreground">
+                  {atelierItem.title}
+                </p>
+              </div>
+            )}
             {error ? (
               <p className="text-sm text-destructive">{error}</p>
             ) : (

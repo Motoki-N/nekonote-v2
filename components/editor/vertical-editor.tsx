@@ -39,6 +39,7 @@ import { BulkCommitDialog } from "@/components/editor/bulk-commit-dialog";
 import { EditorPane } from "@/components/editor/editor-pane";
 import { PrCreateDialog } from "@/components/editor/pr-create-dialog";
 import { EditorToolbar } from "@/components/editor/editor-toolbar";
+import { AtelierPickDialog } from "@/components/editor/atelier-pick-dialog";
 import { ImageUploadDialog } from "@/components/editor/image-upload-dialog";
 import { MergePane } from "@/components/editor/merge-pane";
 import { NewChapterDialog } from "@/components/editor/new-chapter-dialog";
@@ -930,6 +931,8 @@ export function VerticalEditor({
     confirmImageUpload,
     imageInputRef,
   } = useImageUpload({ projectId, okRef, editorViewRef });
+  // アトリエのイラストのピッカー（SPEC-illustrator §11）。選ぶと挿入ダイアログへ渡す
+  const [atelierPickOpen, setAtelierPickOpen] = useState(false);
 
   const { jumpToComment, deleteComment } = useCommentActions({
     editorViewRef,
@@ -1148,6 +1151,7 @@ export function VerticalEditor({
                       viewRef={editorViewRef}
                       direction={ok?.theme.direction ?? "vertical"}
                       onImageRequest={() => imageInputRef.current?.click()}
+                      onAtelierRequest={() => setAtelierPickOpen(true)}
                     />
                     <div className="min-h-0 flex-1">
                       <EditorPane
@@ -1155,7 +1159,9 @@ export function VerticalEditor({
                         initialContent={editorDoc}
                         onDocChange={onDocChange}
                         onSaveRequest={requestSave}
-                        onImageDrop={setPendingImage}
+                        onImageDrop={(file) =>
+                          setPendingImage({ type: "file", file })
+                        }
                         onSelectionChange={handleSelectionChange}
                         viewRef={editorViewRef}
                       />
@@ -1351,14 +1357,26 @@ export function VerticalEditor({
         open={prOpen}
         onOpenChange={setPrOpen}
       />
-      {/* 種別・キャプションはファイルごとに初期化する（key） */}
+      {atelierPickOpen && (
+        <AtelierPickDialog
+          projectId={projectId}
+          onPick={(item) => {
+            setAtelierPickOpen(false);
+            setPendingImage({ type: "atelier", item });
+          }}
+          onClose={() => setAtelierPickOpen(false)}
+        />
+      )}
+      {/* 種別・キャプションは画像ごとに初期化する（key） */}
       <ImageUploadDialog
         key={
-          pendingImage
-            ? `${pendingImage.name}:${pendingImage.lastModified}`
-            : "none"
+          pendingImage === null
+            ? "none"
+            : pendingImage.type === "file"
+              ? `${pendingImage.file.name}:${pendingImage.file.lastModified}`
+              : `atelier:${pendingImage.item.id}`
         }
-        file={pendingImage}
+        target={pendingImage}
         uploading={uploadingImage}
         onConfirm={(params) => void confirmImageUpload(params)}
         onCancel={() => setPendingImage(null)}
@@ -1372,7 +1390,7 @@ export function VerticalEditor({
         tabIndex={-1}
         onChange={(event) => {
           const file = event.target.files?.[0] ?? null;
-          if (file) setPendingImage(file);
+          if (file) setPendingImage({ type: "file", file });
           event.target.value = "";
         }}
       />

@@ -104,6 +104,22 @@ export function AtelierWorkspace({
     );
   }, []);
 
+  const handleFavoriteChanged = useCallback(
+    (id: string, isFavorite: boolean) => {
+      setLoaded((prev) =>
+        prev
+          ? {
+              ...prev,
+              items: prev.items.map((item) =>
+                item.id === id ? { ...item, isFavorite } : item,
+              ),
+            }
+          : prev,
+      );
+    },
+    [],
+  );
+
   if (projects.length === 0) {
     return (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-border bg-card p-8">
@@ -163,12 +179,16 @@ export function AtelierWorkspace({
           />
           <AtelierGallery
             projectId={project.id}
+            hasRepo={project.hasRepo}
             items={gallery?.items ?? null}
             error={gallery?.error ?? null}
             onSetReference={setReference}
             onUploaded={handleGenerated}
             onDeleted={handleDeleted}
             onTitleChanged={handleTitleChanged}
+            onFavoriteChanged={handleFavoriteChanged}
+            // 走査で⛳が変わったら一覧を取り直す（署名URLの鮮度もこれで保たれる）
+            onPlacementsSynced={() => setReloadKey((k) => k + 1)}
           />
         </div>
       )}

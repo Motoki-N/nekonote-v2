@@ -164,6 +164,9 @@ export async function POST(req: Request) {
       createdAt: row.created_at,
       signedUrl: signed.signedUrl,
       referencedCount: 0, // 生成直後を参照するイラストはまだ存在しない
+      isFavorite: false,
+      placedAt: null,
+      placedImagePath: null,
     };
     return Response.json({ illustration });
   } catch (error) {
