@@ -220,7 +220,40 @@ export type IllustrationItem = {
   signedUrl: string;
   /** このイラストを参照している他イラストの数（削除ダイアログの警告用） */
   referencedCount: number;
+  /** お気に入り☆（SPEC §11） */
+  isFavorite: boolean;
+  /** 採用⛳: 既定ブランチの原稿に載っている（配置時・原稿走査で付与／解除。SPEC §11） */
+  placedAt: string | null;
+  /** 原稿リポジトリへコピーしたパス（作業ブランチへの配置でも入る。削除時の警告用） */
+  placedImagePath: string | null;
 };
+
+/**
+ * 原稿リポジトリへ配置するときのファイル名（SPEC §11）。UUID を入れることで、
+ * 原稿の挿入記法からどのイラストかを直接たどれる（原稿走査で⛳を補正する根拠）
+ */
+export function atelierImageFileName(
+  illustrationId: string,
+  extension: string,
+): string {
+  return `atelier-${illustrationId}.${extension}`;
+}
+
+/**
+ * 原稿本文中の配置済みイラストの参照（`images/atelier-<UUID>.<拡張子>`）。
+ * 手作業のコピー等で付いた連番（`-2` 等）も同じイラストとして扱う
+ */
+const ATELIER_IMAGE_REFERENCE =
+  /images\/atelier-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:-\d+)?\.(?:png|jpe?g|webp)/gi;
+
+/** 原稿本文から配置済みイラストの id（小文字）を集める */
+export function collectAtelierImageIds(content: string): Set<string> {
+  const ids = new Set<string>();
+  for (const match of content.matchAll(ATELIER_IMAGE_REFERENCE)) {
+    ids.add(match[1].toLowerCase());
+  }
+  return ids;
+}
 
 export const illustrationTitleSchema = z
   .string()

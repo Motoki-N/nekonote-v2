@@ -43,12 +43,15 @@ export function EditorToolbar({
   viewRef,
   direction,
   onImageRequest,
+  onAtelierRequest,
 }: {
   viewRef: React.RefObject<EditorView | null>;
   /** テーマの書字方向（縦書き専用ボタンの出し分けに使う） */
   direction: WritingDirection;
   /** 画像挿入（SPEC §6）。未指定ならボタンを出さない */
   onImageRequest?: () => void;
+  /** アトリエのイラストを挿入（SPEC-illustrator §11）。未指定ならボタンを出さない */
+  onAtelierRequest?: () => void;
 }) {
   const [rubyOpen, setRubyOpen] = useState(false);
   const [rubyBase, setRubyBase] = useState("");
@@ -165,6 +168,13 @@ export function EditorToolbar({
           label="画像"
           title="画像を挿入（images/ へコミットされます）"
           onClick={onImageRequest}
+        />
+      )}
+      {onAtelierRequest && (
+        <ToolbarButton
+          label="アトリエ"
+          title="アトリエのイラストを挿入（images/ へコピーしてコミットされます）"
+          onClick={onAtelierRequest}
         />
       )}
 

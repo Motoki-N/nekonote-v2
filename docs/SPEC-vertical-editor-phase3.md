@@ -56,6 +56,7 @@ Phase 2 完了（2026-07-16・PR #12・本番反映済み）により以下が�
 ## 6. 画像アップロード・挿入補助
 
 - **入口は2つ**: 入力ペインへのドラッグ&ドロップ／ツールバーの画像ボタン（ファイル選択）
+- **アトリエからの挿入**（Issue #328・SPEC-illustrator §11）: ツールバーの「アトリエ」ボタン → そのプロジェクトのイラストのピッカー（☆で絞り込み可・アップロード参照画像は出さない）→ 同じ挿入ダイアログ（種別・配置・キャプション）。Server Action `placeIllustration(projectId, illustrationId, targetBranch?)` が Storage から取り出して `images/atelier-<UUID>.<拡張子>` へコピーコミットする（同名があれば同じイラストとみなし再コミットしない）。レート制限は `uploadImage` と共用
 - フロー: 検証 → `images/{ファイル名}` へ**即コミット**（`createFileContent`）→ エディタのカーソル位置に挿入記法を追記 → プレビューはデバウンスで反映（画像は既存の認証プロキシ `/api/editor/asset` 経由）
 - 挿入記法は種別を選ぶ: 本文中カット `![キャプション](../images/xxx.png){.illust-inline}` ／全面挿絵 `{.illust-full}`（ドロップ時にポップオーバーで選択・既定は本文中カット）
 - 本文中カットは配置も選べる（既定は本文の流れの中）: ページの右上・右下・左上・左下。修飾クラスを重ねる記法 `{.illust-inline .illust-bottom-left}` で、テーマCSSがページフロート（`float: block-end inline-end; float-reference: page`）で四隅に寄せる。ページに収まらないと次のページへ送られる。EPUB では通常のカット扱い（Issue #323）

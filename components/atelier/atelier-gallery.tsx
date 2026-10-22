@@ -1,17 +1,30 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Check, Download, Loader2, Pencil, Trash2, Upload } from "lucide-react";
+import {
+  Check,
+  Download,
+  Flag,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  Star,
+  Trash2,
+  Upload,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
   deleteIllustration,
+  setIllustrationFavorite,
+  syncIllustrationPlacements,
   updateIllustrationTitle,
   uploadReferenceImage,
 } from "@/lib/actions/illustrations";
 import {
   ILLUSTRATION_EXTENSION_BY_MIME,
   ILLUSTRATION_KIND_LABEL,
+  ILLUSTRATION_STYLE_LABEL,
   REFERENCE_UPLOAD_MAX_BYTES,
   type IllustrationItem,
 } from "@/lib/schemas/illustration";
@@ -38,6 +51,21 @@ import { Input } from "@/components/ui/input";
 
 const dateFormat = new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium" });
 
+/** ギャラリーの絞り込み（SPEC §11）。画風での絞り込みは作らない（表示のみ） */
+type GalleryFilter = "all" | "favorite" | "placed";
+
+const FILTER_OPTIONS: { value: GalleryFilter; label: string }[] = [
+  { value: "all", label: "すべて" },
+  { value: "favorite", label: "お気に入り" },
+  { value: "placed", label: "採用" },
+];
+
+function matchesFilter(item: IllustrationItem, filter: GalleryFilter) {
+  if (filter === "favorite") return item.isFavorite;
+  if (filter === "placed") return item.placedAt !== null;
+  return true;
+}
+
 /** 署名URLのパス部から拡張子を取り出す（ダウンロードのファイル名用） */
 function extensionOf(signedUrl: string): string {
   const match = /\.(\w+)$/.exec(new URL(signedUrl).pathname);
@@ -60,18 +88,24 @@ async function downloadImage(item: IllustrationItem): Promise<void> {
 /**
  * ギャラリー（SPEC-illustrator §4.4）。
  * グリッド表示＋タイトルのインライン編集＋拡大表示（プロンプト=説明文）＋
- * ダウンロード・削除（被参照は警告）・参照画像にして依頼・参照画像のアップロード（Issue #104）
+ * ダウンロード・削除（被参照は警告）・参照画像にして依頼・参照画像のアップロード（Issue #104）・
+ * お気に入り☆と採用⛳の表示・絞り込み、原稿の配置状況の走査（Issue #328）
  */
 export function AtelierGallery({
   projectId,
+  hasRepo,
   items,
   error,
   onSetReference,
   onUploaded,
   onDeleted,
   onTitleChanged,
+  onFavoriteChanged,
+  onPlacementsSynced,
 }: {
   projectId: string;
+  /** 原稿リポジトリが設定済みか（配置状況の走査ボタンの有効/無効） */
+  hasRepo: boolean;
   /** null = 読み込み中 */
   items: IllustrationItem[] | null;
   error: string | null;
@@ -79,6 +113,9 @@ export function AtelierGallery({
   onUploaded: (item: IllustrationItem) => void;
   onDeleted: (id: string) => void;
   onTitleChanged: (id: string, title: string) => void;
+  onFavoriteChanged: (id: string, isFavorite: boolean) => void;
+  /** 走査で⛳が変わったとき（一覧を取り直す） */
+  onPlacementsSynced: () => void;
 }) {
   const [zoomed, setZoomed] = useState<IllustrationItem | null>(null);
   const [deleting, setDeleting] = useState<IllustrationItem | null>(null);
@@ -86,7 +123,50 @@ export function AtelierGallery({
   const [editingTitle, setEditingTitle] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [filter, setFilter] = useState<GalleryFilter>("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const visibleItems = items?.filter((item) => matchesFilter(item, filter));
+
+  async function handleToggleFavorite(item: IllustrationItem) {
+    const next = !item.isFavorite;
+    setBusyId(item.id);
+    try {
+      const result = await setIllustrationFavorite(item.id, next);
+      if (!result.ok) {
+        toast.error(result.error.message);
+        return;
+      }
+      onFavoriteChanged(item.id, next);
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleSyncPlacements() {
+    setSyncing(true);
+    try {
+      const result = await syncIllustrationPlacements(projectId);
+      if (!result.ok || !result.data) {
+        toast.error(
+          result.ok ? "配置状況の更新に失敗しました" : result.error.message,
+        );
+        return;
+      }
+      const { added, removed } = result.data;
+      toast(
+        added === 0 && removed === 0
+          ? "採用マークに変更はありません"
+          : `採用マークを更新しました（${added}件追加・${removed}件解除）`,
+      );
+      if (added > 0 || removed > 0) onPlacementsSynced();
+    } catch {
+      toast.error("配置状況の更新に失敗しました。通信環境を確認してください");
+    } finally {
+      setSyncing(false);
+    }
+  }
 
   async function handleUpload(file: File) {
     // Server Action の bodySizeLimit（15mb）超過はアクション到達前に reject され
@@ -153,38 +233,85 @@ export function AtelierGallery({
 
   return (
     <section className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4">
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-base font-semibold text-card-foreground">
           ギャラリー
         </h2>
-        {/* 参照画像のアップロード（Issue #104）。絵柄・キャラの統一に使う外部画像を取り込む */}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept={Object.keys(ILLUSTRATION_EXTENSION_BY_MIME).join(",")}
-          className="hidden"
-          aria-hidden
-          tabIndex={-1}
-          onChange={(e) => {
-            const file = e.target.files?.[0];
-            e.target.value = ""; // 同じファイルの再選択でも change を発火させる
-            if (file) void handleUpload(file);
-          }}
-        />
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={uploading}
-          onClick={() => fileInputRef.current?.click()}
-        >
-          {uploading ? (
-            <Loader2 className="animate-spin" data-icon="inline-start" />
-          ) : (
-            <Upload data-icon="inline-start" />
-          )}
-          参照画像をアップロード
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {/* 参照画像のアップロード（Issue #104）。絵柄・キャラの統一に使う外部画像を取り込む */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={Object.keys(ILLUSTRATION_EXTENSION_BY_MIME).join(",")}
+            className="hidden"
+            aria-hidden
+            tabIndex={-1}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              e.target.value = ""; // 同じファイルの再選択でも change を発火させる
+              if (file) void handleUpload(file);
+            }}
+          />
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={uploading}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {uploading ? (
+              <Loader2 className="animate-spin" data-icon="inline-start" />
+            ) : (
+              <Upload data-icon="inline-start" />
+            )}
+            参照画像をアップロード
+          </Button>
+          {/* 既定ブランチの原稿を読み直して採用⛳を補正する（Issue #328） */}
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={syncing || !hasRepo}
+            title={
+              hasRepo
+                ? "既定ブランチの原稿を読み、採用マークを付け直します"
+                : "原稿リポジトリが設定されていません"
+            }
+            onClick={() => void handleSyncPlacements()}
+          >
+            {syncing ? (
+              <Loader2 className="animate-spin" data-icon="inline-start" />
+            ) : (
+              <RefreshCw data-icon="inline-start" />
+            )}
+            原稿の配置状況を更新
+          </Button>
+        </div>
       </div>
+
+      {items !== null && items.length > 0 && (
+        <div
+          className="flex flex-wrap gap-1"
+          role="group"
+          aria-label="絞り込み"
+        >
+          {FILTER_OPTIONS.map((option) => (
+            <Button
+              key={option.value}
+              size="sm"
+              variant={filter === option.value ? "secondary" : "ghost"}
+              aria-pressed={filter === option.value}
+              onClick={() => setFilter(option.value)}
+            >
+              {option.label}
+              <span className="text-xs text-muted-foreground">
+                {
+                  items.filter((item) => matchesFilter(item, option.value))
+                    .length
+                }
+              </span>
+            </Button>
+          ))}
+        </div>
+      )}
 
       {error ? (
         <p className="py-8 text-center text-sm text-destructive">{error}</p>
@@ -203,9 +330,15 @@ export function AtelierGallery({
             描きます。左のフォームから最初の依頼をどうぞ。
           </p>
         </div>
+      ) : visibleItems && visibleItems.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          {filter === "favorite"
+            ? "お気に入りのイラストはまだありません。☆で印を付けられます。"
+            : "原稿に採用されたイラストはまだありません。"}
+        </p>
       ) : (
         <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {items.map((item) => (
+          {(visibleItems ?? []).map((item) => (
             <li
               key={item.id}
               className="flex flex-col gap-2 rounded-md border border-border p-2"
@@ -275,10 +408,41 @@ export function AtelierGallery({
                 <Badge variant="secondary">
                   {ILLUSTRATION_KIND_LABEL[item.kind]}
                 </Badge>
+                {item.placedAt !== null && (
+                  <Badge
+                    variant="outline"
+                    title="既定ブランチの原稿に載っています"
+                  >
+                    <Flag />
+                    採用
+                  </Badge>
+                )}
+                {item.style !== null && (
+                  <span className="text-xs text-muted-foreground">
+                    {ILLUSTRATION_STYLE_LABEL[item.style]}
+                  </span>
+                )}
                 <span className="text-xs text-muted-foreground">
                   {dateFormat.format(new Date(item.createdAt))}
                 </span>
                 <div className="ml-auto flex items-center">
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={
+                      item.isFavorite
+                        ? `${item.title} をお気に入りから外す`
+                        : `${item.title} をお気に入りにする`
+                    }
+                    aria-pressed={item.isFavorite}
+                    className={
+                      item.isFavorite ? "text-primary" : "text-muted-foreground"
+                    }
+                    disabled={busyId === item.id}
+                    onClick={() => void handleToggleFavorite(item)}
+                  >
+                    <Star className={item.isFavorite ? "fill-current" : ""} />
+                  </Button>
                   <Button
                     variant="ghost"
                     size="icon-sm"
@@ -329,6 +493,8 @@ export function AtelierGallery({
                 <DialogTitle>{zoomed.title}</DialogTitle>
                 <DialogDescription>
                   {ILLUSTRATION_KIND_LABEL[zoomed.kind]}・
+                  {zoomed.style !== null &&
+                    `${ILLUSTRATION_STYLE_LABEL[zoomed.style]}・`}
                   {dateFormat.format(new Date(zoomed.createdAt))}
                 </DialogDescription>
               </DialogHeader>
@@ -367,6 +533,14 @@ export function AtelierGallery({
                   <br />
                   このイラストは他の{deleting.referencedCount}
                   枚の参照元になっています（削除しても参照した画像は残ります）。
+                </>
+              )}
+              {deleting?.placedImagePath && (
+                <>
+                  <br />
+                  このイラストは原稿リポジトリにコピー済みです（
+                  {deleting.placedImagePath}
+                  ）。削除してもリポジトリ内のコピーと原稿の挿入記法は残ります。
                 </>
               )}
             </AlertDialogDescription>

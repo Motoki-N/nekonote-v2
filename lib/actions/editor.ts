@@ -29,7 +29,7 @@ export type {
   TocSettingsData,
 } from "./editor/book-settings";
 
-export { uploadImage } from "./editor/assets";
+export { placeIllustration, uploadImage } from "./editor/assets";
 
 export {
   getBuildTagInfo,
