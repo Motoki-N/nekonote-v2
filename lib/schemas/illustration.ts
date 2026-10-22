@@ -51,6 +51,90 @@ export const COLOR_MODE_LABEL: Record<ColorMode, string> = {
   monochrome: "モノクロ",
 };
 
+// 画風（SPEC §10・Issue #254）。ID・表示名・系統はクライアントと共用し、
+// 画像モデルへ渡す英語の STYLE 文はサーバー側（lib/ai/illustration-styles.ts）に置く
+export const illustrationStyles = [
+  "light-novel",
+  "oil-painting",
+  "impasto",
+  "watercolor",
+  "ink-watercolor",
+  "colored-pencil",
+  "pencil",
+  "pastel",
+  "picture-book",
+  "jp-childrens-book",
+  "woodblock",
+  "risograph",
+  "retro-print",
+  "cut-paper",
+  "ink-brush",
+  "manga",
+  "editorial",
+] as const;
+export type IllustrationStyle = (typeof illustrationStyles)[number];
+
+export const ILLUSTRATION_STYLE_LABEL: Record<IllustrationStyle, string> = {
+  "light-novel": "ライトノベル風（アニメ塗り）",
+  "oil-painting": "油彩",
+  impasto: "厚塗り",
+  watercolor: "水彩",
+  "ink-watercolor": "水彩＋ペン",
+  "colored-pencil": "色鉛筆",
+  pencil: "鉛筆画",
+  pastel: "パステル",
+  "picture-book": "絵本",
+  "jp-childrens-book": "日本の児童書挿絵風",
+  woodblock: "木版画",
+  risograph: "リソグラフ",
+  "retro-print": "レトロ印刷",
+  "cut-paper": "切り絵",
+  "ink-brush": "墨・インク画",
+  manga: "漫画",
+  editorial: "雑誌の挿絵",
+};
+
+/** 選択欄の系統見出し（optgroup）。illustrationStyles の全IDをちょうど1回ずつ含める */
+export const ILLUSTRATION_STYLE_GROUPS: {
+  label: string;
+  styles: IllustrationStyle[];
+}[] = [
+  {
+    label: "装画・絵画",
+    styles: ["light-novel", "oil-painting", "impasto"],
+  },
+  {
+    label: "手描き・画材",
+    styles: [
+      "watercolor",
+      "ink-watercolor",
+      "colored-pencil",
+      "pencil",
+      "pastel",
+    ],
+  },
+  { label: "絵本・児童書", styles: ["picture-book", "jp-childrens-book"] },
+  {
+    label: "版画・印刷",
+    styles: ["woodblock", "risograph", "retro-print", "cut-paper"],
+  },
+  { label: "線画・漫画・雑誌", styles: ["ink-brush", "manga", "editorial"] },
+];
+
+/**
+ * 保存済みの依頼内容（illustrations.request jsonb）から画風を取り出す。
+ * 画風指定の追加前の行・アップロード参照画像・未知の値は null（指定なし）
+ */
+export function styleOfStoredRequest(
+  request: unknown,
+): IllustrationStyle | null {
+  if (typeof request !== "object" || request === null) return null;
+  const parsed = z
+    .enum(illustrationStyles)
+    .safeParse((request as { style?: unknown }).style);
+  return parsed.success ? parsed.data : null;
+}
+
 /**
  * 依頼内容（illustrations.request jsonb に保存する形。SPEC §4.2）。
  * 挿絵は対象原稿ファイルの選択が必須（superRefine）
@@ -72,6 +156,10 @@ export const illustrationRequestSchema = z
     // （.. はGitHub APIのURL正規化で base_path チェックを迂回できるため必須の防御）
     manuscriptPath: manuscriptFilePathSchema.optional(),
     sceneNote: z.string().trim().max(1000).optional(),
+    // 画風（未指定=指定なし）と「手描き感を残す」（SPEC §10）。
+    // 案出しで imagePrompt 末尾へ STYLE ブロックとして付加される
+    style: z.enum(illustrationStyles).optional(),
+    humanMade: z.boolean().optional(),
     // 参照画像（ギャラリーの既存イラスト。編集依頼・キャラ一貫性）
     referenceIllustrationId: z.uuid().optional(),
   })
@@ -100,7 +188,7 @@ export const illustrationProposalSchema = z.object({
   imagePrompt: z
     .string()
     .describe(
-      "画像生成モデルに渡すプロンプト（日本語）。被写体・構図・光・色調・画風・雰囲気を具体的に。カラー/モノクロ指定を必ず含める",
+      "画像生成モデルに渡すプロンプト（日本語）。被写体・構図・光・色調・雰囲気を具体的に（画風の指定がない依頼では画風も）。カラー/モノクロ指定を必ず含める",
     ),
 });
 
@@ -125,6 +213,8 @@ export type IllustrationItem = {
   title: string;
   prompt: string;
   referenceIllustrationId: string | null;
+  /** 依頼時の画風（指定なし・アップロード参照画像は null。「参照画像にして依頼」で復元する） */
+  style: IllustrationStyle | null;
   createdAt: string;
   /** 短寿命の署名URL（SPEC §6） */
   signedUrl: string;

@@ -1,5 +1,6 @@
 import { generateObject } from "ai";
 
+import { buildStyleSuffix } from "@/lib/ai/illustration-styles";
 import { resolveModel } from "@/lib/ai/models";
 import { ILLUSTRATOR_PERSONA_ID } from "@/lib/ai/personas";
 import { recordAiUsage } from "@/lib/ai/usage";
@@ -21,6 +22,7 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import {
   COLOR_MODE_LABEL,
   ILLUSTRATION_KIND_LABEL,
+  ILLUSTRATION_STYLE_LABEL,
   proposeOutputSchema,
   proposeRequestSchema,
   type IllustrationRequest,
@@ -237,6 +239,9 @@ export async function POST(req: Request) {
           kindLabel: ILLUSTRATION_KIND_LABEL[request.kind],
           colorModeLabel: COLOR_MODE_LABEL[request.colorMode],
           aspectRatio: request.aspectRatio,
+          styleLabel: request.style
+            ? ILLUSTRATION_STYLE_LABEL[request.style]
+            : null,
           instructions: request.instructions,
           sceneNote: request.sceneNote ?? null,
           referencePrompt,
@@ -259,7 +264,19 @@ export async function POST(req: Request) {
       outputTokens: usage.outputTokens,
     });
 
-    return Response.json({ proposals: object.proposals });
+    // 画風・手描き感の STYLE ブロックを各案の末尾へ機械的に付加する（SPEC §10）。
+    // プロンプト欄に見えて微調整でき、保存プロンプトにも残るのでリテイクで再現できる
+    const styleSuffix = buildStyleSuffix({
+      style: request.style,
+      humanMade: request.humanMade ?? false,
+      colorMode: request.colorMode,
+    });
+    const proposals = object.proposals.map((proposal) => ({
+      ...proposal,
+      imagePrompt: proposal.imagePrompt.trimEnd() + styleSuffix,
+    }));
+
+    return Response.json({ proposals });
   } catch (error) {
     return errorResponse(error);
   }

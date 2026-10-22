@@ -14,11 +14,14 @@ import {
   colorModes,
   DEFAULT_ASPECT_RATIO,
   ILLUSTRATION_KIND_LABEL,
+  ILLUSTRATION_STYLE_GROUPS,
+  ILLUSTRATION_STYLE_LABEL,
   illustrationAspectRatios,
   type ColorMode,
   type IllustrationAspectRatio,
   type IllustrationItem,
   type IllustrationProposal,
+  type IllustrationStyle,
 } from "@/lib/schemas/illustration";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -71,6 +74,9 @@ export function RequestFlow({
   const [aspectRatio, setAspectRatio] = useState<IllustrationAspectRatio>(
     DEFAULT_ASPECT_RATIO.cover,
   );
+  // 画風（"" = 指定なし）と「手描き感を残す」（SPEC §10）
+  const [style, setStyle] = useState<IllustrationStyle | "">("");
+  const [humanMade, setHumanMade] = useState(false);
   const [instructions, setInstructions] = useState("");
   const [manuscriptPath, setManuscriptPath] = useState("");
   const [sceneNote, setSceneNote] = useState("");
@@ -106,8 +112,9 @@ export function RequestFlow({
     setResult(null);
   }
 
-  // 参照画像が設定されたら、そのプロンプトを下敷きにする（SPEC §4.4「引き継ぎ」）。
-  // アップロード参照画像（kind 'reference'）はプロンプトを持たないため、入力中の内容を消さない
+  // 参照画像が設定されたら、そのプロンプトと画風を下敷きにする（SPEC §4.4「引き継ぎ」・§10）。
+  // アップロード参照画像（kind 'reference'）はプロンプトを持たず、画風指定なしの画像は画風を
+  // 持たないため、それぞれ入力中の内容を消さない
   const [prefilledFor, setPrefilledFor] = useState<string | null>(null);
   if (reference && prefilledFor !== reference.id) {
     setPrefilledFor(reference.id);
@@ -115,6 +122,9 @@ export function RequestFlow({
       setPrompt(reference.prompt);
       setProposals(null);
       setSelectedProposal(null);
+    }
+    if (reference.style !== null) {
+      setStyle(reference.style);
     }
   }
   if (!reference && prefilledFor !== null) {
@@ -127,6 +137,8 @@ export function RequestFlow({
       kind,
       colorMode,
       aspectRatio,
+      style: style || undefined,
+      humanMade: humanMade || undefined,
       instructions,
       manuscriptPath:
         kind === "insert" ? manuscriptPath || undefined : undefined,
@@ -277,6 +289,49 @@ export function RequestFlow({
             ))}
           </select>
         </label>
+      </div>
+
+      {/* 画風と手描き感（SPEC §10）。STYLE ブロックは案出しで imagePrompt の末尾へ付く */}
+      <div className="flex flex-col gap-1">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground sm:col-span-2">
+            画風
+            <select
+              className={selectClass}
+              value={style}
+              disabled={busy !== null}
+              onChange={(e) =>
+                setStyle(e.target.value as IllustrationStyle | "")
+              }
+            >
+              <option value="">指定なし</option>
+              {ILLUSTRATION_STYLE_GROUPS.map((group) => (
+                <optgroup key={group.label} label={group.label}>
+                  {group.styles.map((value) => (
+                    <option key={value} value={value}>
+                      {ILLUSTRATION_STYLE_LABEL[value]}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          <label className="flex h-8 cursor-pointer items-center gap-2 self-end text-xs text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={humanMade}
+              disabled={busy !== null}
+              onChange={(e) => setHumanMade(e.target.checked)}
+              className="accent-[var(--primary)]"
+            />
+            手描き感を残す
+          </label>
+        </div>
+        {(style !== "" || humanMade) && (
+          <p className="text-xs text-muted-foreground">
+            案を出してもらうと、プロンプトの末尾に画風の指示（英語）が付きます
+          </p>
+        )}
       </div>
 
       {kind === "insert" && (
