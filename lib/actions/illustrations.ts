@@ -10,6 +10,7 @@ import {
   ILLUSTRATION_KIND_LABEL,
   illustrationTitleSchema,
   REFERENCE_UPLOAD_MAX_BYTES,
+  styleOfStoredRequest,
   type IllustrationItem,
 } from "@/lib/schemas/illustration";
 import { createClient } from "@/lib/supabase/server";
@@ -35,7 +36,7 @@ export async function listIllustrations(
     const { data: rows, error } = await supabase
       .from("illustrations")
       .select(
-        "id, project_id, kind, title, prompt, reference_illustration_id, storage_path, created_at",
+        "id, project_id, kind, title, prompt, request, reference_illustration_id, storage_path, created_at",
       )
       .eq("project_id", parsedId)
       .order("created_at", { ascending: false });
@@ -86,6 +87,7 @@ export async function listIllustrations(
         title: row.title,
         prompt: row.prompt,
         referenceIllustrationId: row.reference_illustration_id,
+        style: styleOfStoredRequest(row.request),
         createdAt: row.created_at,
         signedUrl,
         referencedCount: referencedCount.get(row.id) ?? 0,
@@ -219,6 +221,7 @@ export async function uploadReferenceImage(
       title: row.title,
       prompt: row.prompt,
       referenceIllustrationId: row.reference_illustration_id,
+      style: null, // アップロード画像は依頼由来ではないため画風を持たない
       createdAt: row.created_at,
       signedUrl: signed.signedUrl,
       referencedCount: 0, // アップロード直後を参照するイラストはまだ存在しない

@@ -728,6 +728,8 @@ export type IllustrationRequestContext = {
   kindLabel: string;
   colorModeLabel: string;
   aspectRatio: string;
+  /** 画風の表示名（SPEC §10）。null=指定なし（画風も LLM が考える） */
+  styleLabel: string | null;
   instructions: string;
   sceneNote: string | null;
   /** 参照画像の元プロンプト（参照画像つき依頼のとき。画像そのものは生成時に添付される） */
@@ -762,7 +764,8 @@ export function buildIllustrationProposeSystemPrompt({
     "## imagePrompt の書き方",
     "- 画像生成モデルは資料を読めない。プロンプト単体で完結させること。登場人物や場所の固有名詞は、資料から読み取った具体的な外見・情景の描写に展開する",
     "- 被写体・構図・光・色調・画風・雰囲気を具体的に書く",
-    "- 依頼のカラー/モノクロ指定を必ず含める（モノクロなら「モノクロ、白黒」と明記する）",
+    "- 依頼で画風が指定されている場合は、画風・画材・タッチの記述を imagePrompt に書かない（指定画風の英語の指示が末尾に自動で付く）。構図・光・色調はその画風が映えるように選ぶ",
+    "- 依頼のカラー/モノクロ指定を必ず含める（モノクロなら「モノクロ、白黒」と明記する）。画風とカラー/モノクロ指定が食い違うときはカラー/モノクロ指定を優先する",
     "- 本文に書かれた外見・情景の描写と矛盾させない。書かれていない部分は作品のトーンから補う",
     "- 参照画像つきの依頼では、生成時にその画像が添付される。参照画像の何を保つか（人物の顔立ち・画風など）と何を変えるかをプロンプトに明記する",
   ].join("\n");
@@ -789,6 +792,7 @@ export function buildIllustrationProposeInput({
     `種別: ${request.kindLabel}`,
     `色: ${request.colorModeLabel}`,
     `縦横比: ${request.aspectRatio}`,
+    `画風: ${request.styleLabel ?? "指定なし（作品に合う画風を考えてよい）"}`,
     "描いてほしい内容:",
     '"""',
     request.instructions,

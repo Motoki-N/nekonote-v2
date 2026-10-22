@@ -160,6 +160,7 @@ export async function POST(req: Request) {
       title: row.title,
       prompt: row.prompt,
       referenceIllustrationId: row.reference_illustration_id,
+      style: request.style ?? null,
       createdAt: row.created_at,
       signedUrl: signed.signedUrl,
       referencedCount: 0, // 生成直後を参照するイラストはまだ存在しない
