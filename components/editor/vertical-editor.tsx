@@ -87,6 +87,7 @@ export function VerticalEditor({
   workspaceError,
   initialFile,
   linkedScenes,
+  displayNames,
 }: {
   projectId: string;
   workspace: EditorWorkspaceData | null;
@@ -95,6 +96,8 @@ export function VerticalEditor({
   initialFile: string | null;
   /** 原稿パス → 紐づくシーン／章（逆引き。SPEC-manuscript-bridge §4.4） */
   linkedScenes: Record<string, LinkedScene[]>;
+  /** 原稿パス → 表示名（「シーンN：タイトル」等。Issue #340） */
+  displayNames: Record<string, string>;
 }) {
   // 設定フォームのコミット後にテーマ・章一覧を取り直すため state で持つ（初期値はサーバー）
   const [ws, setWs] = useState<EditorWorkspaceData | null>(workspace);
@@ -1044,6 +1047,7 @@ export function VerticalEditor({
             onJumpToComment={jumpToComment}
             onDeleteComment={deleteComment}
             fileName={fileName}
+            displayNames={displayNames}
             linkedScenes={
               selectedPath === null ? [] : (linkedScenes[selectedPath] ?? [])
             }

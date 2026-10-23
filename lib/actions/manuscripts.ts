@@ -3,6 +3,7 @@
 import { after } from "next/server";
 import { z } from "zod";
 
+import { fetchManuscriptDisplayNames } from "@/lib/board/scene-store";
 import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
 import {
@@ -41,7 +42,13 @@ const uuidSchema = z.uuid();
 export type ManuscriptTreeData =
   | { gate: "no_repo" }
   | { gate: "no_pat" }
-  | { gate: "ok"; files: string[]; basePath: string };
+  | {
+      gate: "ok";
+      files: string[];
+      basePath: string;
+      /** パス → 表示名（「シーンN：タイトル」等。紐づくシーンがないパスはキーなし。Issue #340） */
+      displayNames: Record<string, string>;
+    };
 
 /** base_path 配下の原稿ファイル一覧を取得する。前提未達（repo未設定・PAT未登録）は gate で返す */
 export async function getManuscriptFiles(
@@ -55,10 +62,19 @@ export async function getManuscriptFiles(
     if (gitCtx.gate !== "ok") return { ok: true, data: { gate: gitCtx.gate } };
 
     const basePath = gitCtx.basePath;
-    const files = await getManuscriptTree(gitCtx.token, gitCtx.repo, basePath);
+    // 表示名は DB だけで引けるので、ツリー取得（GitHub API）と並行に取る
+    const [files, displayNames] = await Promise.all([
+      getManuscriptTree(gitCtx.token, gitCtx.repo, basePath),
+      fetchManuscriptDisplayNames(supabase, gitCtx.projectId),
+    ]);
     return {
       ok: true,
-      data: { gate: "ok", files: files.map((f) => f.path), basePath },
+      data: {
+        gate: "ok",
+        files: files.map((f) => f.path),
+        basePath,
+        displayNames,
+      },
     };
   } catch (error) {
     return toActionError(error);

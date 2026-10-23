@@ -3,6 +3,7 @@
 // （chapterFileNameSchema が英数字始まりのASCIIのみを許すのに対しタイトルは日本語であり、
 // ローマ字変換は頼まれていない抽象化になる）
 
+import { sceneNumberResolver, type SceneRecord } from "@/lib/board";
 import { AppError } from "@/lib/errors";
 
 /** 本文帯の下限。`00` は扉（00-tobira.md）の予約帯 */
@@ -71,4 +72,69 @@ export function planManuscriptFileNames(
     planned.push(fileName);
   }
   return planned;
+}
+
+/**
+ * 原稿ファイルの表示名（Issue #340）。リポジトリルート基準のパス → 「シーンN：タイトル」等。
+ * ファイル名は変えず、`scenes.manuscript_path` の紐づけと現在のボード番号から表示だけを作る
+ * （並べ替えるとファイル名中の生成時点の番号とはずれるが、表示は現在の番号に追従する）。
+ * 紐づくシーンがないパスはキーを持たない＝呼び出し側はファイル名で表示する。
+ *
+ * @param scenes 正準順序（toCanonicalOrder の結果）のプロジェクト全行
+ */
+export function manuscriptDisplayNames(
+  scenes: SceneRecord[],
+): Record<string, string> {
+  const numberOf = sceneNumberResolver(scenes);
+  const byPath = new Map<string, SceneRecord[]>();
+  for (const scene of scenes) {
+    if (scene.manuscript_path === null) continue;
+    const linked = byPath.get(scene.manuscript_path) ?? [];
+    linked.push(scene);
+    byPath.set(scene.manuscript_path, linked);
+  }
+
+  const names: Record<string, string> = {};
+  for (const [path, linked] of byPath) {
+    // 章が紐づくファイルは章ファイルとして章で名乗る（章ファイルにシーンが同居していても）
+    const chapter = linked.find((s) => s.kind === "chapter");
+    if (chapter) {
+      names[path] = withTitle(`第${numberOf(chapter)}章`, chapter.title, false);
+      continue;
+    }
+    const numbers = linked.map(numberOf).sort((a, b) => a - b);
+    names[path] = withTitle(
+      `シーン${numberRange(numbers)}`,
+      linked[0].title,
+      linked.length > 1,
+    );
+  }
+  return names;
+}
+
+/** 「シーンN」→「シーンN：タイトル」。タイトルが空なら番号のみ。複数紐づきは「ほか」を添える */
+function withTitle(label: string, title: string, more: boolean): string {
+  const trimmed = title.trim();
+  if (trimmed === "") return label;
+  return `${label}：${trimmed}${more ? " ほか" : ""}`;
+}
+
+/** 昇順の番号列 → 「3」「3〜5」（連番）／「3、7」（飛び番） */
+function numberRange(numbers: number[]): string {
+  const first = numbers[0];
+  const last = numbers[numbers.length - 1];
+  if (numbers.length === 1) return String(first);
+  const contiguous = numbers.every((n, i) => n === first + i);
+  return contiguous ? `${first}〜${last}` : numbers.join("、");
+}
+
+/**
+ * select の選択肢用の1行表記（Issue #340）。option は装飾できないため、
+ * 表示名とファイル名を同じ行に並べる。表示名がなければファイル名のみ
+ */
+export function manuscriptOptionLabel(
+  displayName: string | undefined,
+  fileLabel: string,
+): string {
+  return displayName ? `${displayName} — ${fileLabel}` : fileLabel;
 }

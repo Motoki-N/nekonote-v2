@@ -7,7 +7,9 @@ import "server-only";
 // 関数を export するとクライアントから呼べる Server Action になってしまうため、この層に置く。
 // ロジックは移動のみで変更していない
 
+import { toCanonicalOrder } from "@/lib/board";
 import type { LinkedScene, SceneRecord } from "@/lib/board";
+import { manuscriptDisplayNames } from "@/lib/editor/manuscript-naming";
 import { AppError } from "@/lib/errors";
 import { parseEnum, sceneKinds, structureTemplates } from "@/lib/schemas/enums";
 import type { StructureTemplate } from "@/lib/schemas/enums";
@@ -65,6 +67,28 @@ export async function fetchLinkedScenesByPath(
     });
   }
   return map;
+}
+
+/**
+ * 原稿ファイルのパス → 表示名（「シーンN：タイトル」等。Issue #340）。
+ * 番号は現在のボード順から振るため、紐づきのない行も含めた全シーンを1本で引く
+ * （GitHub API は増えない）。逆引きと同じく補助情報なので、失敗時は空（＝ファイル名表示）
+ */
+export async function fetchManuscriptDisplayNames(
+  supabase: Supabase,
+  projectId: string,
+): Promise<Record<string, string>> {
+  try {
+    return manuscriptDisplayNames(
+      toCanonicalOrder(await fetchProjectScenes(supabase, projectId)),
+    );
+  } catch (error) {
+    console.error(
+      "fetchManuscriptDisplayNames:",
+      error instanceof Error ? error.message : error,
+    );
+    return {};
+  }
 }
 
 /** RLS越しのプロジェクト所有確認（他人・不存在はともに not_found に正規化）。

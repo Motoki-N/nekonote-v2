@@ -225,6 +225,35 @@ export function chapterNumberByScene(
 }
 
 /**
+ * シーン／章の番号の導出（ボード表示と同じ規則）。章マーカーはシーンの通し番号を消費しない。
+ * scenes は正準順序（toCanonicalOrder の結果）の全行で渡すこと。
+ * 原稿ファイルの自動採番（lib/actions/manuscript-generate.ts）と原稿ファイルの表示名
+ * （Issue #340）で共用する。もとは manuscript-generate.ts のプライベート関数
+ */
+export function sceneNumberResolver(
+  scenes: SceneRecord[],
+): (scene: SceneRecord) => number {
+  // ビートボードに並ぶカード（目次レーンは除く）。章番号は出現順（SPEC-board-chapters §4）
+  const boardCards = scenes.filter((s) => s.part !== "chapter");
+  const chapterNumbers = chapterNumberByScene(boardCards);
+  const sceneNumbers = new Map(
+    boardCards
+      .filter((s) => s.kind !== "chapter")
+      .map((s, index): [string, number] => [s.id, index + 1]),
+  );
+  // 目次ボードの章（part='chapter'）は目次内の出現順で番号を振る
+  const outlineNumbers = new Map(
+    scenes
+      .filter((s) => s.part === "chapter")
+      .map((s, index): [string, number] => [s.id, index + 1]),
+  );
+  return (scene) => {
+    if (scene.kind !== "chapter") return sceneNumbers.get(scene.id) ?? 1;
+    return outlineNumbers.get(scene.id) ?? chapterNumbers[scene.id] ?? 1;
+  };
+}
+
+/**
  * レーン内の転換点の並び順制約の検証（SPEC-structure-templates §5）。
  * 各レーンで転換点付きシーンの相対順がテンプレート定義順（turningPoints の配列順）に
  * 一致しない最初の違反を返す（prior=定義順で先の転換点が later の後ろに置かれている）。

@@ -10,6 +10,7 @@ import {
 } from "@/lib/actions/manuscripts";
 import type { GenerateManuscriptsResult } from "@/lib/actions/manuscript-generate";
 import type { SceneRecord } from "@/lib/board";
+import { manuscriptOptionLabel } from "@/lib/editor/manuscript-naming";
 import type { SceneEdit } from "@/lib/schemas/projects";
 import {
   AlertDialog,
@@ -213,7 +214,7 @@ export function ChapterDialog({
                   )}
                 {chapterFiles.map((file) => (
                   <option key={file} value={file}>
-                    {file}
+                    {manuscriptOptionLabel(tree.displayNames[file], file)}
                   </option>
                 ))}
               </select>
