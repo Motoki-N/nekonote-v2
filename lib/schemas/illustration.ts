@@ -28,6 +28,9 @@ export const ILLUSTRATION_EXTENSION_BY_MIME: Record<string, string> = {
 /** アップロード参照画像のサイズ上限（バケットの file_size_limit と対応。Issue #104） */
 export const REFERENCE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 
+/** ギャラリーの一括削除で1回に扱える件数（Issue #332） */
+export const BULK_DELETE_MAX = 50;
+
 // アスペクト比は縦/横/正方形の3種（SPEC §3）。値は generateImage にそのまま渡す
 export const illustrationAspectRatios = ["2:3", "16:9", "1:1"] as const;
 export type IllustrationAspectRatio = (typeof illustrationAspectRatios)[number];

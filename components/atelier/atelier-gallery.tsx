@@ -5,6 +5,7 @@ import {
   Check,
   Download,
   Flag,
+  ListChecks,
   Loader2,
   Pencil,
   RefreshCw,
@@ -16,12 +17,14 @@ import { toast } from "sonner";
 
 import {
   deleteIllustration,
+  deleteIllustrations,
   setIllustrationFavorite,
   syncIllustrationPlacements,
   updateIllustrationTitle,
   uploadReferenceImage,
 } from "@/lib/actions/illustrations";
 import {
+  BULK_DELETE_MAX,
   ILLUSTRATION_EXTENSION_BY_MIME,
   ILLUSTRATION_KIND_LABEL,
   ILLUSTRATION_STYLE_LABEL,
@@ -89,7 +92,8 @@ async function downloadImage(item: IllustrationItem): Promise<void> {
  * ギャラリー（SPEC-illustrator §4.4）。
  * グリッド表示＋タイトルのインライン編集＋拡大表示（プロンプト=説明文）＋
  * ダウンロード・削除（被参照は警告）・参照画像にして依頼・参照画像のアップロード（Issue #104）・
- * お気に入り☆と採用⛳の表示・絞り込み、原稿の配置状況の走査（Issue #328）
+ * お気に入り☆と採用⛳の表示・絞り込み、原稿の配置状況の走査（Issue #328）・
+ * 選択モードでの一括削除（Issue #332。採用⛳は選択不可）
  */
 export function AtelierGallery({
   projectId,
@@ -111,7 +115,7 @@ export function AtelierGallery({
   error: string | null;
   onSetReference: (item: IllustrationItem) => void;
   onUploaded: (item: IllustrationItem) => void;
-  onDeleted: (id: string) => void;
+  onDeleted: (ids: string[]) => void;
   onTitleChanged: (id: string, title: string) => void;
   onFavoriteChanged: (id: string, isFavorite: boolean) => void;
   /** 走査で⛳が変わったとき（一覧を取り直す） */
@@ -125,9 +129,78 @@ export function AtelierGallery({
   const [uploading, setUploading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [filter, setFilter] = useState<GalleryFilter>("all");
+  // 選択モード（Issue #332）。選択はidで持ち、表示・送信時は現在の一覧と突き合わせる
+  const [selecting, setSelecting] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [confirmingBulk, setConfirmingBulk] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const visibleItems = items?.filter((item) => matchesFilter(item, filter));
+  // 採用⛳は一括削除の対象外（Issue #332）
+  const selectableItems = (visibleItems ?? []).filter(
+    (item) => item.placedAt === null,
+  );
+  // 選択後に☆を外して絞り込みから外れた・走査で⛳が付いた画像は対象にしない（見えない画像を消さない）
+  const selectedItems = selectableItems.filter((item) =>
+    selectedIds.has(item.id),
+  );
+  const overLimit = selectedItems.length > BULK_DELETE_MAX;
+
+  function handleChangeFilter(next: GalleryFilter) {
+    setFilter(next);
+    // 見えない画像を選んだまま消す事故を防ぐため、絞り込みの切り替えで選択を解除する
+    setSelectedIds(new Set());
+  }
+
+  function exitSelecting() {
+    setSelecting(false);
+    setSelectedIds(new Set());
+  }
+
+  function toggleSelected(item: IllustrationItem) {
+    if (item.placedAt !== null) return;
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(item.id)) next.delete(item.id);
+      else next.add(item.id);
+      return next;
+    });
+  }
+
+  async function handleBulkDelete() {
+    const ids = selectedItems.map((item) => item.id);
+    setBulkDeleting(true);
+    try {
+      const result = await deleteIllustrations(ids);
+      if (!result.ok || !result.data) {
+        toast.error(result.ok ? "削除に失敗しました" : result.error.message);
+        return;
+      }
+      const { deletedIds, failed, skipped } = result.data;
+      if (deletedIds.length > 0) onDeleted(deletedIds);
+      // 消せなかった画像は選択したまま残し、そのまま再試行できるようにする
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        for (const id of deletedIds) next.delete(id);
+        return next;
+      });
+      const skippedNote =
+        skipped > 0 ? `（採用中の${skipped}件は除外しました）` : "";
+      if (failed > 0) {
+        toast.error(
+          `${deletedIds.length}件削除・${failed}件失敗しました${skippedNote}`,
+        );
+      } else {
+        toast(`${deletedIds.length}件のイラストを削除しました${skippedNote}`);
+      }
+    } catch {
+      toast.error("削除に失敗しました。通信環境を確認してください");
+    } finally {
+      setBulkDeleting(false);
+      setConfirmingBulk(false);
+    }
+  }
 
   async function handleToggleFavorite(item: IllustrationItem) {
     const next = !item.isFavorite;
@@ -223,7 +296,7 @@ export function AtelierGallery({
         toast.error(result.error.message);
         return;
       }
-      onDeleted(item.id);
+      onDeleted([item.id]);
       toast("イラストを削除しました");
     } finally {
       setBusyId(null);
@@ -238,6 +311,17 @@ export function AtelierGallery({
           ギャラリー
         </h2>
         <div className="flex flex-wrap items-center gap-2">
+          {items !== null && items.length > 0 && (
+            <Button
+              size="sm"
+              variant={selecting ? "secondary" : "outline"}
+              aria-pressed={selecting}
+              onClick={() => (selecting ? exitSelecting() : setSelecting(true))}
+            >
+              <ListChecks data-icon="inline-start" />
+              選択
+            </Button>
+          )}
           {/* 参照画像のアップロード（Issue #104）。絵柄・キャラの統一に使う外部画像を取り込む */}
           <input
             ref={fileInputRef}
@@ -299,7 +383,7 @@ export function AtelierGallery({
               size="sm"
               variant={filter === option.value ? "secondary" : "ghost"}
               aria-pressed={filter === option.value}
-              onClick={() => setFilter(option.value)}
+              onClick={() => handleChangeFilter(option.value)}
             >
               {option.label}
               <span className="text-xs text-muted-foreground">
@@ -310,6 +394,56 @@ export function AtelierGallery({
               </span>
             </Button>
           ))}
+        </div>
+      )}
+
+      {/* 選択モードの操作バー（Issue #332） */}
+      {selecting && items !== null && items.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-muted/50 p-2">
+          <span className="text-sm text-card-foreground">
+            {selectedItems.length}件選択中
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={selectableItems.length === 0}
+            onClick={() =>
+              setSelectedIds(new Set(selectableItems.map((item) => item.id)))
+            }
+          >
+            表示中をすべて選択
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={selectedItems.length === 0}
+            onClick={() => setSelectedIds(new Set())}
+          >
+            選択解除
+          </Button>
+          <div className="ml-auto flex items-center gap-2">
+            {overLimit && (
+              <span className="text-xs text-destructive">
+                一度に削除できるのは{BULK_DELETE_MAX}件までです
+              </span>
+            )}
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={selectedItems.length === 0 || overLimit || bulkDeleting}
+              onClick={() => setConfirmingBulk(true)}
+            >
+              {bulkDeleting ? (
+                <Loader2 className="animate-spin" data-icon="inline-start" />
+              ) : (
+                <Trash2 data-icon="inline-start" />
+              )}
+              まとめて削除
+            </Button>
+            <Button size="sm" variant="outline" onClick={exitSelecting}>
+              完了
+            </Button>
+          </div>
         </div>
       )}
 
@@ -341,13 +475,44 @@ export function AtelierGallery({
           {(visibleItems ?? []).map((item) => (
             <li
               key={item.id}
-              className="flex flex-col gap-2 rounded-md border border-border p-2"
+              className={`relative flex flex-col gap-2 rounded-md border p-2 ${
+                selecting && item.placedAt === null && selectedIds.has(item.id)
+                  ? "border-primary ring-2 ring-primary"
+                  : "border-border"
+              }`}
             >
+              {selecting && (
+                <input
+                  type="checkbox"
+                  checked={item.placedAt === null && selectedIds.has(item.id)}
+                  disabled={item.placedAt !== null}
+                  title={
+                    item.placedAt !== null
+                      ? "原稿に採用されている画像はまとめて削除できません"
+                      : undefined
+                  }
+                  aria-label={`${item.title} を選択`}
+                  onChange={() => toggleSelected(item)}
+                  className="absolute top-4 left-4 z-10 size-5 accent-[var(--primary)]"
+                />
+              )}
               <button
                 type="button"
-                onClick={() => setZoomed(item)}
-                aria-label={`${item.title} を拡大表示`}
-                className="overflow-hidden rounded"
+                onClick={() =>
+                  selecting ? toggleSelected(item) : setZoomed(item)
+                }
+                aria-label={
+                  selecting
+                    ? `${item.title} の選択を切り替え`
+                    : `${item.title} を拡大表示`
+                }
+                // 選択モード中の操作はチェックボックスに集約し、画像はポインタ操作の補助にとどめる
+                tabIndex={selecting ? -1 : undefined}
+                className={`overflow-hidden rounded ${
+                  selecting && item.placedAt !== null
+                    ? "cursor-not-allowed opacity-60"
+                    : ""
+                }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element -- 署名URL（短寿命・外部最適化不可）のため素の img を使う */}
                 <img
@@ -550,6 +715,58 @@ export function AtelierGallery({
             <AlertDialogAction
               onClick={() => deleting && void handleDelete(deleting)}
               disabled={busyId !== null}
+            >
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      {/* 一括削除の確認: 選択に含まれる注意点を件数で添える（Issue #332） */}
+      <AlertDialog
+        open={confirmingBulk}
+        onOpenChange={(open) => !open && setConfirmingBulk(false)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {selectedItems.length}件のイラストを削除しますか？
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              選択したイラストを完全に削除します。この操作は取り消せません。
+              {selectedItems.some((item) => item.isFavorite) && (
+                <>
+                  <br />
+                  お気に入りのイラストが
+                  {selectedItems.filter((item) => item.isFavorite).length}
+                  件含まれています。
+                </>
+              )}
+              {selectedItems.some((item) => item.referencedCount > 0) && (
+                <>
+                  <br />
+                  他の画像の参照元になっているイラストが
+                  {
+                    selectedItems.filter((item) => item.referencedCount > 0)
+                      .length
+                  }
+                  件含まれています（削除しても参照した画像は残ります）。
+                </>
+              )}
+              {selectedItems.some((item) => item.placedImagePath) && (
+                <>
+                  <br />
+                  原稿リポジトリにコピー済みのイラストが
+                  {selectedItems.filter((item) => item.placedImagePath).length}
+                  件含まれています（削除してもリポジトリ内のコピーと原稿の挿入記法は残ります）。
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => void handleBulkDelete()}
+              disabled={bulkDeleting}
             >
               削除する
             </AlertDialogAction>
