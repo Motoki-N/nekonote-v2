@@ -27,28 +27,34 @@ alter table public.illustration_references enable row level security;
 -- default privileges（20260712000002）で anon への自動 GRANT は既に無効だが、多層防御として明示
 revoke all on public.illustration_references from anon;
 
--- 両端のイラストが自分のものであること。illustrations は別テーブルなので RLS の再帰は起きない
+-- 両端のイラストが自分のものであること。illustrations は別テーブルなので RLS の再帰は起きない。
+-- 外側の列はテーブル名で修飾する（無修飾だとサブクエリ内の illustrations.reference_illustration_id
+-- （旧列）に解決され、r.id = r.reference_illustration_id という別の条件になる）
 -- （旧列では再帰回避のため外していた参照先の所有検証を、DB 側で掛け直せる。20260717000003）
 create policy "illustration_references_owner_all" on public.illustration_references
   for all to authenticated
   using (
     exists (
       select 1 from public.illustrations i
-      where i.id = illustration_id and i.user_id = (select auth.uid())
+      where i.id = illustration_references.illustration_id
+        and i.user_id = (select auth.uid())
     )
     and exists (
       select 1 from public.illustrations r
-      where r.id = reference_illustration_id and r.user_id = (select auth.uid())
+      where r.id = illustration_references.reference_illustration_id
+        and r.user_id = (select auth.uid())
     )
   )
   with check (
     exists (
       select 1 from public.illustrations i
-      where i.id = illustration_id and i.user_id = (select auth.uid())
+      where i.id = illustration_references.illustration_id
+        and i.user_id = (select auth.uid())
     )
     and exists (
       select 1 from public.illustrations r
-      where r.id = reference_illustration_id and r.user_id = (select auth.uid())
+      where r.id = illustration_references.reference_illustration_id
+        and r.user_id = (select auth.uid())
     )
   );
 
