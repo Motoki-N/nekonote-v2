@@ -30,6 +30,7 @@ import {
   type SceneRecord,
 } from "@/lib/board";
 import { BOARD_TEMPLATES } from "@/lib/board-templates";
+import { manuscriptOptionLabel } from "@/lib/editor/manuscript-naming";
 import { GenerateManuscriptsDialog } from "@/components/board/generate-manuscripts-dialog";
 import { LinkedNoteChips } from "@/components/notes/linked-note-chips";
 import { EMOTION_MAX, EMOTION_MIN, sceneAnchors } from "@/lib/schemas/enums";
@@ -530,7 +531,7 @@ export function SceneDialog({
                     )}
                   {chapterFiles.map((file) => (
                     <option key={file} value={file}>
-                      {file}
+                      {manuscriptOptionLabel(tree.displayNames[file], file)}
                     </option>
                   ))}
                 </select>

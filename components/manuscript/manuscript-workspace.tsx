@@ -266,9 +266,21 @@ export function ManuscriptWorkspace({
                     )}
                   >
                     <FileText className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 break-all">
-                      {relativeLabel(path)}
-                    </span>
+                    {tree.displayNames[path] ? (
+                      // 表示名を主に、ファイル名を補助で小さく出す（Issue #340）
+                      <span className="flex min-w-0 flex-col">
+                        <span className="break-all">
+                          {tree.displayNames[path]}
+                        </span>
+                        <span className="break-all text-xs text-muted-foreground">
+                          {relativeLabel(path)}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="min-w-0 break-all">
+                        {relativeLabel(path)}
+                      </span>
+                    )}
                   </button>
                 </li>
               ))}

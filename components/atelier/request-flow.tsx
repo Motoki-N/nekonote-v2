@@ -8,6 +8,7 @@ import {
   getManuscriptFiles,
   type ManuscriptTreeData,
 } from "@/lib/actions/manuscripts";
+import { manuscriptOptionLabel } from "@/lib/editor/manuscript-naming";
 import { illustrationKinds, type IllustrationKind } from "@/lib/schemas/enums";
 import {
   COLOR_MODE_LABEL,
@@ -234,6 +235,8 @@ export function RequestFlow({
   }
 
   const treeFiles = tree?.gate === "ok" ? tree.files : [];
+  // パス → 表示名（「シーンN：タイトル」等。Issue #340）
+  const treeDisplayNames = tree?.gate === "ok" ? tree.displayNames : {};
   const treePrefix =
     tree?.gate === "ok" && tree.basePath !== ""
       ? tree.basePath.replace(/\/$/, "").length + 1
@@ -374,7 +377,10 @@ export function RequestFlow({
                 <option value="">（選択してください）</option>
                 {treeFiles.map((path) => (
                   <option key={path} value={path}>
-                    {path.slice(treePrefix)}
+                    {manuscriptOptionLabel(
+                      treeDisplayNames[path],
+                      path.slice(treePrefix),
+                    )}
                   </option>
                 ))}
               </select>

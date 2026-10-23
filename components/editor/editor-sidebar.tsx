@@ -35,6 +35,7 @@ export function EditorSidebar({
   onJumpToComment,
   onDeleteComment,
   fileName,
+  displayNames,
   linkedScenes,
 }: {
   projectId: string;
@@ -56,6 +57,8 @@ export function EditorSidebar({
   onJumpToComment: (comment: ManuscriptComment) => void;
   onDeleteComment: (comment: ManuscriptComment) => void;
   fileName: (path: string) => string;
+  /** パス → 表示名（「シーンN：タイトル」等。紐づきのないパスはファイル名のみ表示。Issue #340） */
+  displayNames: Record<string, string>;
   /** 開いているファイルに紐づくシーン／章（逆引き。SPEC-manuscript-bridge §4.4） */
   linkedScenes: LinkedScene[];
 }) {
@@ -184,9 +187,21 @@ export function EditorSidebar({
                     )}
                   >
                     <FileText className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="min-w-0 break-all">
-                      {fileName(chapter.path)}
-                    </span>
+                    {displayNames[chapter.path] ? (
+                      // 表示名を主に、ファイル名を補助で小さく出す（Issue #340）
+                      <span className="flex min-w-0 flex-col">
+                        <span className="break-all">
+                          {displayNames[chapter.path]}
+                        </span>
+                        <span className="break-all text-xs text-muted-foreground">
+                          {fileName(chapter.path)}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="min-w-0 break-all">
+                        {fileName(chapter.path)}
+                      </span>
+                    )}
                     {(draftPaths.has(chapter.path) ||
                       (chapter.path === selectedPath && dirty)) && (
                       <span

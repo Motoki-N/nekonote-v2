@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import {
-  chapterNumberByScene,
+  sceneNumberResolver,
   toCanonicalOrder,
   type SceneRecord,
 } from "@/lib/board";
@@ -108,28 +108,6 @@ export type GenerateManuscriptsResult = {
   entryStatus: "added" | "skipped" | "failed";
 };
 
-/** 番号の導出（ボード表示と同じ規則）。章マーカーはシーンの通し番号を消費しない */
-function numberResolver(scenes: SceneRecord[]): (scene: SceneRecord) => number {
-  // ビートボードに並ぶカード（目次レーンは除く）。章番号は出現順（SPEC-board-chapters §4）
-  const boardCards = scenes.filter((s) => s.part !== "chapter");
-  const chapterNumbers = chapterNumberByScene(boardCards);
-  const sceneNumbers = new Map(
-    boardCards
-      .filter((s) => s.kind !== "chapter")
-      .map((s, index): [string, number] => [s.id, index + 1]),
-  );
-  // 目次ボードの章（part='chapter'）は目次内の出現順で番号を振る
-  const outlineNumbers = new Map(
-    scenes
-      .filter((s) => s.part === "chapter")
-      .map((s, index): [string, number] => [s.id, index + 1]),
-  );
-  return (scene) => {
-    if (scene.kind !== "chapter") return sceneNumbers.get(scene.id) ?? 1;
-    return outlineNumbers.get(scene.id) ?? chapterNumbers[scene.id] ?? 1;
-  };
-}
-
 /** manuscripts/ 直下の *.md のファイル名（採番の衝突回避に使う） */
 function manuscriptFileNames(treePaths: string[], basePath: string): string[] {
   const dir = `${basePath === "" ? "" : `${basePath}/`}manuscripts/`;
@@ -166,7 +144,7 @@ function resolvePlan(
   // 残した分の名前は「全件を採番したときの先頭 N 件」と同じになる
   const selected = limit === undefined ? all : all.slice(0, limit);
 
-  const numberOf = numberResolver(scenes);
+  const numberOf = sceneNumberResolver(scenes);
   // 自動採番はファイル名を指定されなかった行だけに使う。
   // 指定された名前も衝突回避の対象にするため、既存名として渡す
   const autoTargets = selected.filter((s) => !requested.get(s.id));
