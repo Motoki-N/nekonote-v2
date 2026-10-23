@@ -22,6 +22,7 @@ import {
   type IllustrationItem,
   type IllustrationProposal,
   type IllustrationStyle,
+  REFERENCE_IMAGES_MAX,
 } from "@/lib/schemas/illustration";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -57,16 +58,17 @@ async function toDisplayError(
  */
 export function RequestFlow({
   project,
-  reference,
+  references,
   deletedIds,
-  onSetReference,
+  onSetReferences,
   onGenerated,
 }: {
   project: AtelierProject;
-  reference: IllustrationItem | null;
+  /** 参照画像（この順で画像モデルへ添付する。上限 REFERENCE_IMAGES_MAX 枚。SPEC §13） */
+  references: IllustrationItem[];
   /** ギャラリーで削除されたイラストid（生成結果パネルの後始末用。一括削除で複数件） */
   deletedIds: string[];
-  onSetReference: (item: IllustrationItem | null) => void;
+  onSetReferences: (items: IllustrationItem[]) => void;
   onGenerated: (item: IllustrationItem) => void;
 }) {
   const [kind, setKind] = useState<IllustrationKind>("cover");
@@ -112,23 +114,29 @@ export function RequestFlow({
     setResult(null);
   }
 
-  // 参照画像が設定されたら、そのプロンプトと画風を下敷きにする（SPEC §4.4「引き継ぎ」・§10）。
+  // 参照画像のプロンプトと画風を下敷きにする（SPEC §4.4「引き継ぎ」・§10）。
   // アップロード参照画像（kind 'reference'）はプロンプトを持たず、画風指定なしの画像は画風を
   // 持たないため、それぞれ入力中の内容を消さない
-  const [prefilledFor, setPrefilledFor] = useState<string | null>(null);
-  if (reference && prefilledFor !== reference.id) {
-    setPrefilledFor(reference.id);
-    if (reference.prompt !== "") {
-      setPrompt(reference.prompt);
+  function prefillFrom(item: IllustrationItem) {
+    if (item.prompt !== "") {
+      setPrompt(item.prompt);
       setProposals(null);
       setSelectedProposal(null);
     }
-    if (reference.style !== null) {
-      setStyle(reference.style);
+    if (item.style !== null) {
+      setStyle(item.style);
     }
   }
-  if (!reference && prefilledFor !== null) {
-    setPrefilledFor(null);
+
+  // 引き継ぎは参照画像が0→1枚になったときだけ。2枚目以降の追加で入力中のプロンプトを
+  // 上書きしない（SPEC §13）
+  const [hasPrefilled, setHasPrefilled] = useState(false);
+  if (references.length > 0 && !hasPrefilled) {
+    setHasPrefilled(true);
+    prefillFrom(references[0]);
+  }
+  if (references.length === 0 && hasPrefilled) {
+    setHasPrefilled(false);
   }
 
   function buildRequest() {
@@ -143,7 +151,8 @@ export function RequestFlow({
       manuscriptPath:
         kind === "insert" ? manuscriptPath || undefined : undefined,
       sceneNote: kind === "insert" ? sceneNote || undefined : undefined,
-      referenceIllustrationId: reference?.id,
+      referenceIllustrationIds:
+        references.length > 0 ? references.map((item) => item.id) : undefined,
     };
   }
 
@@ -401,31 +410,41 @@ export function RequestFlow({
         />
       </label>
 
-      {reference && (
-        <div className="flex items-center gap-2 rounded-md border border-border bg-muted/50 p-2">
-          {/* eslint-disable-next-line @next/next/no-img-element -- 署名URL（短寿命・外部最適化不可）のため素の img を使う */}
-          <img
-            src={reference.signedUrl}
-            alt={reference.title}
-            className="h-10 w-10 rounded object-cover"
-          />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-medium text-foreground">
-              参照画像: {reference.title}
-            </p>
-            <p className="text-xs text-muted-foreground">
-              この画像を添付して依頼します（文字入れ・修正・キャラ維持）
-            </p>
-          </div>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="参照画像を外す"
-            disabled={busy !== null}
-            onClick={() => onSetReference(null)}
-          >
-            <X />
-          </Button>
+      {references.length > 0 && (
+        <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/50 p-2">
+          <p className="text-xs text-muted-foreground">
+            参照画像（{references.length}/{REFERENCE_IMAGES_MAX}
+            枚）をこの順で添付して依頼します（文字入れ・修正・キャラや画風の維持）。
+            プロンプトでは「1枚目の人物」のように何枚目かで指し示せます
+          </p>
+          <ul className="flex flex-col gap-1">
+            {references.map((item, index) => (
+              <li key={item.id} className="flex items-center gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element -- 署名URL（短寿命・外部最適化不可）のため素の img を使う */}
+                <img
+                  src={item.signedUrl}
+                  alt={item.title}
+                  className="h-10 w-10 rounded object-cover"
+                />
+                <p className="min-w-0 flex-1 truncate text-xs font-medium text-foreground">
+                  {index + 1}枚目: {item.title}
+                </p>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`参照画像「${item.title}」を外す`}
+                  disabled={busy !== null}
+                  onClick={() =>
+                    onSetReferences(
+                      references.filter((ref) => ref.id !== item.id),
+                    )
+                  }
+                >
+                  <X />
+                </Button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -477,7 +496,7 @@ export function RequestFlow({
       )}
 
       {/* プロンプト欄: 案の反映先＝微調整の場。参照画像つきなら直接編集して生成もできる */}
-      {(proposals || reference || prompt !== "") && (
+      {(proposals || references.length > 0 || prompt !== "") && (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
           画像生成プロンプト（編集できます）
           <Textarea
@@ -525,7 +544,11 @@ export function RequestFlow({
               size="sm"
               variant="outline"
               disabled={busy !== null}
-              onClick={() => onSetReference(result)}
+              onClick={() => {
+                // 修正依頼は生成結果1枚に置き換えて、そのプロンプトと画風を引き継ぐ（SPEC §13）
+                prefillFrom(result);
+                onSetReferences([result]);
+              }}
             >
               この画像を参照して修正を依頼
             </Button>

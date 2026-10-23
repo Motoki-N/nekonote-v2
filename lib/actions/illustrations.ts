@@ -39,23 +39,23 @@ export async function listIllustrations(
     const { data: rows, error } = await supabase
       .from("illustrations")
       .select(
-        "id, project_id, kind, title, prompt, request, reference_illustration_id, storage_path, created_at, is_favorite, placed_at, placed_image_path",
+        "id, project_id, kind, title, prompt, request, storage_path, created_at, is_favorite, placed_at, placed_image_path",
       )
       .eq("project_id", parsedId)
       .order("created_at", { ascending: false });
     if (error) throw new AppError("internal", error.message);
     if (!rows || rows.length === 0) return { ok: true, data: [] };
 
-    // 被参照数はプロジェクト横断で数える（他プロジェクトのイラストから参照されうる）
+    // 被参照数はプロジェクト横断で数える（他プロジェクトのイラストから参照されうる）。
+    // 参照関係は中間テーブル（1枚の画像が複数の参照元を持てる。SPEC §13）
     const { data: refRows, error: refError } = await supabase
-      .from("illustrations")
-      .select("reference_illustration_id")
-      .not("reference_illustration_id", "is", null);
+      .from("illustration_references")
+      .select("reference_illustration_id");
     if (refError) throw new AppError("internal", refError.message);
     const referencedCount = new Map<string, number>();
     for (const row of refRows ?? []) {
       const id = row.reference_illustration_id;
-      if (id) referencedCount.set(id, (referencedCount.get(id) ?? 0) + 1);
+      referencedCount.set(id, (referencedCount.get(id) ?? 0) + 1);
     }
 
     const { data: signed, error: signError } = await supabase.storage
@@ -89,7 +89,6 @@ export async function listIllustrations(
         ),
         title: row.title,
         prompt: row.prompt,
-        referenceIllustrationId: row.reference_illustration_id,
         style: styleOfStoredRequest(row.request),
         createdAt: row.created_at,
         signedUrl,
@@ -108,7 +107,7 @@ export async function listIllustrations(
 /**
  * 参照画像のアップロード（Issue #104）。
  * 外部画像を kind 'reference' の illustrations 行として保存し、ギャラリーと
- * 既存の参照フロー（reference_illustration_id）にそのまま乗せる。
+ * 既存の参照フロー（illustration_references。SPEC §13）にそのまま乗せる。
  * 生成の依頼種別には 'reference' を追加しない（propose/generate の zod が遮断する）
  */
 export async function uploadReferenceImage(
@@ -197,9 +196,7 @@ export async function uploadReferenceImage(
         prompt: "",
         storage_path: storagePath,
       })
-      .select(
-        "id, project_id, kind, title, prompt, reference_illustration_id, created_at",
-      )
+      .select("id, project_id, kind, title, prompt, created_at")
       .single();
     if (insertError || !row) {
       // 行のないオブジェクトを残さない（ベストエフォート。失敗してもRLSで本人以外は見えない）
@@ -226,7 +223,6 @@ export async function uploadReferenceImage(
       kind: parseEnum(storedIllustrationKinds, row.kind, "illustrations.kind"),
       title: row.title,
       prompt: row.prompt,
-      referenceIllustrationId: row.reference_illustration_id,
       style: null, // アップロード画像は依頼由来ではないため画風を持たない
       createdAt: row.created_at,
       signedUrl: signed.signedUrl,

@@ -31,6 +31,9 @@ export const REFERENCE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 /** ギャラリーの一括削除で1回に扱える件数（Issue #332） */
 export const BULK_DELETE_MAX = 50;
 
+/** 1回の依頼に添付できる参照画像の上限（illustration_references.position の CHECK と対応。Issue #335） */
+export const REFERENCE_IMAGES_MAX = 4;
+
 // アスペクト比は縦/横/正方形の3種（SPEC §3）。値は generateImage にそのまま渡す
 export const illustrationAspectRatios = ["2:3", "16:9", "1:1"] as const;
 export type IllustrationAspectRatio = (typeof illustrationAspectRatios)[number];
@@ -163,14 +166,26 @@ export const illustrationRequestSchema = z
     // 案出しで imagePrompt 末尾へ STYLE ブロックとして付加される
     style: z.enum(illustrationStyles).optional(),
     humanMade: z.boolean().optional(),
-    // 参照画像（ギャラリーの既存イラスト。編集依頼・キャラ一貫性）
-    referenceIllustrationId: z.uuid().optional(),
+    // 参照画像（ギャラリーの既存イラスト。編集依頼・キャラ一貫性）。
+    // 配列の順に画像モデルへ添付する（SPEC §13・Issue #335）
+    referenceIllustrationIds: z
+      .array(z.uuid())
+      .min(1)
+      .max(REFERENCE_IMAGES_MAX, `参照画像は${REFERENCE_IMAGES_MAX}枚までです`)
+      .optional(),
   })
   .superRefine((value, ctx) => {
     if (value.kind === "insert" && !value.manuscriptPath) {
       ctx.addIssue({
         code: "custom",
         message: "挿絵は対象の原稿ファイルを選択してください",
+      });
+    }
+    const ids = value.referenceIllustrationIds ?? [];
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({
+        code: "custom",
+        message: "同じ参照画像が重複しています",
       });
     }
   });
@@ -215,8 +230,7 @@ export type IllustrationItem = {
   kind: StoredIllustrationKind;
   title: string;
   prompt: string;
-  referenceIllustrationId: string | null;
-  /** 依頼時の画風（指定なし・アップロード参照画像は null。「参照画像にして依頼」で復元する） */
+  /** 依頼時の画風（指定なし・アップロード参照画像は null。参照画像の1枚目から復元する） */
   style: IllustrationStyle | null;
   createdAt: string;
   /** 短寿命の署名URL（SPEC §6） */

@@ -2,9 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 
 import { listIllustrations } from "@/lib/actions/illustrations";
-import type { IllustrationItem } from "@/lib/schemas/illustration";
+import {
+  REFERENCE_IMAGES_MAX,
+  type IllustrationItem,
+} from "@/lib/schemas/illustration";
 import { Button } from "@/components/ui/button";
 import { AtelierGallery } from "@/components/atelier/atelier-gallery";
 import { RequestFlow } from "@/components/atelier/request-flow";
@@ -42,8 +46,9 @@ export function AtelierWorkspace({
     initialProjectId ?? projects[0]?.id ?? null,
   );
   const [loaded, setLoaded] = useState<LoadedGallery | null>(null);
-  // 参照画像（編集依頼・キャラ一貫性）。ギャラリーの「参照にして依頼」で設定される
-  const [reference, setReference] = useState<IllustrationItem | null>(null);
+  // 参照画像（編集依頼・キャラ一貫性）。ギャラリーの「参照画像に追加」で積み、
+  // この順で画像モデルへ添付する（上限 REFERENCE_IMAGES_MAX 枚。SPEC §13）
+  const [references, setReferences] = useState<IllustrationItem[]>([]);
   // 削除されたイラストid（依頼フロー側の生成結果パネルの後始末用）。一括削除で複数件になる（Issue #332）
   const [lastDeletedIds, setLastDeletedIds] = useState<string[]>([]);
   // 生成のたびに増やして一覧を取り直すためのトリガー（署名URLの鮮度もこれで保たれる）
@@ -81,6 +86,26 @@ export function AtelierWorkspace({
     );
   }, []);
 
+  const handleAddReference = useCallback(
+    (item: IllustrationItem) => {
+      if (references.some((ref) => ref.id === item.id)) {
+        toast("この画像はすでに参照画像に入っています");
+        return;
+      }
+      if (references.length >= REFERENCE_IMAGES_MAX) {
+        toast.error(
+          `参照画像は${REFERENCE_IMAGES_MAX}枚までです。依頼フォームでどれかを外してください`,
+        );
+        return;
+      }
+      setReferences([...references, item]);
+      toast(
+        `参照画像に追加しました（${references.length + 1}/${REFERENCE_IMAGES_MAX}枚）`,
+      );
+    },
+    [references],
+  );
+
   const handleDeleted = useCallback((ids: string[]) => {
     const deleted = new Set(ids);
     setLoaded((prev) =>
@@ -88,7 +113,7 @@ export function AtelierWorkspace({
         ? { ...prev, items: prev.items.filter((item) => !deleted.has(item.id)) }
         : prev,
     );
-    setReference((prev) => (prev && deleted.has(prev.id) ? null : prev));
+    setReferences((prev) => prev.filter((item) => !deleted.has(item.id)));
     setLastDeletedIds(ids);
   }, []);
 
@@ -153,7 +178,7 @@ export function AtelierWorkspace({
           value={projectId ?? ""}
           onChange={(e) => {
             setProjectId(e.target.value);
-            setReference(null);
+            setReferences([]);
           }}
         >
           {projects.map((p) => (
@@ -169,9 +194,9 @@ export function AtelierWorkspace({
           <RequestFlow
             key={project.id}
             project={project}
-            reference={reference}
+            references={references}
             deletedIds={lastDeletedIds}
-            onSetReference={setReference}
+            onSetReferences={setReferences}
             onGenerated={(item) => {
               handleGenerated(item);
               // 念のため取り直しもかける（被参照数・署名URLの整合）
@@ -183,7 +208,7 @@ export function AtelierWorkspace({
             hasRepo={project.hasRepo}
             items={gallery?.items ?? null}
             error={gallery?.error ?? null}
-            onSetReference={setReference}
+            onAddReference={handleAddReference}
             onUploaded={handleGenerated}
             onDeleted={handleDeleted}
             onTitleChanged={handleTitleChanged}

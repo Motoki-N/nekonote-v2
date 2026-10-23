@@ -164,19 +164,24 @@ export async function POST(req: Request) {
       throw new AppError("not_found", "プロジェクトが見つかりません");
 
     // 参照画像はRLS越しの取得で所有確認（他人のイラストは not_found。SPEC §6）。
-    // 案出しでは画像そのものは使わず、元プロンプトをテキスト文脈として渡す
-    let referencePrompt: string | null = null;
-    if (request.referenceIllustrationId) {
-      const { data: reference, error: referenceError } = await supabase
+    // 案出しでは画像そのものは使わず、タイトルと元プロンプトをテキスト文脈として
+    // 添付順に渡す（複数可。SPEC §13）
+    const referenceIds = request.referenceIllustrationIds ?? [];
+    let references: { title: string; prompt: string }[] = [];
+    if (referenceIds.length > 0) {
+      const { data: rows, error: referenceError } = await supabase
         .from("illustrations")
-        .select("id, prompt")
-        .eq("id", request.referenceIllustrationId)
-        .maybeSingle();
+        .select("id, title, prompt")
+        .in("id", referenceIds);
       if (referenceError)
         throw new AppError("internal", referenceError.message);
-      if (!reference)
+      const byId = new Map((rows ?? []).map((row) => [row.id, row]));
+      if (referenceIds.some((id) => !byId.has(id)))
         throw new AppError("not_found", "参照イラストが見つかりません");
-      referencePrompt = reference.prompt;
+      references = referenceIds.map((id) => {
+        const row = byId.get(id)!;
+        return { title: row.title, prompt: row.prompt };
+      });
     }
 
     // イラストレーターペルソナ（標準シード。description はユーザー編集可）
@@ -244,7 +249,7 @@ export async function POST(req: Request) {
             : null,
           instructions: request.instructions,
           sceneNote: request.sceneNote ?? null,
-          referencePrompt,
+          references,
         },
         proposal,
         notes,
