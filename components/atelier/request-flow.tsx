@@ -35,6 +35,7 @@ import {
 const ASPECT_LABEL: Record<IllustrationAspectRatio, string> = {
   "2:3": "縦（2:3）",
   "16:9": "横（16:9）",
+  "3:2": "横（3:2・A4横向け）",
   "1:1": "正方形",
 };
 

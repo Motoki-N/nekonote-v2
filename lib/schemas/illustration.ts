@@ -34,8 +34,8 @@ export const BULK_DELETE_MAX = 50;
 /** 1回の依頼に添付できる参照画像の上限（illustration_references.position の CHECK と対応。Issue #335） */
 export const REFERENCE_IMAGES_MAX = 4;
 
-// アスペクト比は縦/横/正方形の3種（SPEC §3）。値は generateImage にそのまま渡す
-export const illustrationAspectRatios = ["2:3", "16:9", "1:1"] as const;
+// アスペクト比は縦/横/横（A4横向け）/正方形の4種（SPEC §3）。値は generateImage にそのまま渡す
+export const illustrationAspectRatios = ["2:3", "16:9", "3:2", "1:1"] as const;
 export type IllustrationAspectRatio = (typeof illustrationAspectRatios)[number];
 
 /** 種別ごとのアスペクト比デフォルト（SPEC §3: 表紙・挿絵・キャラ=縦、コンセプト=横） */
