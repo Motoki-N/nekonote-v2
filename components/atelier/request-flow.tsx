@@ -58,14 +58,14 @@ async function toDisplayError(
 export function RequestFlow({
   project,
   reference,
-  deletedId,
+  deletedIds,
   onSetReference,
   onGenerated,
 }: {
   project: AtelierProject;
   reference: IllustrationItem | null;
-  /** ギャラリーで削除されたイラストid（生成結果パネルの後始末用） */
-  deletedId: string | null;
+  /** ギャラリーで削除されたイラストid（生成結果パネルの後始末用。一括削除で複数件） */
+  deletedIds: string[];
   onSetReference: (item: IllustrationItem | null) => void;
   onGenerated: (item: IllustrationItem) => void;
 }) {
@@ -108,7 +108,7 @@ export function RequestFlow({
   }, [kind, tree, project.id, project.hasRepo]);
 
   // ギャラリーで削除された画像は結果パネルからも消す（削除済みidへの参照依頼を防ぐ）
-  if (result && result.id === deletedId) {
+  if (result && deletedIds.includes(result.id)) {
     setResult(null);
   }
 

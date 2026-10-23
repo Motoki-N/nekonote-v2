@@ -7,6 +7,7 @@ import { AppError, toActionError } from "@/lib/errors";
 import type { ActionResult } from "@/lib/errors";
 import { enforceRateLimit } from "@/lib/rate-limit";
 import {
+  BULK_DELETE_MAX,
   collectAtelierImageIds,
   ILLUSTRATION_EXTENSION_BY_MIME,
   ILLUSTRATION_KIND_LABEL,
@@ -303,6 +304,74 @@ export async function deleteIllustration(
       .eq("id", row.id);
     if (deleteError) throw new AppError("internal", deleteError.message);
     return { ok: true };
+  } catch (error) {
+    return toActionError(error);
+  }
+}
+
+/**
+ * 一括削除（Issue #332）。所有確認（RLS）→ Storage実体をまとめて削除 → 消せた実体の行だけ削除。
+ * 採用⛳（placed_at あり）は対象から外す（UIでも選択不可だが、サーバーでも守る）。
+ * 実体を消せなかった行は残し、件数を返してクライアントの再試行に委ねる
+ */
+export async function deleteIllustrations(
+  illustrationIds: string[],
+): Promise<
+  ActionResult<{ deletedIds: string[]; failed: number; skipped: number }>
+> {
+  try {
+    const parsedIds = z
+      .array(uuidSchema)
+      .min(1)
+      .max(BULK_DELETE_MAX, {
+        message: `一度に削除できるのは${BULK_DELETE_MAX}件までです`,
+      })
+      .parse(illustrationIds);
+    const supabase = await createClient();
+
+    // RLS越しの取得＝所有確認（storage_path をクライアントから受け取らない）
+    const { data: rows, error } = await supabase
+      .from("illustrations")
+      .select("id, storage_path, placed_at")
+      .in("id", parsedIds);
+    if (error) throw new AppError("internal", error.message);
+
+    const targets = (rows ?? []).filter((row) => row.placed_at === null);
+    const skipped = (rows ?? []).length - targets.length;
+    if (targets.length === 0) {
+      return { ok: true, data: { deletedIds: [], failed: 0, skipped } };
+    }
+
+    const { data: removed, error: removeError } = await supabase.storage
+      .from("illustrations")
+      .remove(targets.map((row) => row.storage_path));
+    if (removeError) {
+      throw new AppError(
+        "internal",
+        `画像の削除に失敗しました: ${removeError.message}`,
+      );
+    }
+
+    // remove は消せたオブジェクトだけを返す。消せなかった実体の行は残す（孤児オブジェクトを作らない）
+    const removedPaths = new Set((removed ?? []).map((object) => object.name));
+    const deletedIds = targets
+      .filter((row) => removedPaths.has(row.storage_path))
+      .map((row) => row.id);
+    if (deletedIds.length > 0) {
+      const { error: deleteError } = await supabase
+        .from("illustrations")
+        .delete()
+        .in("id", deletedIds);
+      if (deleteError) throw new AppError("internal", deleteError.message);
+    }
+    return {
+      ok: true,
+      data: {
+        deletedIds,
+        failed: targets.length - deletedIds.length,
+        skipped,
+      },
+    };
   } catch (error) {
     return toActionError(error);
   }

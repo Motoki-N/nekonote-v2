@@ -44,8 +44,8 @@ export function AtelierWorkspace({
   const [loaded, setLoaded] = useState<LoadedGallery | null>(null);
   // 参照画像（編集依頼・キャラ一貫性）。ギャラリーの「参照にして依頼」で設定される
   const [reference, setReference] = useState<IllustrationItem | null>(null);
-  // 削除されたイラストid（依頼フロー側の生成結果パネルの後始末用）
-  const [lastDeletedId, setLastDeletedId] = useState<string | null>(null);
+  // 削除されたイラストid（依頼フロー側の生成結果パネルの後始末用）。一括削除で複数件になる（Issue #332）
+  const [lastDeletedIds, setLastDeletedIds] = useState<string[]>([]);
   // 生成のたびに増やして一覧を取り直すためのトリガー（署名URLの鮮度もこれで保たれる）
   const [reloadKey, setReloadKey] = useState(0);
 
@@ -81,14 +81,15 @@ export function AtelierWorkspace({
     );
   }, []);
 
-  const handleDeleted = useCallback((id: string) => {
+  const handleDeleted = useCallback((ids: string[]) => {
+    const deleted = new Set(ids);
     setLoaded((prev) =>
       prev
-        ? { ...prev, items: prev.items.filter((item) => item.id !== id) }
+        ? { ...prev, items: prev.items.filter((item) => !deleted.has(item.id)) }
         : prev,
     );
-    setReference((prev) => (prev?.id === id ? null : prev));
-    setLastDeletedId(id);
+    setReference((prev) => (prev && deleted.has(prev.id) ? null : prev));
+    setLastDeletedIds(ids);
   }, []);
 
   const handleTitleChanged = useCallback((id: string, title: string) => {
@@ -169,7 +170,7 @@ export function AtelierWorkspace({
             key={project.id}
             project={project}
             reference={reference}
-            deletedId={lastDeletedId}
+            deletedIds={lastDeletedIds}
             onSetReference={setReference}
             onGenerated={(item) => {
               handleGenerated(item);
