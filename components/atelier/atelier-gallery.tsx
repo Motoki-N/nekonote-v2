@@ -91,7 +91,7 @@ async function downloadImage(item: IllustrationItem): Promise<void> {
 /**
  * ギャラリー（SPEC-illustrator §4.4）。
  * グリッド表示＋タイトルのインライン編集＋拡大表示（プロンプト=説明文）＋
- * ダウンロード・削除（被参照は警告）・参照画像にして依頼・参照画像のアップロード（Issue #104）・
+ * ダウンロード・削除（被参照は警告）・参照画像に追加（複数可。§13）・参照画像のアップロード（Issue #104）・
  * お気に入り☆と採用⛳の表示・絞り込み、原稿の配置状況の走査（Issue #328）・
  * 選択モードでの一括削除（Issue #332。採用⛳は選択不可）
  */
@@ -100,7 +100,7 @@ export function AtelierGallery({
   hasRepo,
   items,
   error,
-  onSetReference,
+  onAddReference,
   onUploaded,
   onDeleted,
   onTitleChanged,
@@ -113,7 +113,7 @@ export function AtelierGallery({
   /** null = 読み込み中 */
   items: IllustrationItem[] | null;
   error: string | null;
-  onSetReference: (item: IllustrationItem) => void;
+  onAddReference: (item: IllustrationItem) => void;
   onUploaded: (item: IllustrationItem) => void;
   onDeleted: (ids: string[]) => void;
   onTitleChanged: (id: string, title: string) => void;
@@ -637,9 +637,9 @@ export function AtelierGallery({
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => onSetReference(item)}
+                onClick={() => onAddReference(item)}
               >
-                参照画像にして依頼
+                参照画像に追加
               </Button>
             </li>
           ))}

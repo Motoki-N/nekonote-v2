@@ -732,8 +732,11 @@ export type IllustrationRequestContext = {
   styleLabel: string | null;
   instructions: string;
   sceneNote: string | null;
-  /** 参照画像の元プロンプト（参照画像つき依頼のとき。画像そのものは生成時に添付される） */
-  referencePrompt: string | null;
+  /**
+   * 参照画像のタイトルと元プロンプト（添付順。画像そのものは生成時に添付される。SPEC §13）。
+   * アップロード参照画像は prompt が空文字
+   */
+  references: { title: string; prompt: string }[];
 };
 
 export type ManuscriptFileContext = {
@@ -768,6 +771,7 @@ export function buildIllustrationProposeSystemPrompt({
     "- 依頼のカラー/モノクロ指定を必ず含める（モノクロなら「モノクロ、白黒」と明記する）。画風とカラー/モノクロ指定が食い違うときはカラー/モノクロ指定を優先する",
     "- 本文に書かれた外見・情景の描写と矛盾させない。書かれていない部分は作品のトーンから補う",
     "- 参照画像つきの依頼では、生成時にその画像が添付される。参照画像の何を保つか（人物の顔立ち・画風など）と何を変えるかをプロンプトに明記する",
+    "- 参照画像が複数あるときは「1枚目の人物」「2枚目の画風」のように何枚目かで指し示し、それぞれから何を取り入れるかを書き分ける",
   ].join("\n");
 }
 
@@ -801,13 +805,18 @@ export function buildIllustrationProposeInput({
   if (request.sceneNote) {
     lines.push("場面の補足:", '"""', request.sceneNote, '"""');
   }
-  if (request.referencePrompt !== null) {
+  if (request.references.length > 0) {
     lines.push(
-      "参照画像: あり（生成時に添付される）。参照画像を作ったときのプロンプト:",
-      '"""',
-      request.referencePrompt || "（不明）",
-      '"""',
+      `参照画像: ${request.references.length}枚（生成時にこの順で添付される）`,
     );
+    request.references.forEach((reference, index) => {
+      lines.push(
+        `${index + 1}枚目「${reference.title}」を作ったときのプロンプト:`,
+        '"""',
+        reference.prompt || "（不明。アップロードされた画像）",
+        '"""',
+      );
+    });
   }
 
   if (proposal) {

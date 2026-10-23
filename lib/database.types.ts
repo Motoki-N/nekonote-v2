@@ -179,6 +179,39 @@ export type Database = {
           },
         ]
       }
+      illustration_references: {
+        Row: {
+          illustration_id: string
+          position: number
+          reference_illustration_id: string
+        }
+        Insert: {
+          illustration_id: string
+          position: number
+          reference_illustration_id: string
+        }
+        Update: {
+          illustration_id?: string
+          position?: number
+          reference_illustration_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "illustration_references_illustration_id_fkey"
+            columns: ["illustration_id"]
+            isOneToOne: false
+            referencedRelation: "illustrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "illustration_references_reference_illustration_id_fkey"
+            columns: ["reference_illustration_id"]
+            isOneToOne: false
+            referencedRelation: "illustrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       illustrations: {
         Row: {
           created_at: string
@@ -189,7 +222,6 @@ export type Database = {
           placed_image_path: string | null
           project_id: string
           prompt: string
-          reference_illustration_id: string | null
           request: Json
           storage_path: string
           title: string
@@ -205,7 +237,6 @@ export type Database = {
           placed_image_path?: string | null
           project_id: string
           prompt: string
-          reference_illustration_id?: string | null
           request: Json
           storage_path: string
           title: string
@@ -221,7 +252,6 @@ export type Database = {
           placed_image_path?: string | null
           project_id?: string
           prompt?: string
-          reference_illustration_id?: string | null
           request?: Json
           storage_path?: string
           title?: string
@@ -234,13 +264,6 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "illustrations_reference_illustration_id_fkey"
-            columns: ["reference_illustration_id"]
-            isOneToOne: false
-            referencedRelation: "illustrations"
             referencedColumns: ["id"]
           },
         ]

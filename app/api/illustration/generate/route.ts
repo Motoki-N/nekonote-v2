@@ -51,37 +51,47 @@ export async function POST(req: Request) {
     if (!project)
       throw new AppError("not_found", "プロジェクトが見つかりません");
 
-    // 参照画像: RLS越しの行取得（所有確認）→ Storage からダウンロードして入力に添付
-    let referenceImage: Uint8Array | null = null;
-    if (request.referenceIllustrationId) {
-      const { data: reference, error: referenceError } = await supabase
+    // 参照画像（複数可。SPEC §13）: RLS越しの行取得（所有確認）→ Storage からダウンロードして
+    // 依頼の順序どおりに入力へ添付する
+    const referenceIds = request.referenceIllustrationIds ?? [];
+    let referenceImages: Uint8Array[] = [];
+    if (referenceIds.length > 0) {
+      const { data: references, error: referenceError } = await supabase
         .from("illustrations")
         .select("id, storage_path")
-        .eq("id", request.referenceIllustrationId)
-        .maybeSingle();
+        .in("id", referenceIds);
       if (referenceError)
         throw new AppError("internal", referenceError.message);
-      if (!reference)
+      // 他人のイラスト・削除済みは RLS で返らない＝件数が欠ける
+      const pathById = new Map(
+        (references ?? []).map((row) => [row.id, row.storage_path]),
+      );
+      if (referenceIds.some((id) => !pathById.has(id)))
         throw new AppError("not_found", "参照イラストが見つかりません");
 
-      const { data: blob, error: downloadError } = await supabase.storage
-        .from("illustrations")
-        .download(reference.storage_path);
-      if (downloadError || !blob) {
-        throw new AppError(
-          "internal",
-          `参照イラストの取得に失敗しました: ${downloadError?.message}`,
-        );
-      }
-      referenceImage = new Uint8Array(await blob.arrayBuffer());
+      referenceImages = await Promise.all(
+        referenceIds.map(async (id) => {
+          const { data: blob, error: downloadError } = await supabase.storage
+            .from("illustrations")
+            .download(pathById.get(id)!);
+          if (downloadError || !blob) {
+            throw new AppError(
+              "internal",
+              `参照イラストの取得に失敗しました: ${downloadError?.message}`,
+            );
+          }
+          return new Uint8Array(await blob.arrayBuffer());
+        }),
+      );
     }
 
     const { model, provider, modelId } = await resolveImageModel(supabase);
     const { image, usage } = await generateImage({
       model,
-      prompt: referenceImage
-        ? { images: [referenceImage], text: prompt }
-        : prompt,
+      prompt:
+        referenceImages.length > 0
+          ? { images: referenceImages, text: prompt }
+          : prompt,
       aspectRatio: request.aspectRatio,
     });
 
@@ -127,12 +137,9 @@ export async function POST(req: Request) {
         title: `${project.title} ${ILLUSTRATION_KIND_LABEL[request.kind]}`,
         request,
         prompt,
-        reference_illustration_id: request.referenceIllustrationId ?? null,
         storage_path: storagePath,
       })
-      .select(
-        "id, project_id, kind, title, prompt, reference_illustration_id, created_at",
-      )
+      .select("id, project_id, kind, title, prompt, created_at")
       .single();
     if (insertError || !row) {
       // 行のないオブジェクトを残さない（ベストエフォート。失敗してもRLSで本人以外は見えない）
@@ -141,6 +148,28 @@ export async function POST(req: Request) {
         "internal",
         `イラストの保存に失敗しました: ${insertError?.message}`,
       );
+    }
+
+    // 参照関係（添付順を position に残す）。失敗したら行と実体を消して生成ごと失敗にする
+    // （参照の記録が欠けると、参照元の削除時の警告が漏れるため）
+    if (referenceIds.length > 0) {
+      const { error: referencesError } = await supabase
+        .from("illustration_references")
+        .insert(
+          referenceIds.map((referenceId, position) => ({
+            illustration_id: row.id,
+            reference_illustration_id: referenceId,
+            position,
+          })),
+        );
+      if (referencesError) {
+        await supabase.from("illustrations").delete().eq("id", row.id);
+        await supabase.storage.from("illustrations").remove([storagePath]);
+        throw new AppError(
+          "internal",
+          `参照画像の記録に失敗しました: ${referencesError.message}`,
+        );
+      }
     }
 
     const { data: signed, error: signError } = await supabase.storage
@@ -159,7 +188,6 @@ export async function POST(req: Request) {
       kind: row.kind as IllustrationItem["kind"],
       title: row.title,
       prompt: row.prompt,
-      referenceIllustrationId: row.reference_illustration_id,
       style: request.style ?? null,
       createdAt: row.created_at,
       signedUrl: signed.signedUrl,
