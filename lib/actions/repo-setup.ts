@@ -19,7 +19,10 @@ import {
   updateBranchRef,
   type SetupTreeEntry,
 } from "@/lib/git/github";
-import { loadManuscriptTemplate } from "@/lib/git/template";
+import {
+  applyTypesettingStyle,
+  loadManuscriptTemplate,
+} from "@/lib/git/template";
 import { repoSetupInputSchema } from "@/lib/schemas/projects";
 import type { RepoSetupInput } from "@/lib/schemas/projects";
 import { createClient } from "@/lib/supabase/server";
@@ -64,7 +67,10 @@ export async function setupManuscriptRepo(
       patMessage: "GitHubのPATが未登録です。設定画面で登録してください",
     });
 
-    const templateFiles = await loadManuscriptTemplate(parsed);
+    const templateFiles = applyTypesettingStyle(
+      await loadManuscriptTemplate(parsed),
+      parsed.style,
+    );
 
     const branch = await getDefaultBranch(token, repo);
     let headSha = await getBranchHeadShaOrNull(token, repo, branch);

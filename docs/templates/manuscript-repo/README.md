@@ -7,18 +7,25 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 > サンプル値 `竜の巣`（タイトル）・`灰谷 汀`（著者名）・`ryu-no-su`（出力ファイル名）を
 > 目印に文字列置換で作品情報を埋め込む。テンプレートを変更するときはこの3つの表記を
 > 維持すること（別の値に変えると置換が効かなくなる）。
+>
+> また、書籍設定の「組版スタイル」切替（SPEC-horizontal-typesetting）は、下の「組版スタイル」節の
+> ファイル名と、出力ファイル名・ワークフロー中の判型トークン（`-a6` / `-b6` / `-a5` / `-b5`、
+> `A6版` / `B6判` 等の表記）を目印に書き換える。これらの表記も維持すること。
 
 ## 構成
 
 ```
 ├─ manuscripts/          … 本文（VFM形式・章ごとに1ファイル。数字プレフィックスで章順）
 ├─ book.config.js        … 書誌情報＋ビルド設定（文庫判A6）
-├─ book.config.b6.js     … B6判ビルド設定
+├─ book.config.b6.js     … B6判ビルド設定（横書きに切り替えると book.config.b5.js に置き換わる）
 ├─ book.config.epub.js   … EPUB（電子書籍）ビルド設定
 ├─ themes/
 │   ├─ theme-bunko-a6.css … 文庫判テーマ（theme-bunko派生・16行×40字）
 │   ├─ theme-b6.css       … B6判テーマ（theme-bunko派生・17行×44字）
 │   ├─ theme-epub.css     … EPUB用テーマ（リフロー型縦書き・自己完結。印刷用と独立）
+│   ├─ theme-techbook-a5.css … 横書き・A5判テーマ（theme-techbook派生・34行×40字。横書き切替時に使う）
+│   ├─ theme-techbook-b5.css … 横書き・B5判テーマ（theme-techbook派生・38行×46字。同上）
+│   ├─ theme-epub-horizontal.css … 横書きEPUB用テーマ（同上）
 │   └─ nekonote-parts.css … 共通パーツ（ノンブル・柱・扉・奥付・挿絵・傍点・縦中横・割注・改ページ・塗り足し）
 ├─ images/               … 挿絵（Git管理。太ったらLFS移行）
 ├─ scripts/
@@ -29,9 +36,24 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
     └─ build-epub.yml    … EPUBタグpush → EPUB自動生成
 ```
 
-## ノンブル・柱
+## 組版スタイル（縦書き・横書き）
 
-ノンブル（ページ番号）と柱（章タイトル）をどこに出すかは、判型テーマ（`theme-bunko-a6.css` / `theme-b6.css`）の
+テンプレートは縦書き（文庫）で展開される。横書き（技術書）にするには、ネコノテAIの
+初期セットアップで「横書き」を選ぶか、エディタの書籍設定「組版スタイル」から切り替える
+（縦書きへ戻すこともできる）。切替は次のファイルを1コミットで書き換える。
+
+| 項目 | 縦書き（文庫） | 横書き（技術書） |
+|---|---|---|
+| `book.config.js` の判型・テーマ | A6・`theme-bunko-a6.css` | A5・`theme-techbook-a5.css` |
+| 第2判型の設定 | `book.config.b6.js`（B6・`theme-b6.css`） | `book.config.b5.js`（B5・`theme-techbook-b5.css`） |
+| EPUB（`book.config.epub.js`） | `theme-epub.css`・`readingProgression: 'rtl'` | `theme-epub-horizontal.css`・`'ltr'` |
+| 出力ファイル名・`build-pdf.yml`・`check:pages` | `-a6` / `-b6` | `-a5` / `-b5` |
+
+判型テーマCSSは切り替えても削除しない（組み設定・ノンブル/柱・目次の調整は、戻したときに復元される）。
+横書きの本文書体は Noto Sans CJK JP（ゴシック）を優先する。
+
+
+ノンブル（ページ番号）と柱（章タイトル）をどこに出すかは、判型テーマ（`theme-bunko-a6.css` / `theme-b6.css`。横書きは `theme-techbook-a5.css` / `theme-techbook-b5.css`）の
 `:root` にある4つのスロット変数で決める。ネコノテAIの書籍設定フォームからも編集できる。
 
 | 変数 | 位置 |
@@ -42,7 +64,7 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 | `--nekonote--slot-bottom-center` | 地・中央 |
 
 値は `none` / `counter(page)`（ノンブル）/ `env(doc-title)`（柱＝章タイトル）と、その連結
-（`counter(page) '　' env(doc-title)`）。既定は天・小口にノンブル＋柱で、**左右どちらのページにも柱が出る**。
+（`counter(page) '　' env(doc-title)`）。縦書きの既定は天・小口にノンブル＋柱（横書きの既定は天・小口に柱、地・中央にノンブル）で、**左右どちらのページにも柱が出る**。
 仕組み（`@page` ルール）は `nekonote-parts.css` 側にある。
 
 本文との間隔を広げたいときは、判型テーマの字詰め（`--vs-theme--num-of-character`）を減らして

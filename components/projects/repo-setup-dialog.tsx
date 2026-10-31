@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { setupManuscriptRepo } from "@/lib/actions/repo-setup";
+import { STYLE_SETS, TYPESETTING_STYLES } from "@/lib/editor/typesetting-style";
+import type { TypesettingStyle } from "@/lib/editor/typesetting-style";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -35,6 +37,7 @@ export function RepoSetupDialog({
   projectId,
   defaultTitle,
   repoName,
+  defaultStyle,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -42,11 +45,14 @@ export function RepoSetupDialog({
   defaultTitle: string;
   /** owner/ を除いたリポジトリ名（slug の初期値に使う） */
   repoName: string;
+  /** 組版スタイルの初期値（執筆ジャンルから。技術書=横書き。SPEC-horizontal-typesetting §6.1） */
+  defaultStyle: TypesettingStyle;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(defaultTitle);
   const [author, setAuthor] = useState("");
   const [slug, setSlug] = useState(toSlug(repoName));
+  const [style, setStyle] = useState<TypesettingStyle>(defaultStyle);
   const [submitting, setSubmitting] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -58,6 +64,7 @@ export function RepoSetupDialog({
         title: title.trim(),
         author: author.trim(),
         slug: slug.trim(),
+        style,
       });
       if (!result.ok || !result.data) {
         toast.error(
@@ -114,6 +121,25 @@ export function RepoSetupDialog({
               required
             />
           </label>
+          <fieldset className="flex flex-col gap-1 text-sm">
+            <legend className="mb-1">組版スタイル</legend>
+            {TYPESETTING_STYLES.map((value) => (
+              <label key={value} className="flex items-center gap-2">
+                <input
+                  type="radio"
+                  name="typesetting-style"
+                  value={value}
+                  checked={style === value}
+                  onChange={() => setStyle(value)}
+                />
+                {STYLE_SETS[value].label}（{STYLE_SETS[value].primary.label}・
+                {STYLE_SETS[value].secondary.label}）
+              </label>
+            ))}
+            <span className="text-xs text-muted-foreground">
+              あとから書籍設定の「組版スタイル」で切り替えられます
+            </span>
+          </fieldset>
           <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">
             <li>
               リポジトリに既にファイルがある場合、全ファイルを backup-日時/

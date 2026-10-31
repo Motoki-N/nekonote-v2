@@ -1,0 +1,61 @@
+/*
+ * A5判（148×210mm）テーマ（横書き・技術書。SPEC-horizontal-typesetting §4.1）
+ * theme-techbook をベースに、A5版面（34行×40字・8.5pt）へ調整
+ * 組み設定・ノンブル/柱・目次の変数は縦書きテーマ（theme-bunko-a6.css）と同じ構造（設定フォームがそのまま書き換える）
+ */
+@import url(../node_modules/@vivliostyle/theme-techbook/theme.css);
+@import url(./nekonote-parts.css);
+
+:root {
+  /* 8.5pt（= 12pt × 70.83%）・行送り1.7 */
+  --vs-font-size-on-print: 70.83%;
+  --vs-line-height: 1.7;
+  --vs-theme--num-of-line: 34;
+  --vs-theme--num-of-character: 40;
+
+  /* 版面を字詰め×行数から決める（theme-bunko と同じ方式の横書き版）。
+   * techbook 既定の固定余白（天地25mm・左右22mm）は使わず、余白は auto で版面を中央に置く */
+  --vs-page--width: calc(1rem * var(--vs-theme--num-of-character) + 1px);
+  --vs-page--height: calc(1rem * var(--vs-line-height) * var(--vs-theme--num-of-line));
+  --vs-page--margin-top: auto;
+  --vs-page--margin-bottom: auto;
+  --vs-page--margin-inner: auto;
+  --vs-page--margin-outer: auto;
+
+  --nekonote--trim-width: 148mm;
+  --nekonote--trim-height: 210mm;
+
+  /* 書体: nekonote-parts.css の明朝指定を上書き。入稿PDF（GitHub Actions＝Linux）と同じ Noto を先頭に置く */
+  --vs-font-family: 'Noto Sans CJK JP', 'Hiragino Sans', 'Yu Gothic', sans-serif;
+  --vs--monospace-font-family: 'Noto Sans Mono CJK JP', Consolas, Monaco, monospace;
+
+  /* techbook 既定の地のノンブルを無効化してスロットへ一本化（天の柱は nekonote-parts.css が無効化済み） */
+  --vs-theme--page-bottom-content: none;
+
+  /* ノンブル・柱（仕組みは nekonote-parts.css。設定フォームがこの4行を書き換える）。
+   * 各スロットの値は none / counter(page) / env(doc-title) とその連結のみ */
+  --nekonote--slot-top-outer: env(doc-title);
+  --nekonote--slot-top-center: none;
+  --nekonote--slot-bottom-outer: none;
+  --nekonote--slot-bottom-center: counter(page);
+}
+
+/* nekonote-toc: begin — 目次（ネコノテAI の設定フォームが管理。begin〜end の間を手で編集するとフォームは読み取り専用になる） */
+:root {
+  --vs-toc--page-counter-display: inline;
+  --vs-toc--page-counter-style: decimal;
+  --vs-toc--page-leader-content: leader('.') ' ';
+}
+h1:has(+ :is(#toc, [role='doc-toc'])) {
+  display: none;
+}
+:is(#toc, [role='doc-toc']) li:not(:has(a)) {
+  display: none;
+}
+:is(#toc, [role='doc-toc']) li:has(> a:is([href="manuscripts/00-tobira.html"], [href^="manuscripts/00-tobira.html#"])) {
+  display: none;
+}
+:is(#toc, [role='doc-toc']) li:has(> a:is([href="manuscripts/99-okuzuke.html"], [href^="manuscripts/99-okuzuke.html#"])) {
+  display: none;
+}
+/* nekonote-toc: end */

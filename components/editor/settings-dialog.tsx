@@ -37,9 +37,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { TypesettingSection } from "@/components/editor/typesetting-section";
 
 /**
- * 設定フォーム（SPEC-vertical-editor-phase3 §7）。区画（書誌・章構成・目次・組み設定・奥付）を
+ * 設定フォーム（SPEC-vertical-editor-phase3 §7）。区画（組版スタイル・書誌・章構成・目次・組み設定・奥付）を
  * それぞれ独立に保存＝コミットする。書き換えは正規表現置換＋置換後検証（サーバー側）。
  * 対応できない構造のセクションは読み取り専用の案内になる（フェイルソフト）
  */
@@ -119,6 +120,15 @@ export function SettingsDialog({
             <p className="p-2 text-sm text-destructive">{loadError}</p>
           ) : data ? (
             <div className="flex flex-col gap-6 pb-2">
+              {data.typesetting && (
+                <TypesettingSection
+                  key={data.config?.sha}
+                  projectId={projectId}
+                  branch={branch}
+                  style={data.typesetting}
+                  onSaved={handleSaved}
+                />
+              )}
               {data.config ? (
                 <>
                   <BiblioSection
@@ -143,6 +153,7 @@ export function SettingsDialog({
                       projectId={projectId}
                       branch={branch}
                       toc={data.toc}
+                      horizontal={data.typesetting === "horizontal"}
                       onSaved={handleSaved}
                     />
                   )}
@@ -605,13 +616,20 @@ function TocSection({
   projectId,
   branch,
   toc,
+  horizontal,
   onSaved,
 }: {
   projectId: string;
   branch: string;
   toc: TocSettingsData;
+  /** 横書きの組版スタイル（縦中横のページ番号を選択肢から外す。SPEC-horizontal-typesetting §6.3） */
+  horizontal: boolean;
   onSaved: () => void;
 }) {
+  // 縦中横は縦書き専用。横書きで既に指定されていれば算用数字として表示する（保存で揃う）
+  const pageNumberOptions = horizontal
+    ? TOC_PAGE_NUMBER_OPTIONS.filter((option) => option.value !== "arabic-tcy")
+    : TOC_PAGE_NUMBER_OPTIONS;
   const initialConfig = toc.config;
   // 外す章は entry にあるものだけを扱う（ファイル名を変えた章の古い指定は保存で落ちる）
   const initialStyle = toc.style
@@ -633,7 +651,9 @@ function TocSection({
     initialStyle?.showBookTitle ?? true,
   );
   const [pageNumber, setPageNumber] = useState<TocPageNumber>(
-    initialStyle?.pageNumber ?? "arabic",
+    horizontal && initialStyle?.pageNumber === "arabic-tcy"
+      ? "arabic"
+      : (initialStyle?.pageNumber ?? "arabic"),
   );
   const [leader, setLeader] = useState<TocLeader>(
     initialStyle?.leader ?? "dots",
@@ -901,7 +921,7 @@ function TocSection({
                   setPageNumber(event.target.value as TocPageNumber)
                 }
               >
-                {TOC_PAGE_NUMBER_OPTIONS.map((option) => (
+                {pageNumberOptions.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -931,7 +951,7 @@ function TocSection({
           )}
           {toc.stylesDiffer && (
             <p className="text-xs text-muted-foreground">
-              判型（A6・B6）のテーマで目次の設定が食い違っています。ここに表示しているのはプレビューに使うテーマの設定で、保存すると両方がこの内容に揃います。
+              判型（既定・第2判型）のテーマで目次の設定が食い違っています。ここに表示しているのはプレビューに使うテーマの設定で、保存すると両方がこの内容に揃います。
             </p>
           )}
         </div>
