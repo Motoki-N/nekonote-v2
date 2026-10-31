@@ -125,7 +125,7 @@
 | `book.config.epub.js` | `theme` と `readingProgression` を置換 | 値が取れない場合は **EPUB だけスキップ**して警告（目次保存の `epubSkipped` と同じ扱い。EPUB はオプション） |
 | EPUB テーマ | 移行先がなければテンプレートから追加。あれば触らない | なし |
 | `.github/workflows/build-pdf.yml` | 判型トークンを置換: 設定ファイル名（`book.config.b6.js` ⇄ `book.config.b5.js`）・出力名（`-a6`/`-b6` ⇄ `-a5`/`-b5`）・ステップ名とメッセージの判型表記（`文庫判 A6`/`A6版`/`B6判`/`B6版` ⇄ `A5判`/`A5版`/`B5判`/`B5版`） | 置換後に移行元の判型トークンが残る、または移行先のトークンが1つも現れない |
-| `package.json` | `check:pages` の出力パスの判型トークンを置換。devDependencies に `@vivliostyle/theme-techbook` がなければ追加（横書きへの切替時のみ。**削除はしない**） | JSON として読めない |
+| `package.json` | `check:pages` の出力パスの判型トークンを置換。第2判型のビルドスクリプト（`build:b6` ⇄ `build:b5`）のキー名と設定ファイル名を付け替え（実装時に追加）。devDependencies に `@vivliostyle/theme-techbook` がなければ追加（横書きへの切替時のみ。**削除はしない**） | JSON として読めない |
 | `package-lock.json` | theme-techbook がなければ、テンプレートの lock から該当エントリ（`node_modules/@vivliostyle/theme-techbook` とその入れ子依存）をコピーし、ルートの devDependencies に追記 | lockfileVersion が 3 でない／同名キーが別バージョンで存在する |
 
 - ワークフローを**全文一致ではなくトークン置換**にするのは、テンプレートの過去版から作られたリポジトリ（ステップの追加・コメント差分など）でも切り替えられるようにするため。置換後の検証（移行元トークンの残存なし・移行先トークンの出現あり）で、想定外の構造を「手動」に倒す

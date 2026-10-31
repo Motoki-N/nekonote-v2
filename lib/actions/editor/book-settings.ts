@@ -35,6 +35,13 @@ import {
 import type { OkuzukeData } from "@/lib/editor/okuzuke";
 import { repoThemeCssPath } from "@/lib/editor/theme";
 import {
+  SECONDARY_CONFIGS,
+  detectTypesettingStyle,
+  secondaryConfigsFor,
+  sizeLabelsFor,
+} from "@/lib/editor/typesetting-style";
+import type { TypesettingStyle } from "@/lib/editor/typesetting-style";
+import {
   applyTocBlock,
   applyTocConfig,
   isValidTocTitle,
@@ -68,7 +75,7 @@ import {
 } from "./context";
 
 export type ThemeSettings = {
-  /** 判型ラベル（設定ファイル名から。book.config.js=既定・book.config.b6.js=B6） */
+  /** 判型ラベル（組版スタイルから。例: 既定（A6）・B6／既定（A5）・B5。SPEC-horizontal-typesetting §6.3） */
   label: string;
   /** リポジトリルートからのCSSパス */
   cssPath: string;
@@ -99,7 +106,7 @@ export type TocSettingsData = {
   style: TocStyle | null;
   /** テーマに目次ブロックがまだない（表示は今の見た目。保存時に追記される） */
   styleAbsent: boolean;
-  /** 判型テーマ（A6・B6）の目次ブロックが食い違っている（保存で揃う） */
+  /** 判型テーマ（主判型・第2判型）の目次ブロックが食い違っている（保存で揃う） */
   stylesDiffer: boolean;
   /** EPUB 設定の扱い: present=同時に書き換える / unsupported=あるが書き換えられない / absent=なし */
   epub: "present" | "unsupported" | "absent";
@@ -124,6 +131,11 @@ export type BookSettingsData = {
   entryCandidates: string[];
   /** 目次区画。null = book.config.js がない */
   toc: TocSettingsData | null;
+  /**
+   * 現在の組版スタイル（SPEC-horizontal-typesetting §3）。custom = 対応表にないテーマ。
+   * null = book.config.js がない
+   */
+  typesetting: TypesettingStyle | "custom" | null;
 };
 
 // entry の文字列要素（章パス）として受け付ける形（引用符付き・.md・トラバーサル拒否）
@@ -158,7 +170,7 @@ export async function getBookSettings(
       }
     }
 
-    // テーマCSS（既定＋B6。リポジトリ外を指すテーマは対象外）
+    // テーマCSS（既定＋第2判型。リポジトリ外を指すテーマは対象外）
     const themes: ThemeSettings[] = [];
     // 目次ブロックの読み取り用（cssPath → 中身。themes と同じ順）
     const themeCss = new Map<string, string>();
@@ -166,16 +178,31 @@ export async function getBookSettings(
     const previewCssPath = configContent
       ? repoThemeCssPath(ctx.basePath, extractThemePath(configContent))
       : null;
+    const typesetting = configContent
+      ? detectTypesettingStyle(configContent)
+      : null;
+    const sizeLabels = sizeLabelsFor(typesetting ?? "custom");
     const themeSources: { label: string; content: string | null }[] = [
-      { label: "既定（A6）", content: configContent },
+      { label: sizeLabels.primary, content: configContent },
     ];
-    const b6Path = joinRepoPath(ctx.basePath, "book.config.b6.js");
-    if (b6Path) {
+    // 第2判型（縦書き=B6・横書き=B5）。設定はオプションで、最初に見つかったものを使う
+    for (const configName of secondaryConfigsFor(typesetting ?? "custom")) {
+      const secondaryPath = joinRepoPath(ctx.basePath, configName);
+      if (!secondaryPath) continue;
       try {
-        const b6 = await getFileContent(ctx.token, ctx.repo, b6Path, ref);
-        themeSources.push({ label: "B6", content: b6.content });
+        const secondary = await getFileContent(
+          ctx.token,
+          ctx.repo,
+          secondaryPath,
+          ref,
+        );
+        themeSources.push({
+          label: sizeLabels.secondary,
+          content: secondary.content,
+        });
+        break;
       } catch {
-        // B6設定はオプション
+        // 第2判型の設定はオプション
       }
     }
     for (const source of themeSources) {
@@ -257,7 +284,7 @@ export async function getBookSettings(
 
     return {
       ok: true,
-      data: { config, themes, okuzuke, entryCandidates, toc },
+      data: { config, themes, okuzuke, entryCandidates, toc, typesetting },
     };
   } catch (error) {
     return toActionError(error);
@@ -442,7 +469,7 @@ async function commitThemeVars(
 
   // 対象CSSは config の theme が指すものに限定（任意パス書き換えの防止）
   const allowed = new Set<string>();
-  for (const configName of ["book.config.js", "book.config.b6.js"]) {
+  for (const configName of ["book.config.js", ...SECONDARY_CONFIGS]) {
     const path = joinRepoPath(ctx.basePath, configName);
     if (!path) continue;
     try {
@@ -856,16 +883,19 @@ export async function saveTocSettings(
     }
 
     if (style !== null) {
-      // 対象は book.config.js / book.config.b6.js の theme が指すリポジトリ内CSSに限る
+      // 対象は book.config.js と第2判型の設定（b6/b5）の theme が指すリポジトリ内CSSに限る
       // （組み設定・ノンブルと同じ許可リスト。任意パスの書き換えを防ぐ）
       const cssPaths = new Set<string>();
-      // B6 設定は theme の場所を知るためだけに読む（書き換えないので楽観ロックの照合対象外）
-      const b6Path = joinRepoPath(ctx.basePath, "book.config.b6.js");
-      const b6Content =
-        b6Path !== null && shaByPath.has(b6Path)
-          ? (await getFileContent(ctx.token, ctx.repo, b6Path, headSha)).content
-          : null;
-      for (const source of [configContent, b6Content]) {
+      // 第2判型の設定は theme の場所を知るためだけに読む（書き換えないので楽観ロックの照合対象外）
+      const secondaryContents = await Promise.all(
+        SECONDARY_CONFIGS.map(async (configName) => {
+          const path = joinRepoPath(ctx.basePath, configName);
+          return path !== null && shaByPath.has(path)
+            ? (await getFileContent(ctx.token, ctx.repo, path, headSha)).content
+            : null;
+        }),
+      );
+      for (const source of [configContent, ...secondaryContents]) {
         const themePath = source ? extractThemePath(source) : null;
         const cssPath = themePath
           ? joinRepoPath(ctx.basePath, themePath)

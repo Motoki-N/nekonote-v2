@@ -8,7 +8,12 @@ import { ChromeHeader } from "@/components/layout/app-chrome";
 import { EditProjectButton } from "@/components/projects/edit-project-button";
 import { ProjectTabs } from "@/components/projects/project-tabs";
 import { ProjectStatusBadge } from "@/components/projects/status-badges";
-import { parseEnum, projectStatuses } from "@/lib/schemas/enums";
+import {
+  parseEnum,
+  parseEnumOrNull,
+  projectStatuses,
+  writingGenres,
+} from "@/lib/schemas/enums";
 
 /**
  * プロジェクト配下の共通レイアウト（SPEC-beat-board §3.1）。
@@ -85,6 +90,11 @@ export default async function ProjectLayout({
               target_pages: project.target_pages,
               repo: project.repo,
               base_path: project.base_path,
+              writing_genre: parseEnumOrNull(
+                writingGenres,
+                proposal?.writing_genre ?? null,
+                "proposals.writing_genre",
+              ),
             }}
           />
           <div className="ml-auto">

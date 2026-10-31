@@ -29,6 +29,15 @@ export type {
   TocSettingsData,
 } from "./editor/book-settings";
 
+export {
+  previewTypesettingSwitch,
+  switchTypesettingStyle,
+} from "./editor/typesetting";
+export type {
+  TypesettingPreview,
+  TypesettingPreviewChange,
+} from "./editor/typesetting";
+
 export { placeIllustration, uploadImage } from "./editor/assets";
 
 export {

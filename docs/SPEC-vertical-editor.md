@@ -8,6 +8,7 @@
 改訂: 2026-07-24 **EPUB 出力**を実装（Issue #119・PR #120。`v*-epub` タグ＋`build-epub.yml`＋`book.config.epub.js`＋`themes/theme-epub.css`。§7 スコープ外項目の昇格。SPEC は策定せず設計3点を Issue と dev-log セッション64 に記録）
 改訂: 2026-07-30 **青空文庫／カクヨム／なろう形式の書き出し**を追加（Issue #133・#137・SPEC-aozora-export）
 改訂: 2026-08-09 原稿タブに**コミット履歴・差分ビュー**を追加（Issue #31・SPEC-manuscript-history）／縦書きエディタに**選択範囲の校正**を追加（Issue #32・SPEC-proofread-selection）
+改訂: 2026-11-01 **組版スタイル（縦書き・文庫 ⇄ 横書き・技術書）のアプリ内切替**を追加（Issue #356・SPEC-horizontal-typesetting。書籍設定の「組版スタイル」区画。書字方向の単一情報源はリポジトリのまま）
 
 ## 1. 目的
 
