@@ -9,6 +9,7 @@ import {
   writingGenres,
 } from "./enums";
 import { manuscriptFilePathSchema } from "./manuscript";
+import { TYPESETTING_STYLES } from "@/lib/editor/typesetting-style";
 
 // 原稿リポジトリ（owner/repo 形式）の検証。
 // owner は GitHub 実仕様（英数字とハイフン）。repo 名は . / .. 単体を拒否（URL正規化による別エンドポイント到達の防止）。
@@ -71,8 +72,11 @@ export const repoSetupInputSchema = z.object({
       /^[a-z0-9][a-z0-9-]*$/,
       "出力ファイル名は小文字英数字とハイフンで入力してください（例: ryu-no-su）",
     ),
+  // 組版スタイル（SPEC-horizontal-typesetting §6.1）。省略時は縦書き（後方互換）
+  style: z.enum(TYPESETTING_STYLES).default("vertical"),
 });
-export type RepoSetupInput = z.infer<typeof repoSetupInputSchema>;
+// 入力側の型（style は省略可）。Server Action の引数に使う
+export type RepoSetupInput = z.input<typeof repoSetupInputSchema>;
 
 export const proposalInputSchema = z.object({
   project_id: z.uuid(),

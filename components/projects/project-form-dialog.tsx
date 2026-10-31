@@ -42,6 +42,8 @@ export type ProjectFormValues = {
   target_pages: number | null;
   repo: string | null;
   base_path: string | null;
+  /** 執筆ジャンル（初期セットアップの組版スタイルの既定に使う。SPEC-horizontal-typesetting §6.1） */
+  writing_genre?: WritingGenre | null;
 };
 
 // Input と同じトーンの select（shadcn select 未導入のため。色はテーマ変数のみ）
@@ -402,6 +404,9 @@ export function EditProjectDialog({
           projectId={project.id}
           defaultTitle={title.trim() || project.title}
           repoName={setupRepo.split("/")[1] ?? ""}
+          defaultStyle={
+            project.writing_genre === "tech_book" ? "horizontal" : "vertical"
+          }
         />
       )}
     </>

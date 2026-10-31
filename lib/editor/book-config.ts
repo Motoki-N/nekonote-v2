@@ -68,6 +68,13 @@ export function extractPageSizeCss(source: string): string | null {
 export type BiblioKey = "title" | "author";
 
 /**
+ * 文字列リテラルの値を読み書きする設定キー。書誌に加え、組版スタイルの切替
+ * （SPEC-horizontal-typesetting §5.1）で判型・テーマ・EPUBのページ送りを書き換える
+ */
+export type ConfigStringKey =
+  BiblioKey | "theme" | "size" | "readingProgression";
+
+/**
  * `toc: { ... }`（入れ子の `{}` を含まない単純なオブジェクト）に一致する正規表現。
  * 目次設定の読み書き（lib/editor/toc.ts）と、書名の抽出から toc ブロックを除く処理で共用する
  */
@@ -86,7 +93,7 @@ function maskTocBlock(source: string): string {
 /** `key: '値'` の文字列リテラル値を抽出する。見つからなければ null */
 export function extractStringValue(
   source: string,
-  key: BiblioKey,
+  key: ConfigStringKey,
 ): string | null {
   const match = maskTocBlock(source).match(
     new RegExp(`\\b${key}\\s*:\\s*(['"\`])([^'"\`\\n]*)\\1`),
@@ -100,7 +107,7 @@ export function extractStringValue(
  */
 export function replaceStringValue(
   source: string,
-  key: BiblioKey,
+  key: ConfigStringKey,
   value: string,
 ): string | null {
   if (/['"`\n\\]/.test(value)) return null;

@@ -9,6 +9,7 @@ import {
   parseEnumOrNull,
   projectStatuses,
   proposalStatuses,
+  writingGenres,
 } from "@/lib/schemas/enums";
 
 export default async function ProjectsPage() {
@@ -18,7 +19,7 @@ export default async function ProjectsPage() {
     supabase
       .from("projects")
       .select(
-        "id, title, status, event_name, deadline, target_pages, repo, base_path, proposals (status)",
+        "id, title, status, event_name, deadline, target_pages, repo, base_path, proposals (status, writing_genre)",
       )
       .order("created_at", { ascending: false }),
     supabase
@@ -41,6 +42,11 @@ export default async function ProjectsPage() {
       proposalStatuses,
       p.proposals?.status ?? null,
       "proposals.status",
+    ),
+    writing_genre: parseEnumOrNull(
+      writingGenres,
+      p.proposals?.writing_genre ?? null,
+      "proposals.writing_genre",
     ),
   }));
 
