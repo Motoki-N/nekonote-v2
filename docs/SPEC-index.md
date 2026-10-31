@@ -54,6 +54,7 @@
 | [phase5](SPEC-vertical-editor-phase5.md) | 07-23 | ブランチ切替・作成・PR作成 |
 | [SPEC-aozora-export](SPEC-aozora-export.md) | 07-30 | 青空文庫／カクヨム／なろう形式への書き出し |
 | [SPEC-toc-settings](SPEC-toc-settings.md) | 10-15 | 目次ページの調整・表示切り替え（設定ダイアログの目次区画・テーマCSSの目次ブロック・全体プレビューの目次） |
+| [SPEC-horizontal-typesetting](SPEC-horizontal-typesetting.md) | 11-01 | 組版スタイル（縦書き・文庫 ⇄ 横書き・技術書）のアプリ内切替（初期セットアップでの選択・書籍設定からの往復切替） |
 
 ## 5. AIエージェント・対話・設定
 
@@ -87,7 +88,7 @@ CLAUDE.md は「仕様が存在しない機能は先に仕様策定を提案す�
 | **ノート一覧のソート切替** | 07-19 | Issue #85・PR #86／dev-log セッション㊽ |
 | **ノートの Markdown 一括エクスポート**（ZIP・frontmatter付き） | 07-23 | Issue #38・PR #112／dev-log セッション58 |
 | **ノートの版履歴**（時間ベース間引きスナップショット） | 07-23 | Issue #111／`20260723000004_note_versions.sql` |
-| **エディタの横書き対応**（テーマ追従の自動判定） | 07-23 | Issue #97・PR #116／dev-log セッション61 |
+| **エディタの横書き対応**（テーマ追従の自動判定） | 07-23 | Issue #97・PR #116／dev-log セッション61（アプリ内切替は [SPEC-horizontal-typesetting](SPEC-horizontal-typesetting.md)） |
 | **EPUB 出力**（`v*-epub` タグ・`build-epub.yml`・EPUB専用テーマ） | 07-24 | Issue #119・PR #120／dev-log セッション64（設計3点を AskUserQuestion で確定） |
 | **企画書の版管理・差分表示** | 08-09 | Issue #64・PR #168／`20260809000001_proposal_versions.sql`／dev-log セッション83 |
 
