@@ -1,3 +1,4 @@
+import { unstable_rethrow } from "next/navigation";
 import { NextResponse } from "next/server";
 
 export type AppErrorCode =
@@ -42,8 +43,13 @@ export class AppError extends Error {
   }
 }
 
-/** 未知の例外を AppError に正規化する */
+/**
+ * 未知の例外を AppError に正規化する。
+ * Next.js の制御用例外（redirect / notFound / 静的化判定の DynamicServerError 等）は
+ * 包まずに再送出する（握りつぶすと遷移が効かず、ビルド時に internal としてログされる）
+ */
 export function toAppError(error: unknown): AppError {
+  unstable_rethrow(error);
   if (error instanceof AppError) return error;
   const message =
     error instanceof Error ? error.message : "予期しないエラーが発生しました";
