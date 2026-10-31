@@ -466,12 +466,22 @@ export function convertTypesettingStyle(params: {
       problems.push({ path: PACKAGE_JSON, reason: "JSON として読めません" });
     }
     if (pkg) {
-      const checkPages = pkg.scripts?.["check:pages"];
-      if (pkg.scripts && checkPages !== undefined)
-        pkg.scripts["check:pages"] = replaceSizeTokens(
-          checkPages,
-          sizePairs,
-        ).result;
+      // スクリプトの出力名（check:pages）・第2判型の設定ファイル名を揃え、
+      // 第2判型のビルドスクリプト名（build:b6 ⇄ build:b5）も付け替える（キー順は保つ）
+      const scripts = pkg.scripts;
+      if (scripts) {
+        const fromKey = `build:${from.secondary.token}`;
+        const toKey = `build:${to.secondary.token}`;
+        pkg.scripts = Object.fromEntries(
+          Object.entries(scripts).map(([key, command]) => [
+            key === fromKey && !(toKey in scripts) ? toKey : key,
+            replaceSizeTokens(
+              command.replaceAll(from.secondary.config, to.secondary.config),
+              sizePairs,
+            ).result,
+          ]),
+        );
+      }
 
       // theme-techbook は横書きへの切替時に足すだけで、縦書きへ戻しても消さない（SPEC §10）
       const needsTechbook =

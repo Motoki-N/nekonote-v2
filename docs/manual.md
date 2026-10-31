@@ -418,7 +418,7 @@
   1. `book.config.js` の `theme` を `./themes/theme-techbook-a5.css`、`size` を `'148mm,210mm'` にし、`output` の `-a6` を `-a5` にする（縦書きへ戻すときは逆）
   2. `book.config.b6.js` を `book.config.b5.js` にリネームし、`size: '182mm,257mm'`・`theme: './themes/theme-techbook-b5.css'`・出力名 `-b5` にする
   3. `book.config.epub.js` の `theme` を `./themes/theme-epub-horizontal.css`、`readingProgression` を `'ltr'` にする
-  4. `.github/workflows/build-pdf.yml` と `package.json` の `check:pages` の `-a6`/`-b6`・`book.config.b6.js` を A5/B5 版にする
+  4. `.github/workflows/build-pdf.yml` と `package.json` のスクリプト（`check:pages`・`build:b6`）の `-a6`/`-b6`・`book.config.b6.js` を A5/B5 版にする（`build:b6` は `build:b5` に改名）
   5. `npm i -D @vivliostyle/theme-techbook` を実行して `package.json` と `package-lock.json` をコミットする
   6. 横書き用のテーマCSS（`themes/theme-techbook-a5.css` / `theme-techbook-b5.css` / `theme-epub-horizontal.css`）がなければ、本リポジトリの `docs/templates/manuscript-repo/themes/` からコピーする
 - 目次のページ番号「算用数字・縦中横」は縦書き専用のため、横書きでは選択肢に出ない
