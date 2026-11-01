@@ -75,7 +75,7 @@ export function planManuscriptFileNames(
 }
 
 /**
- * 原稿ファイルの表示名（Issue #340）。リポジトリルート基準のパス → 「シーンN：タイトル」等。
+ * 原稿ファイルの表示名（Issue #340）。リポジトリルート基準のパス → 「シーンN：タイトル」／章タイトル。
  * ファイル名は変えず、`scenes.manuscript_path` の紐づけと現在のボード番号から表示だけを作る
  * （並べ替えるとファイル名中の生成時点の番号とはずれるが、表示は現在の番号に追従する）。
  * 紐づくシーンがないパスはキーを持たない＝呼び出し側はファイル名で表示する。
@@ -96,10 +96,13 @@ export function manuscriptDisplayNames(
 
   const names: Record<string, string> = {};
   for (const [path, linked] of byPath) {
-    // 章が紐づくファイルは章ファイルとして章で名乗る（章ファイルにシーンが同居していても）
+    // 章が紐づくファイルは章ファイルとして章で名乗る（章ファイルにシーンが同居していても）。
+    // 章はタイトルのみで表示し、自動の「第N章」は付けない。目次には「はじめに」「序章」等の
+    // 番号を持たない章や、書き手が自分で「第1章」と書いたタイトルがあり、出現順の番号は
+    // 書き手の章番号と一致しないため。タイトルが空のときだけ番号で補う
     const chapter = linked.find((s) => s.kind === "chapter");
     if (chapter) {
-      names[path] = withTitle(`第${numberOf(chapter)}章`, chapter.title, false);
+      names[path] = chapter.title.trim() || `第${numberOf(chapter)}章`;
       continue;
     }
     const numbers = linked.map(numberOf).sort((a, b) => a - b);
