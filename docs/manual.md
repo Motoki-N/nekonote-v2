@@ -515,7 +515,7 @@
     - 全面挿絵（`.illust-full`）は仕上がりサイズいっぱいに配置される（印刷版で裁ち落とされる塗り足し3mmぶんの外周がない分、見える範囲がわずかに違う）
     - **既存リポジトリへの導入**（2026-11 より前に作ったリポジトリにはワークフローがない。未導入のままタグを作っても何も起きず、15分でタイムアウトする）:
       1. 本リポジトリの `docs/templates/manuscript-repo/.github/workflows/build-ebook-pdf.yml` を、原稿リポジトリの同じ場所へコピーする
-      2. ファイル中の `ryu-no-su`（2か所）を、`book.config.js` の出力ファイル名の作品部分（`output/<ここ>-a6.pdf` の `<ここ>`。横書きは `-a5.pdf`）に置き換える
+      2. ファイル中の `ryu-no-su`（3か所。出力先・存在検査・Release 添付）を、`book.config.js` の出力ファイル名の作品部分（`output/<ここ>-a6.pdf` の `<ここ>`。横書きは `-a5.pdf`）に置き換える
       3. デフォルトブランチへ push する
     - ローカルで作るときは `npx vivliostyle build -c book.config.js --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}' -o output/<作品スラッグ>-ebook.pdf`
   - タグ名は自動提案される

@@ -123,7 +123,7 @@ width: calc(var(--nekonote--trim-width) + 2 * var(--vs-page--bleed));
 ## 6. 既存リポジトリへの導入（マニュアル §8「入稿ビルド」）
 
 1. 本リポジトリの `docs/templates/manuscript-repo/.github/workflows/build-ebook-pdf.yml` を、原稿リポジトリの同じ場所へコピーする
-2. ファイル中の `ryu-no-su`（2か所）を、`book.config.js` の出力ファイル名の作品部分（`output/<ここ>-a6.pdf` の `<ここ>`）に置き換える
+2. ファイル中の `ryu-no-su`（3か所。出力先・存在検査・Release 添付）を、`book.config.js` の出力ファイル名の作品部分（`output/<ここ>-a6.pdf` の `<ここ>`）に置き換える
 3. デフォルトブランチへ push する。以後はビルドダイアログの「電子配布用PDF」で起動できる
 
 ## 7. 検証
