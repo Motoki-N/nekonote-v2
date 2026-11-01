@@ -148,8 +148,9 @@ git tag v1.0-epub && git push origin v1.0-epub
 ```
 
 → Actions が EPUB（リフロー型縦書き）を Releases に添付する。入稿とは独立のタグ・
-ワークフローで、任意のタイミングでビルドできる。書誌・章構成を変えたときは
-`book.config.js` と `book.config.epub.js` の両方を更新すること。
+ワークフローで、任意のタイミングでビルドできる。書誌・章構成・目次は
+`book.config.epub.js` が `book.config.js` を引き継ぐため、変えるのは `book.config.js` だけでよい
+（EPUB設定に `entry` 等を直接書くと、EPUBだけ古いまま残る）。
 リーダーごとの表示互換は初回頒布前に実機（Kindle・楽天Kobo・Apple Books 等）で確認する。
 
 ## 電子配布用PDF
