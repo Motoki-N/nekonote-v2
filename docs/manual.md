@@ -517,7 +517,12 @@
       1. 本リポジトリの `docs/templates/manuscript-repo/.github/workflows/build-ebook-pdf.yml` を、原稿リポジトリの同じ場所へコピーする
       2. ファイル中の `ryu-no-su`（3か所。出力先・存在検査・Release 添付）を、`book.config.js` の出力ファイル名の作品部分（`output/<ここ>-a6.pdf` の `<ここ>`。横書きは `-a5.pdf`）に置き換える
       3. デフォルトブランチへ push する
-    - ローカルで作るときは `npx vivliostyle build -c book.config.js --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}' -o output/<作品スラッグ>-ebook.pdf`
+    - **奥付の「印刷」行は電子版（電子配布用PDF・EPUB）には出ない**（電子版は印刷していないため。入稿PDF・プレビューには出る）。テンプレートでは `99-okuzuke.md` の「印刷」行を `<div class="print-only">…</div>` で包んでおり、電子版のビルドだけがこれを隠す。奥付フォームでは従来どおり「印刷」を編集できる
+    - **古いテンプレートで作ったリポジトリの移行**（2026-11 より前のリポジトリは「印刷」行が電子版にも出る。ビルドは壊れない）:
+      1. `manuscripts/99-okuzuke.md` の `<dt>印刷</dt><dd>…</dd>` の行を `<div class="print-only"><dt>印刷</dt><dd>…</dd></div>` に書き換える（中身はそのまま）
+      2. `themes/theme-epub.css` と `theme-epub-horizontal.css` の末尾に `.print-only { display: none; }` を足す（組版スタイルを切り替えたことがあると両方あるので、あるものはすべて）
+      3. `.github/workflows/build-ebook-pdf.yml` の `--css` の値の末尾（閉じ `'` の直前）に `.print-only{display:none}` を足す
+    - ローカルで作るときは `npx vivliostyle build -c book.config.js --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}.print-only{display:none}' -o output/<作品スラッグ>-ebook.pdf`
   - タグ名は自動提案される
 - 完了は自動で検知され（30秒間隔のポーリング・最長15分）、UIにダウンロードリンクが出る。タイムアウト時はActionsページへのリンクが案内される
 - 入稿PDFのビルド時には総ページ数（4の倍数チェック）や画像の解像度・カラー混入も検査される

@@ -65,6 +65,10 @@ body.colophon dl dd {
   margin-inline-start: 1em;
   margin-block-end: 1em;
 }
+/* 印刷版だけに出す要素（奥付の「印刷」行）。電子版では印刷していないため出さない */
+.print-only {
+  display: none;
+}
 
 /* ---- 挿絵 ---- */
 /* 全面挿絵（.illust-full）も裁ち落としはできないため、画面内最大表示に留める */

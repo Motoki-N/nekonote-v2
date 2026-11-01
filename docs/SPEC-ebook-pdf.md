@@ -30,6 +30,8 @@ npx vivliostyle build -c book.config.js \
   -o output/<slug>-ebook.pdf
 ```
 
+（策定時の検証記録。その後 #364 で奥付の「印刷」行を隠す `.print-only{display:none}` を `--css` に足し、EPUBテーマにも同じ指定を加えた——§3.3）
+
 ### 1.2 変えない原則
 
 - **入稿パイプライン（`build-pdf.yml`）と EPUB パイプラインには手を入れない**（EPUB 追加時と同じ方針）
@@ -76,7 +78,7 @@ jobs:
       - name: 組版（主判型・トンボ/塗り足しなし）
         run: >-
           npx vivliostyle build -c book.config.js --timeout 600
-          --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}'
+          --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}.print-only{display:none}'
           -o output/ryu-no-su-ebook.pdf
       - name: 成果物の存在検査
         run: test -f output/ryu-no-su-ebook.pdf || { echo "::error::…"; exit 1; }
@@ -93,6 +95,15 @@ jobs:
 ### 3.2 README
 
 構成図にワークフローを追記し、「電子配布用PDF」節（タグの打ち方・入稿PDFとの違い）を足す。
+
+### 3.3 奥付の「印刷」行（#364）
+
+電子版（電子配布用PDF・EPUB）は印刷していないため、奥付の「印刷」行（印刷会社名）を出さない。入稿PDF・プレビューには従来どおり出す。
+
+- テンプレートの `99-okuzuke.md` で、`<dl>` 内の「印刷」の dt/dd の組を `<div class="print-only">…</div>` で包む（`<dl>` の子に dt/dd の組を包む `div` を置くのは HTML 仕様上有効）
+- 電子配布用PDFは `--css` に `.print-only{display:none}` を足し、EPUB は `theme-epub.css` / `theme-epub-horizontal.css` に同じ指定を持たせる。印刷用テーマには指定しない
+- 中の `<dt>印刷</dt><dd>…</dd>` は変えないので、奥付フォーム（`lib/editor/okuzuke.ts`）の正規表現はそのまま「印刷」項目を読み書きできる
+- 既存リポジトリはマニュアル §8「入稿ビルド」の手順で移行する（`99-okuzuke.md` の該当行を包み、EPUBテーマとワークフローに指定を足す）。未移行でも「印刷」行が電子版に出るだけでビルドは壊れない
 
 ## 4. 全面挿絵の扱い
 

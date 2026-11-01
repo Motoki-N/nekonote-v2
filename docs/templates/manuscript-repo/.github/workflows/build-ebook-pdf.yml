@@ -3,7 +3,8 @@
 # なし・PDF/X-1a 変換なし）を生成して GitHub Releases に添付する。
 #
 # 組版は入稿PDFと同一（主判型の book.config.js をそのまま使う）。違いはトンボと塗り足しだけで、
-# nekonote-parts.css の CSS 変数を --css で上書きして外す。主判型の設定を使うため、
+# nekonote-parts.css の CSS 変数を --css で上書きして外す。あわせて印刷版だけに出す要素
+# （.print-only＝奥付の「印刷」行）を隠す——電子版は印刷していないため。主判型の設定を使うため、
 # 組版スタイル（縦書き・横書き）の切替にも自動で追従する。
 #
 # 入稿PDF（build-pdf.yml・v*-nyuko）・EPUB（build-epub.yml・v*-epub）とはタグ・ワークフローを
@@ -47,7 +48,7 @@ jobs:
       - name: 組版（主判型・トンボ/塗り足しなし）
         run: >-
           npx vivliostyle build -c book.config.js --timeout 600
-          --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}'
+          --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}.print-only{display:none}'
           -o output/ryu-no-su-ebook.pdf
 
       - name: 成果物の存在検査
