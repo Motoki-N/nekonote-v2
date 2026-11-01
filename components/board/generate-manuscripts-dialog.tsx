@@ -178,10 +178,12 @@ export function GenerateManuscriptsDialog({
                       />
                     )}
                     <span className="truncate">
+                      {/* 章はタイトルのみ（原稿ファイルの表示名と同じ規則。出現順の番号は
+                          「はじめに」「序章」や書き手が付けた章番号と一致しない）。
+                          タイトルが空のときだけ番号で補う */}
                       {row.kind === "chapter"
-                        ? `第${row.number}章`
-                        : `${row.number}.`}{" "}
-                      {row.title || "（無題）"}
+                        ? row.title.trim() || `第${row.number}章`
+                        : `${row.number}. ${row.title || "（無題）"}`}
                     </span>
                   </span>
                   <Input
