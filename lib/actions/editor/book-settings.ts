@@ -13,6 +13,7 @@ import {
   extractEntryPaths,
   extractStringValue,
   extractThemePath,
+  inheritsPrimaryConfig,
   joinRepoPath,
   parseEntryItems,
   parseNombreSettings,
@@ -108,8 +109,11 @@ export type TocSettingsData = {
   styleAbsent: boolean;
   /** 判型テーマ（主判型・第2判型）の目次ブロックが食い違っている（保存で揃う） */
   stylesDiffer: boolean;
-  /** EPUB 設定の扱い: present=同時に書き換える / unsupported=あるが書き換えられない / absent=なし */
-  epub: "present" | "unsupported" | "absent";
+  /**
+   * EPUB 設定の扱い: present=同時に書き換える / inherited=book.config.js を引き継ぐので書き換え不要 /
+   * unsupported=あるが書き換えられない / absent=なし
+   */
+  epub: "present" | "inherited" | "unsupported" | "absent";
   /** 保存の楽観ロック基準（リポジトリルートからのパス → blob SHA）。書き換え候補のすべて */
   baseShas: Record<string, string>;
 };
@@ -730,7 +734,11 @@ async function readTocSettings(
     try {
       const file = await getFileContent(ctx.token, ctx.repo, epubPath, ref);
       baseShas[epubPath] = file.sha;
-      epub = parseTocConfig(file.content) ? "present" : "unsupported";
+      epub = inheritsPrimaryConfig(file.content)
+        ? "inherited"
+        : parseTocConfig(file.content)
+          ? "present"
+          : "unsupported";
     } catch {
       // EPUB 設定はオプション
     }
@@ -875,7 +883,12 @@ export async function saveTocSettings(
 
       const epubPath = joinRepoPath(ctx.basePath, EPUB_CONFIG_NAME);
       const epubContent = await readIfExists(epubPath);
-      if (epubPath !== null && epubContent !== null) {
+      // book.config.js を引き継ぐ EPUB 設定は、印刷用の書き換えだけで揃う
+      if (
+        epubPath !== null &&
+        epubContent !== null &&
+        !inheritsPrimaryConfig(epubContent)
+      ) {
         const epubUpdated = applyTocConfig(epubContent, config, excludedPaths);
         if (epubUpdated === null) epubSkipped = true;
         else changes.set(epubPath, { before: epubContent, after: epubUpdated });

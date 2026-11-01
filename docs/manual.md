@@ -374,7 +374,8 @@
 
 1. **テンプレートをコピー**: `docs/templates/manuscript-repo/` を作業フォルダへコピーする。フォルダ名＝リポジトリ名（ローマ字ケバブケース。例: `ryu-no-su`）
 2. **作品情報を書き換え**: 次のファイルに残っているサンプルのタイトル（`竜の巣`）・出力ファイル名（`ryu-no-su`）・著者名を作品用に置換する
-   - `book.config.js` / `book.config.b6.js` / `book.config.epub.js` … 書誌情報と出力ファイル名
+   - `book.config.js` … 書誌情報と出力ファイル名
+   - `book.config.b6.js` / `book.config.epub.js` … 出力ファイル名（書誌情報・章構成は `book.config.js` を引き継ぐ）
    - `package.json` … name と `check:pages` の出力パス
    - `.github/workflows/build-pdf.yml` / `build-epub.yml` … 出力ファイル名
    - `manuscripts/00-tobira.md`（扉）・`99-okuzuke.md`（奥付）
@@ -475,7 +476,7 @@
 2. **章順（entry管理）**: 並べ替え・entry未登録章の取り込み・除外。目次の差し込み位置もここの上下ボタンで動かす
 3. **目次**: 目次ページの有無・見出し（「目次」等）・載せる見出しの深さ（章のみ／節 `##` まで／項 `###` まで）・目次から外す章（扉・奥付など）・目次ページに書名を出すか・ページ番号（漢数字／算用数字／算用数字・縦中横／出さない。縦組みでは算用数字が横倒しになるため、算用数字を使うなら縦中横を選ぶ。3桁以上は1字の幅に詰まって細くなる）・リーダー（点線／三点リーダー／なし）
    - 変更は `book.config.js`・判型テーマCSS（A6・B6 の末尾の目次ブロック）・EPUB設定のうち変わるものだけを**1コミット**にまとめる
-   - EPUB設定（`book.config.epub.js`）には有無・見出し・深さだけが反映される（外す章と見た目は印刷用のみ）
+   - EPUB設定（`book.config.epub.js`）には有無・見出し・深さだけが反映される（外す章と見た目は印刷用のみ）。`book.config.js` を引き継ぐ形のEPUB設定（現行テンプレート）は書き換えずに自動で揃う
    - 目次の設定がない既存の原稿リポジトリでは今の見た目（書名あり・算用数字・点線・全章を掲載）が表示され、保存するとテーマCSSに目次ブロックが追記される。扉・奥付を目次から外すには、チェックを入れて一度保存する
    - 載せる見出しを節以上にすると、HTMLで直接書いた見出し（テンプレートの奥付など）はページ番号が付かないため自動で目次から外れる
    - テーマCSSの目次ブロック（`nekonote-toc: begin`〜`end`）を手で編集すると、外す章と見た目は読み取り専用になる
@@ -495,6 +496,20 @@
 - ヘッダーの「入稿ビルド」→ **種別（入稿PDF / EPUB）**とタグ名を確認して実行 → GitHub Actions がファイルを生成し、同タグのGitHub Releasesに添付する
   - **入稿PDF**（タグは `v*-nyuko` 形式）: 印刷所提出品質のPDF（PDF/X-1a・フォント埋め込み・ノンブル・目次・奥付込み）
   - **EPUB**（タグは `v*-epub` 形式）: 電子書籍配布用のEPUB
+    - 章構成・書名・目次は `book.config.epub.js` が `book.config.js` を引き継ぐ（B6判と同じ作り）。アプリが章の追加・並べ替えで書き換えるのは `book.config.js` だけなので、EPUB設定に `entry` を直接書いていると EPUB だけ古い章構成のまま残る
+    - **古いテンプレートで作ったリポジトリの移行**: `book.config.epub.js` を次の形に書き換え、`build-epub.yml` の「EPUB生成」で vivliostyle の前に `mkdir -p output` を実行する（Vivliostyle CLI は EPUB の出力先ディレクトリを作らないため、無いとビルドが `ENOENT` で失敗する）
+
+      ```js
+      const base = require('./book.config.js')
+
+      module.exports = {
+        ...base,
+        theme: './themes/theme-epub.css', // 横書きは './themes/theme-epub-horizontal.css'
+        readingProgression: 'rtl', // 横書きは 'ltr'
+        output: [{ path: 'output/<作品スラッグ>.epub', format: 'epub' }],
+        workspaceDir: '.vivliostyle-epub',
+      }
+      ```
   - タグ名は自動提案される
 - 完了は自動で検知され（30秒間隔のポーリング・最長15分）、UIにダウンロードリンクが出る。タイムアウト時はActionsページへのリンクが案内される
 - 入稿PDFのビルド時には総ページ数（4の倍数チェック）や画像の解像度・カラー混入も検査される
