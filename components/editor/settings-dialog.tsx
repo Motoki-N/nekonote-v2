@@ -960,6 +960,17 @@ function TocSection({
         <p className="text-xs text-muted-foreground">
           目次の有無・見出し・載せる見出しは EPUB
           設定（book.config.epub.js）にも同時に反映します。外す章と見た目は印刷用（PDF）だけに効きます。
+          なお EPUB
+          設定が自前の章構成（entry）を持っているため、章の追加・並べ替えは EPUB
+          に反映されません。B6判と同じく book.config.js
+          を引き継ぐ形にすると自動で揃います（操作マニュアル参照）。
+        </p>
+      )}
+      {toc.epub === "inherited" && (
+        <p className="text-xs text-muted-foreground">
+          EPUB 設定（book.config.epub.js）は book.config.js
+          を引き継ぐため、章構成と目次の有無・見出し・載せる見出しは EPUB
+          にも自動で揃います。外す章と見た目は印刷用（PDF）だけに効きます。
         </p>
       )}
       {toc.epub === "unsupported" && (

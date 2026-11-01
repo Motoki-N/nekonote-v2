@@ -178,6 +178,20 @@ export function isContentsItem(raw: string): boolean {
 }
 
 /**
+ * 設定ファイルが book.config.js を require して entry・目次をそのまま引き継いでいるか
+ * （B6判やテンプレートの EPUB 設定の作り）。引き継いでいれば章構成・目次は
+ * book.config.js の書き換えだけで揃うため、このファイル自体は書き換えなくてよい。
+ * 自前の `entry:` か `toc:` を持つ場合は上書きしているので false
+ */
+export function inheritsPrimaryConfig(source: string): boolean {
+  return (
+    /\brequire\(\s*(['"`])\.\/book\.config\.js\1\s*\)/.test(source) &&
+    !/\bentry\s*:/.test(source) &&
+    !/\btoc\s*:/.test(source)
+  );
+}
+
+/**
  * entry 配列を書き戻しても壊れないか。
  *
  * `parseEntryItems` は各行の `//` 以降を行コメントとして無条件に落とすため、

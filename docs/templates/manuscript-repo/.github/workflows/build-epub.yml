@@ -35,8 +35,12 @@ jobs:
       # press-ready（PDF/X-1a変換）・ページ数検査（4の倍数）・印刷向け画像検査は
       # いずれも入稿PDF専用のため、EPUBビルドでは実行しない
 
+      # Vivliostyle CLI は PDF と違い EPUB 書き出し時に出力先ディレクトリを作らない。
+      # output/ は .gitignore 対象でチェックアウト直後には無いため、先に作っておく
       - name: EPUB生成
-        run: npx vivliostyle build -c book.config.epub.js --timeout 600
+        run: |
+          mkdir -p output
+          npx vivliostyle build -c book.config.epub.js --timeout 600
 
       - name: 成果物の存在検査
         run: test -f output/ryu-no-su.epub || { echo "::error::EPUBの生成に失敗しました"; exit 1; }
