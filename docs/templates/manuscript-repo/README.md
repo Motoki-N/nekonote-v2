@@ -162,8 +162,9 @@ git tag v1.0-pdf && git push origin v1.0-pdf
 → Actions が電子配布用PDF（`output/ryu-no-su-ebook.pdf`）を Releases に添付する。
 組版は入稿PDFの主判型（`book.config.js`）と同一で、仕上がりサイズ・トンボと塗り足しなし・
 PDF/X-1a 変換なしの点だけが違う（`nekonote-parts.css` の塗り足し・トンボの変数を `--css` で上書きする）。
+奥付の「印刷」行（`<div class="print-only">` で包んだ部分）は EPUB と同じく出さない。
 ローカルでは次で作れる。
 
 ```bash
-npx vivliostyle build -c book.config.js --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}' -o output/ryu-no-su-ebook.pdf
+npx vivliostyle build -c book.config.js --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}.print-only{display:none}' -o output/ryu-no-su-ebook.pdf
 ```
