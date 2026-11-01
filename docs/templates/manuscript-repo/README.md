@@ -33,7 +33,8 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 │   └─ check-pages.mjs   … ページ数検査（4の倍数）
 └─ .github/workflows/
     ├─ build-pdf.yml     … 入稿タグpush → 入稿PDF自動生成
-    └─ build-epub.yml    … EPUBタグpush → EPUB自動生成
+    ├─ build-epub.yml    … EPUBタグpush → EPUB自動生成
+    └─ build-ebook-pdf.yml … PDFタグpush → 電子配布用PDF（トンボ・塗り足しなし）自動生成
 ```
 
 ## 組版スタイル（縦書き・横書き）
@@ -150,3 +151,18 @@ git tag v1.0-epub && git push origin v1.0-epub
 ワークフローで、任意のタイミングでビルドできる。書誌・章構成を変えたときは
 `book.config.js` と `book.config.epub.js` の両方を更新すること。
 リーダーごとの表示互換は初回頒布前に実機（Kindle・楽天Kobo・Apple Books 等）で確認する。
+
+## 電子配布用PDF
+
+```bash
+git tag v1.0-pdf && git push origin v1.0-pdf
+```
+
+→ Actions が電子配布用PDF（`output/ryu-no-su-ebook.pdf`）を Releases に添付する。
+組版は入稿PDFの主判型（`book.config.js`）と同一で、仕上がりサイズ・トンボと塗り足しなし・
+PDF/X-1a 変換なしの点だけが違う（`nekonote-parts.css` の塗り足し・トンボの変数を `--css` で上書きする）。
+ローカルでは次で作れる。
+
+```bash
+npx vivliostyle build -c book.config.js --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}' -o output/ryu-no-su-ebook.pdf
+```

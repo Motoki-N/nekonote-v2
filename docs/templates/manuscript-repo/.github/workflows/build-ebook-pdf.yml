@@ -1,0 +1,63 @@
+# 電子配布用PDFビルドパイプライン（SPEC-ebook-pdf）
+# PDFタグ（例: v1.0-pdf）の push をトリガーに、電子配布用PDF（仕上がりサイズ・トンボ/塗り足し
+# なし・PDF/X-1a 変換なし）を生成して GitHub Releases に添付する。
+#
+# 組版は入稿PDFと同一（主判型の book.config.js をそのまま使う）。違いはトンボと塗り足しだけで、
+# nekonote-parts.css の CSS 変数を --css で上書きして外す。主判型の設定を使うため、
+# 組版スタイル（縦書き・横書き）の切替にも自動で追従する。
+#
+# 入稿PDF（build-pdf.yml・v*-nyuko）・EPUB（build-epub.yml・v*-epub）とはタグ・ワークフローを
+# 分離している——電子版の配布は入稿と別タイミングのイベントであり、既存のパイプラインには手を入れない。
+#
+# セキュリティ（SPEC-vertical-editor §9）:
+# - build-pdf.yml と同じく、トリガーはタグ push のみ。pull_request では一切実行しない
+name: build-ebook-pdf
+
+on:
+  push:
+    tags:
+      - 'v*-pdf'
+
+permissions:
+  contents: write # Releases への添付に必要
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 依存インストール
+        run: npm ci
+
+      # 入稿PDFと同じ書体で組む（改ページ位置を入稿版と揃える）
+      - name: 日本語フォントのインストール
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fonts-noto-cjk fonts-noto-cjk-extra
+
+      # press-ready（PDF/X-1a変換）・ページ数検査（4の倍数）・印刷向け画像検査は
+      # いずれも入稿PDF専用のため、電子配布用PDFでは実行しない
+
+      - name: 組版（主判型・トンボ/塗り足しなし）
+        run: >-
+          npx vivliostyle build -c book.config.js --timeout 600
+          --css ':root{--vs-page--marks:none;--vs-page--bleed:0mm}'
+          -o output/ryu-no-su-ebook.pdf
+
+      - name: 成果物の存在検査
+        run: test -f output/ryu-no-su-ebook.pdf || { echo "::error::電子配布用PDFの生成に失敗しました"; exit 1; }
+
+      - name: Releases に添付
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            --title "電子配布用PDF ${{ github.ref_name }}" \
+            --notes "コミット ${{ github.sha }} から自動生成した電子配布用PDF（仕上がりサイズ・トンボ/塗り足しなし）" \
+            output/ryu-no-su-ebook.pdf

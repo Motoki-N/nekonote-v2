@@ -16,13 +16,14 @@ import { enforceRateLimit } from "@/lib/rate-limit";
 import { loadEditorContext } from "./context";
 
 /** ビルド種別。タグのサフィックス＝原稿リポジトリ側ワークフローのトリガーに対応する */
-export type BuildKind = "nyuko" | "epub";
+export type BuildKind = "nyuko" | "epub" | "pdf";
 
-// 原稿リポジトリの Actions ワークフローのトリガー（`v*-nyuko` / `v*-epub` タグ push）に合わせる
+// 原稿リポジトリの Actions ワークフローのトリガー（`v*-nyuko` / `v*-epub` / `v*-pdf` タグ push）に合わせる
 const buildTagSchema = z
   .string()
-  .regex(/^v[0-9A-Za-z._-]{1,30}-(nyuko|epub)$/, {
-    error: "タグは「v0.3-nyuko」「v0.3-epub」の形式で入力してください",
+  .regex(/^v[0-9A-Za-z._-]{1,30}-(nyuko|epub|pdf)$/, {
+    error:
+      "タグは「v0.3-nyuko」「v0.3-epub」「v0.3-pdf」の形式で入力してください",
   });
 
 /** 既存タグから次のタグ名を提案する（v{major}.{minor}-<種別> の minor をインクリメント） */
@@ -48,6 +49,7 @@ export type BuildTagInfo = {
   /** ビルド種別ごとの既存タグ（新しい順の判定はできないためAPI返却順）と次タグ提案 */
   nyuko: { tags: string[]; suggestedTag: string };
   epub: { tags: string[]; suggestedTag: string };
+  pdf: { tags: string[]; suggestedTag: string };
   /** Actions ページへのリンク用 */
   repo: string;
 };
@@ -61,6 +63,7 @@ export async function getBuildTagInfo(
     const tags = await listTags(ctx.token, ctx.repo);
     const nyukoTags = tags.filter((tag) => /-nyuko$/.test(tag));
     const epubTags = tags.filter((tag) => /-epub$/.test(tag));
+    const pdfTags = tags.filter((tag) => /-pdf$/.test(tag));
     return {
       ok: true,
       data: {
@@ -72,6 +75,10 @@ export async function getBuildTagInfo(
           tags: epubTags,
           suggestedTag: suggestNextTag(epubTags, "epub"),
         },
+        pdf: {
+          tags: pdfTags,
+          suggestedTag: suggestNextTag(pdfTags, "pdf"),
+        },
         repo: ctx.repo,
       },
     };
@@ -81,7 +88,7 @@ export async function getBuildTagInfo(
 }
 
 /**
- * ビルドタグ（入稿PDF / EPUB）の作成＝Actions ビルドの起動（SPEC-phase3 §8。タグ作成の代行。
+ * ビルドタグ（入稿PDF / EPUB / 電子配布用PDF）の作成＝Actions ビルドの起動（SPEC-phase3 §8。タグ作成の代行。
  * 対象はデフォルトブランチのHEAD。Contents権限で可能——PATスコープ変更なし）
  */
 export async function createBuildTag(
@@ -106,7 +113,7 @@ export type BuildStatus =
 
 /**
  * ビルドの完了検知（SPEC-phase3 §8・論点B）。
- * 同タグの Release と成果物（-nyuko: PDF / -epub: EPUB）の出現をもって完了とみなす
+ * 同タグの Release と成果物（-nyuko・-pdf: PDF / -epub: EPUB）の出現をもって完了とみなす
  * （Actions API は使わない）
  */
 export async function getBuildStatus(
