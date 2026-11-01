@@ -26,7 +26,7 @@ import { Input } from "@/components/ui/input";
 const POLL_INTERVAL_MS = 30_000;
 const POLL_TIMEOUT_MS = 15 * 60_000;
 
-// ビルド種別ごとのタグ形式・文言（原稿リポジトリの build-pdf.yml / build-epub.yml に対応）
+// ビルド種別ごとのタグ形式・文言（原稿リポジトリの build-pdf.yml / build-epub.yml / build-ebook-pdf.yml に対応）
 const KINDS: Record<
   BuildKind,
   {
@@ -51,14 +51,21 @@ const KINDS: Record<
     placeholder: "v1.0-epub",
     artifact: "EPUB（電子書籍）",
   },
+  pdf: {
+    pattern: /^v[0-9A-Za-z._-]{1,30}-pdf$/,
+    label: "電子配布用PDF",
+    tagLabel: "PDFタグ",
+    placeholder: "v1.0-pdf",
+    artifact: "電子配布用PDF（トンボ・塗り足しなし）",
+  },
 };
 
 type Phase = "form" | "building" | "done" | "timeout";
 
 /**
- * ビルドダイアログ（SPEC-vertical-editor-phase3 §8・EPUBは Issue #119）。
- * 中身はタグ作成の代行——`v*-nyuko` / `v*-epub` タグを作ると原稿リポジトリの
- * GitHub Actions が成果物（入稿PDF / EPUB）を生成して Release に添付する。
+ * ビルドダイアログ（SPEC-vertical-editor-phase3 §8・EPUBは Issue #119・電子配布用PDFは SPEC-ebook-pdf）。
+ * 中身はタグ作成の代行——`v*-nyuko` / `v*-epub` / `v*-pdf` タグを作ると原稿リポジトリの
+ * GitHub Actions が成果物（入稿PDF / EPUB / 電子配布用PDF）を生成して Release に添付する。
  * 完了検知は Release のポーリング
  */
 export function BuildDialog({
@@ -174,9 +181,10 @@ export function BuildDialog({
   const actionsUrl = info ? `https://github.com/${info.repo}/actions` : null;
   const tagInvalid = !KINDS[kind].pattern.test(tag.trim());
   // 完了表示はダイアログ内の種別選択でなく、実際に作成したタグの種別に従う
-  const activeArtifact = activeTag?.endsWith("-epub")
-    ? KINDS.epub.artifact
-    : KINDS.nyuko.artifact;
+  const activeKind =
+    (Object.keys(KINDS) as BuildKind[]).find((k) =>
+      activeTag?.endsWith(`-${k}`),
+    ) ?? "nyuko";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -194,7 +202,7 @@ export function BuildDialog({
             {infoError && (
               <p className="text-sm text-destructive">{infoError}</p>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               {(Object.keys(KINDS) as BuildKind[]).map((k) => (
                 <Button
                   key={k}
@@ -258,7 +266,7 @@ export function BuildDialog({
         {phase === "done" && (
           <div className="flex flex-col gap-2">
             <p className="text-sm text-foreground">
-              {activeArtifact}ができました（タグ {activeTag}）:
+              {KINDS[activeKind].artifact}ができました（タグ {activeTag}）:
             </p>
             <ul className="flex flex-col gap-1">
               {assets.map((asset) => (
@@ -286,6 +294,12 @@ export function BuildDialog({
             <p className="text-sm text-destructive">
               15分以内にビルドの完了を確認できませんでした。失敗している可能性があります。
             </p>
+            {activeKind === "pdf" && (
+              <p className="text-xs text-muted-foreground">
+                電子配布用PDFのワークフロー（.github/workflows/build-ebook-pdf.yml）が
+                原稿リポジトリに無いと、タグを作ってもビルドは始まりません。導入手順はマニュアルの「入稿ビルド」を参照してください。
+              </p>
+            )}
             {actionsUrl && <ActionsLink url={actionsUrl} />}
           </div>
         )}

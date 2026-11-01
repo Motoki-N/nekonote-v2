@@ -54,6 +54,7 @@
 | [phase5](SPEC-vertical-editor-phase5.md) | 07-23 | ブランチ切替・作成・PR作成 |
 | [SPEC-aozora-export](SPEC-aozora-export.md) | 07-30 | 青空文庫／カクヨム／なろう形式への書き出し |
 | [SPEC-toc-settings](SPEC-toc-settings.md) | 10-15 | 目次ページの調整・表示切り替え（設定ダイアログの目次区画・テーマCSSの目次ブロック・全体プレビューの目次） |
+| [SPEC-ebook-pdf](SPEC-ebook-pdf.md) | 11-01 | 電子配布用PDF（仕上がりサイズ・トンボ/塗り足しなし。`v*-pdf` タグ・`build-ebook-pdf.yml`） |
 | [SPEC-horizontal-typesetting](SPEC-horizontal-typesetting.md) | 11-01 | 組版スタイル（縦書き・文庫 ⇄ 横書き・技術書）のアプリ内切替（初期セットアップでの選択・書籍設定からの往復切替） |
 
 ## 5. AIエージェント・対話・設定
