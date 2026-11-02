@@ -20,8 +20,11 @@ const TEMPLATE_DIR = path.join(
   "manuscript-repo",
 );
 
-// 検証用に画像をGit管理から外す設定。実作品では挿絵をGit管理するため展開しない（manual §8 手順3）
-const EXCLUDED_PATHS = new Set(["images/.gitignore"]);
+// 展開しないファイル。images/.gitignore は検証用に画像をGit管理から外す設定で、実作品では
+// 挿絵をGit管理するため展開しない（manual §8 手順3）。book.config.b5.js は第2判型の設定が
+// ないリポジトリを横書きへ切り替えるときのひな形（loadTemplateFiles で読む）で、展開すると
+// 横書き変換（b6→b5 の付け替え）が「移行先が既にある」で失敗する
+const EXCLUDED_PATHS = new Set(["images/.gitignore", "book.config.b5.js"]);
 
 export type TemplateFile = {
   /** リポジトリルートからのパス（区切りは / ） */

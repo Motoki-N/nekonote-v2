@@ -134,7 +134,7 @@
 
 ### 5.2 案A（初期セットアップ）での使い方
 
-`loadManuscriptTemplate` で置換済みテンプレートを得た後、横書きが選ばれていれば `convertTypesettingStyle(files, 'vertical', 'horizontal')` を適用してから既存の1コミット展開（SPEC-repo-setup §4.3）に渡す。テンプレートは縦書き単一なので、横書き用の「変換できない」は起きない（起きたらテンプレート側の不整合＝internal エラー）。
+`loadManuscriptTemplate` で置換済みテンプレートを得た後、横書きが選ばれていれば `convertTypesettingStyle(files, 'vertical', 'horizontal')` を適用してから既存の1コミット展開（SPEC-repo-setup §4.3）に渡す。テンプレートは縦書き単一なので、横書き用の「変換できない」は起きない（起きたらテンプレート側の不整合＝internal エラー）。ただし `book.config.b5.js` は切替時のひな形としてテンプレートに置くだけで、**展開はしない**（`loadManuscriptTemplate` の除外対象）。展開すると第2判型の付け替え（b6 削除→b5 作成）が「移行先が既にある」で失敗し、縦書きリポジトリも後から横書きへ切り替えられなくなる。
 
 ## 6. UI
 
