@@ -31,7 +31,7 @@ export default async function Home({
     supabase
       .from("projects")
       .select(
-        "id, title, event_name, deadline, target_pages, repo, base_path, schedule, proposals (status)",
+        "id, title, event_name, deadline, target_pages, repo, base_path, schedule, proposals (status, writing_genre)",
       )
       .order("updated_at", { ascending: false }),
     supabase
@@ -119,6 +119,11 @@ export default async function Home({
         project.proposals?.status ?? null,
         "proposals.status",
       ),
+      // プロジェクト配下のタブ文言（projects/[id]/layout.tsx）と同じ出し分け（Issue #377）
+      boardLabel:
+        (project.proposals?.writing_genre ?? "novel") === "novel"
+          ? "ビートボード"
+          : "目次",
       canCollect: Boolean(project.repo) && patRegistered,
       latest: rows.at(-1) ?? null,
       series: rows.filter((row) => row.date >= cutoff),
