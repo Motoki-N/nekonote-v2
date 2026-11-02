@@ -1,9 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BookOpen, Crop, Loader2, RotateCw } from "lucide-react";
 
+import { usePreviewDisplay } from "@/components/editor/hooks/use-preview-display";
+import { Button } from "@/components/ui/button";
 import { fragmentFromViewerHash, viewerUrl } from "@/lib/editor/preview";
+import {
+  applyPreviewDisplay,
+  nextRotation,
+} from "@/lib/editor/preview-display";
 import { cn } from "@/lib/utils";
 
 /** iframe 内の Viewer のステータス（loading / interactive / complete。未ロードは null） */
@@ -45,6 +51,14 @@ export function PreviewPane({
   /** 組版が落ち着いた時点の実ページ数（SPEC-phase3 §5。取得できない環境では呼ばれない） */
   onPageCount?: (pages: number) => void;
 }) {
+  // 表示設定（トンボ・見開き・先頭ページ・回転。Issue #370）。トンボ・見開きは組版HTMLと
+  // Viewer URL に効くため、切り替えると同じ文書の再組版として表示位置を保ったまま読み直す
+  const { settings: display, update: updateDisplay } = usePreviewDisplay();
+  const displayHtml = useMemo(
+    () => (html === null ? null : applyPreviewDisplay(html, display)),
+    [html, display],
+  );
+  const spread = display.spread;
   // ダブルバッファ（Issue #290）: iframe を2枚重ね、表（front）に旧プレビューを出したまま
   // 裏で新文書を組版させ、最初のページが表示可能になった時点で表裏を入れ替える。
   // 再組版中も空白にならない（反映までの時間自体は変わらない）
@@ -167,7 +181,7 @@ export function PreviewPane({
   }, []);
 
   useEffect(() => {
-    if (html === null) {
+    if (displayHtml === null) {
       // iframe がアンマウントされるため、見張りを残さない
       if (swapPollRef.current) clearInterval(swapPollRef.current);
       swapPollRef.current = null;
@@ -187,7 +201,9 @@ export function PreviewPane({
     const back: 0 | 1 = frontRef.current === 0 ? 1 : 0;
     const backIframe = iframesRef.current[back];
     if (!backIframe) return;
-    const url = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    const url = URL.createObjectURL(
+      new Blob([displayHtml], { type: "text/html" }),
+    );
     // 表示中と別の文書に切り替わったときは前の文書の位置を持ち込まない
     const fragment =
       frontKeyRef.current === documentKey ? currentFragment() : null;
@@ -201,8 +217,8 @@ export function PreviewPane({
     // 表の旧文書のページ数を、これから組版する文書の値として報告しない
     if (pagePollRef.current) clearInterval(pagePollRef.current);
     pagePollRef.current = null;
-    backIframe.src = viewerUrl(url, fragment);
-  }, [html, documentKey, currentFragment, swap]);
+    backIframe.src = viewerUrl(url, fragment, spread);
+  }, [displayHtml, spread, documentKey, currentFragment, swap]);
 
   useEffect(() => {
     // staleUrlsRef は入れ替えのたびに作り直すため、アンマウント時点の中身を読む
@@ -227,42 +243,114 @@ export function PreviewPane({
     [startSwapPolling],
   );
 
+  // 回転（Issue #370）: iframe を包む要素の幅と高さを入れ替えて回す。Viewer は回転前の
+  // （入れ替え後の）サイズで組版・フィットするため、回った見た目がペインに収まる
+  const rotationStyle: React.CSSProperties =
+    display.rotation === 0
+      ? { inset: 0 }
+      : {
+          top: "50%",
+          left: "50%",
+          width: "100cqh",
+          height: "100cqw",
+          transform: `translate(-50%, -50%) rotate(${display.rotation}deg)`,
+        };
+
   return (
-    <div className="relative h-full min-h-0">
-      {html === null ? (
-        <div className="flex h-full items-center justify-center p-6">
-          <p className="text-sm text-muted-foreground">
-            章を開くと組版プレビューが表示されます
-          </p>
+    <div className="flex h-full min-h-0 flex-col">
+      {html !== null && (
+        <div
+          role="toolbar"
+          aria-label="プレビューの表示設定"
+          className="flex shrink-0 flex-wrap items-center gap-1 border-b border-border bg-background px-2 py-1"
+        >
+          <Button
+            size="xs"
+            variant={display.marks ? "secondary" : "ghost"}
+            aria-pressed={display.marks}
+            onClick={() => updateDisplay({ marks: !display.marks })}
+          >
+            <Crop />
+            トンボ
+          </Button>
+          <Button
+            size="xs"
+            variant={display.spread ? "secondary" : "ghost"}
+            aria-pressed={display.spread}
+            onClick={() => updateDisplay({ spread: !display.spread })}
+          >
+            <BookOpen />
+            見開き
+          </Button>
+          {display.spread && (
+            <Button
+              size="xs"
+              variant={display.spreadFromFirst ? "secondary" : "ghost"}
+              aria-pressed={display.spreadFromFirst}
+              title="オフ: 先頭ページを単独で表示（1 ／ 2-3 …）。オン: 先頭ページから見開き（1-2 ／ 3-4 …）"
+              onClick={() =>
+                updateDisplay({ spreadFromFirst: !display.spreadFromFirst })
+              }
+            >
+              先頭から見開き
+            </Button>
+          )}
+          <Button
+            size="xs"
+            variant={display.rotation === 0 ? "ghost" : "secondary"}
+            aria-pressed={display.rotation !== 0}
+            title="押すたびに 通常 → 90° → 270° → 通常 と切り替わります"
+            onClick={() =>
+              updateDisplay({ rotation: nextRotation(display.rotation) })
+            }
+          >
+            <RotateCw />
+            {display.rotation === 0 ? "回転" : `${display.rotation}°`}
+          </Button>
         </div>
-      ) : (
-        // 裏の iframe も表と同じサイズでレイアウトさせる（サイズが違うとページ割りが変わる）
-        ([0, 1] as const).map((slot) => (
-          <iframe
-            key={slot}
-            ref={(el) => {
-              iframesRef.current[slot] = el;
-            }}
-            title="組版プレビュー"
-            aria-hidden={slot !== front}
-            tabIndex={slot === front ? undefined : -1}
-            className={cn(
-              "absolute inset-0 h-full w-full border-0",
-              slot !== front && "pointer-events-none invisible",
-            )}
-            data-slot={slot}
-            onLoad={handleLoad}
-          />
-        ))
       )}
-      {typesetting && (
-        <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
-          <span className="flex items-center gap-1.5 rounded-full bg-background/80 px-3 py-1 text-xs text-muted-foreground shadow-sm ring-1 ring-border">
-            <Loader2 className="size-3 animate-spin" />
-            組版中…
-          </span>
-        </div>
-      )}
+      {/* 回転時の幅・高さの入れ替えに使うため、サイズのコンテナクエリの基準にする */}
+      <div
+        className="relative min-h-0 flex-1"
+        style={{ containerType: "size" }}
+      >
+        {html === null ? (
+          <div className="flex h-full items-center justify-center p-6">
+            <p className="text-sm text-muted-foreground">
+              章を開くと組版プレビューが表示されます
+            </p>
+          </div>
+        ) : (
+          <div className="absolute" style={rotationStyle}>
+            {/* 裏の iframe も表と同じサイズでレイアウトさせる（サイズが違うとページ割りが変わる） */}
+            {([0, 1] as const).map((slot) => (
+              <iframe
+                key={slot}
+                ref={(el) => {
+                  iframesRef.current[slot] = el;
+                }}
+                title="組版プレビュー"
+                aria-hidden={slot !== front}
+                tabIndex={slot === front ? undefined : -1}
+                className={cn(
+                  "absolute inset-0 h-full w-full border-0",
+                  slot !== front && "pointer-events-none invisible",
+                )}
+                data-slot={slot}
+                onLoad={handleLoad}
+              />
+            ))}
+          </div>
+        )}
+        {typesetting && (
+          <div className="pointer-events-none absolute inset-x-0 top-2 flex justify-center">
+            <span className="flex items-center gap-1.5 rounded-full bg-background/80 px-3 py-1 text-xs text-muted-foreground shadow-sm ring-1 ring-border">
+              <Loader2 className="size-3 animate-spin" />
+              組版中…
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

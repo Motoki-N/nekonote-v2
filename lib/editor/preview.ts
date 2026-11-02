@@ -357,12 +357,16 @@ ${sections.join("\n")}
  *
  * `fragment` は Viewer が現在位置として自身のハッシュに書き出す EPUB CFI（`f=` パラメータ）。
  * 再組版でViewerを読み込み直しても表示位置を保つために引き継ぐ（Issue #256）
+ *
+ * `spread` は見開き表示（Issue #370）。Viewer 既定の auto（画面が横長なら見開き）に任せず、
+ * 表示設定どおりに固定する
  */
 export function viewerUrl(
   documentUrl: string,
   fragment?: string | null,
+  spread = false,
 ): string {
-  const base = `/vivliostyle/viewer/index.html#src=${documentUrl}&bookMode=false&renderAllPages=true`;
+  const base = `/vivliostyle/viewer/index.html#src=${documentUrl}&bookMode=false&renderAllPages=true&spread=${spread}`;
   // Viewer が書き出した値をそのまま渡す（Viewer側でエンコード済み）。想定外の文字列で
   // ハッシュを壊さないよう、CFIの書式に合うものだけを通す
   return fragment && isViewerFragment(fragment)
