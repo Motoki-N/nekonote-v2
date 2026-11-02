@@ -48,6 +48,8 @@ export type DashboardProject = {
   event_name: string | null;
   deadline: string | null;
   proposalStatus: ProposalStatus | null;
+  /** 構成ボードへのボタン文言（小説=ビートボード / 技術書・その他=目次。タブナビと揃える。Issue #377） */
+  boardLabel: string;
   /** repo・PAT が揃っていて「今すぐ集計」を出せるか */
   canCollect: boolean;
   latest: ProgressPoint | null;
@@ -389,7 +391,7 @@ export function ProjectOverviewCard({
           render={
             <Link href={`/projects/${project.id}/board`}>
               <LayoutPanelTop data-icon="inline-start" />
-              ビートボード
+              {project.boardLabel}
             </Link>
           }
         />
