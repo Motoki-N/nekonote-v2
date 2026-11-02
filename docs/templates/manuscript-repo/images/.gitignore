@@ -1,4 +1,7 @@
-# 検証用画像はコミットしない（node scripts/make-test-images.mjs で再生成できる）
+# 検査NG用の画像はコミットしない（node scripts/make-test-images.mjs で再生成できる）。
+# sashie-01/02 はサンプル原稿の挿絵として初期セットアップで展開するためコミットする
 *.png
 *.jpg
+!sashie-01.png
+!sashie-02.png
 !.gitignore

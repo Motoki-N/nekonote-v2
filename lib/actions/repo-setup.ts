@@ -10,6 +10,7 @@ import {
   resolveRepoGit,
 } from "@/lib/git/project-context";
 import {
+  createBlob,
   createCommit,
   createFileContent,
   createTree,
@@ -22,6 +23,7 @@ import {
 import {
   applyTypesettingStyle,
   loadManuscriptTemplate,
+  loadTemplateImages,
 } from "@/lib/git/template";
 import { repoSetupInputSchema } from "@/lib/schemas/projects";
 import type { RepoSetupInput } from "@/lib/schemas/projects";
@@ -71,6 +73,7 @@ export async function setupManuscriptRepo(
       await loadManuscriptTemplate(parsed),
       parsed.style,
     );
+    const templateImages = await loadTemplateImages();
 
     const branch = await getDefaultBranch(token, repo);
     let headSha = await getBranchHeadShaOrNull(token, repo, branch);
@@ -109,7 +112,9 @@ export async function setupManuscriptRepo(
         // 全ファイルを退避（既存 blob SHA の張り直し＝内容の再アップロードなしで移動）。
         // テンプレートが同じパスを書く場合は、同一ツリー内での削除＋追加の衝突を避けるため
         // 削除エントリを出さない（テンプレート側の追加が上書きする）
-        const templatePaths = new Set(templateFiles.map((f) => f.path));
+        const templatePaths = new Set(
+          [...templateFiles, ...templateImages].map((f) => f.path),
+        );
         backupDir = `backup-${jstStamp(new Date())}`;
         for (const file of existing) {
           entries.push({
@@ -136,6 +141,16 @@ export async function setupManuscriptRepo(
         mode: "100644",
         type: "blob",
         content: file.content,
+      });
+    }
+    // 画像は tree の content（UTF-8テキスト）で渡せないため、先に blob 化して sha で張る。
+    // 空リポジトリでは Git Data API が 409 を返すので、初回コミット作成後のここで行う
+    for (const image of templateImages) {
+      entries.push({
+        path: image.path,
+        mode: "100644",
+        type: "blob",
+        sha: await createBlob(token, repo, image.base64Content),
       });
     }
 

@@ -57,7 +57,8 @@
 ### 4.2 テンプレート読み込みと置換（`lib/git/template.ts`）
 
 - `docs/templates/manuscript-repo/` を fs で再帰的に読む（Vercel では `next.config.ts` の `outputFileTracingIncludes` でバンドルに含める）
-- 除外: `images/.gitignore`（検証用に画像をGit管理から外す設定。実作品では挿絵をGit管理するため展開しない。manual §8 手順3 に対応）
+- 除外: `images/.gitignore`（テンプレート側で検査NG用の画像をGit管理から外す設定。実作品では挿絵をGit管理するため展開しない。manual §8 手順3 に対応）
+- 画像: `images/` 配下はテキストとして読まない。サンプル原稿（`02-chapter1.md`）が参照する挿絵 `images/sashie-01.png`・`images/sashie-02.png` だけを `loadTemplateImages` が base64 で読み、置換・組版スタイル変換の対象外として展開する（リンク切れの防止）
 - 全テキストファイルに対する置換:
   - `竜の巣` → 作品タイトル
   - `灰谷 汀` → 著者名
@@ -77,6 +78,7 @@
    - 退避: 既存の各ファイルについて `{ path: "backup-<YYYYMMDD-HHmmss>/<元パス>", sha: <既存blob> }`（内容の再アップロードなしで移動できる。mode は元の値を保持）
    - 削除: `{ path: <元パス>, sha: null }`。ただしテンプレートが同じパスを書く場合は、同一ツリー内の削除＋追加の衝突を避けるため削除エントリを出さない（追加が上書きする）
 5. テンプレートファイルは `{ path, content }`（UTF-8 テキストとして API が blob 化する）
+   - 画像は `content` で渡せないため、`createBlob`（`POST /git/blobs`・base64）で blob 化してから `{ path, sha }` で張る。退避時の「テンプレートが同じパスを書く」判定には画像のパスも含める
 6. `createTree`（`base_tree` = HEAD のツリー）→ `createCommit`（parent = HEAD）→ `updateBranchRef`（fast-forward。HEAD 取得後に他所から push があれば conflict）
 
 エラー正規化（`AppError`）:

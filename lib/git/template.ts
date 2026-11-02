@@ -26,10 +26,22 @@ const TEMPLATE_DIR = path.join(
 // 横書き変換（b6→b5 の付け替え）が「移行先が既にある」で失敗する
 const EXCLUDED_PATHS = new Set(["images/.gitignore", "book.config.b5.js"]);
 
+// サンプル原稿（manuscripts/02-chapter1.md）が参照する挿絵。バイナリのため
+// loadManuscriptTemplate では読まず loadTemplateImages で別途読む。images/ 配下の
+// それ以外（ローカル検証で生成した sashie-03-bad.png 等）は展開しない
+const IMAGES_DIR = "images/";
+const SAMPLE_IMAGE_PATHS = ["images/sashie-01.png", "images/sashie-02.png"];
+
 export type TemplateFile = {
   /** リポジトリルートからのパス（区切りは / ） */
   path: string;
   content: string;
+};
+
+export type TemplateImage = {
+  /** リポジトリルートからのパス（区切りは / ） */
+  path: string;
+  base64Content: string;
 };
 
 async function listFilesRecursive(dir: string): Promise<string[]> {
@@ -68,7 +80,7 @@ export async function loadManuscriptTemplate(params: {
   const results: TemplateFile[] = [];
   for (const file of files) {
     const relPath = path.relative(TEMPLATE_DIR, file).split(path.sep).join("/");
-    if (EXCLUDED_PATHS.has(relPath)) continue;
+    if (EXCLUDED_PATHS.has(relPath) || relPath.startsWith(IMAGES_DIR)) continue;
     const raw = await fs.readFile(file, "utf8");
     results.push({
       path: relPath,
@@ -76,6 +88,25 @@ export async function loadManuscriptTemplate(params: {
     });
   }
   return results.sort((a, b) => a.path.localeCompare(b.path, "en"));
+}
+
+/** サンプル原稿の挿絵を base64 で読む（作品情報の置換・組版スタイル変換の対象外） */
+export async function loadTemplateImages(): Promise<TemplateImage[]> {
+  try {
+    return await Promise.all(
+      SAMPLE_IMAGE_PATHS.map(async (relPath) => ({
+        path: relPath,
+        base64Content: (
+          await fs.readFile(path.join(TEMPLATE_DIR, relPath))
+        ).toString("base64"),
+      })),
+    );
+  } catch {
+    throw new AppError(
+      "internal",
+      "テンプレートの画像の読み込みに失敗しました",
+    );
+  }
 }
 
 /**
