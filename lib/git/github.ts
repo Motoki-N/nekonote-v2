@@ -673,6 +673,33 @@ async function throwSetupError(
   throw toGithubError(res, fallbackMessage);
 }
 
+/**
+ * バイナリの blob を作成してSHAを返す（POST /git/blobs）。
+ * createTree の content はUTF-8テキストしか渡せないため、画像はこれで blob 化してから sha で張る
+ */
+export async function createBlob(
+  token: string,
+  repo: string,
+  base64Content: string,
+): Promise<string> {
+  const res = await fetch(`${API_BASE}/repos/${validRepo(repo)}/git/blobs`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ content: base64Content, encoding: "base64" }),
+  });
+  if (!res.ok)
+    await throwSetupError(res, `リポジトリ ${repo} に画像を作成できません`);
+  const data = (await res.json()) as { sha?: string };
+  if (!data.sha)
+    throw new AppError("internal", "画像の作成結果の取得に失敗しました");
+  return data.sha;
+}
+
 /** ツリーを作成してSHAを返す。baseTreeSha 省略時はゼロから（空リポジトリ用） */
 export async function createTree(
   token: string,
