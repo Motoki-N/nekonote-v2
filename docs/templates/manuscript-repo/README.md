@@ -16,6 +16,7 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 
 ```
 ├─ manuscripts/          … 本文（VFM形式・章ごとに1ファイル。数字プレフィックスで章順）
+├─ NOTATION.md          … 記法チートシート（原稿で使える記法の早見表）
 ├─ book.config.js        … 書誌情報＋ビルド設定（文庫判A6）
 ├─ book.config.b6.js     … B6判ビルド設定（横書きに切り替えると book.config.b5.js に置き換わる）
 ├─ book.config.epub.js   … EPUB（電子書籍）ビルド設定
@@ -81,6 +82,8 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 2. `themes/theme-bunko-a6.css` と `themes/theme-b6.css` の `:root` に上表の4変数を追記する
 
 ## 記法
+
+コピーして使える早見表（基本のMarkdown記法・注意点を含む）は [NOTATION.md](NOTATION.md) にある。
 
 | 用途 | 記法 |
 |---|---|

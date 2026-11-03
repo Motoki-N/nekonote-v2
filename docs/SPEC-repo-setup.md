@@ -58,6 +58,7 @@
 
 - `docs/templates/manuscript-repo/` を fs で再帰的に読む（Vercel では `next.config.ts` の `outputFileTracingIncludes` でバンドルに含める）
 - 除外: `images/.gitignore`（テンプレート側で検査NG用の画像をGit管理から外す設定。実作品では挿絵をGit管理するため展開しない。manual §8 手順3 に対応）
+- 記法チートシート `NOTATION.md`（ルート直下）も他のテキストファイルと同様に展開する。原稿の執筆者向けの早見表で、`book.config.js` の entry には載せない（組版・入稿PDFには含まれない）
 - 画像: `images/` 配下はテキストとして読まない。サンプル原稿（`02-chapter1.md`）が参照する挿絵 `images/sashie-01.png`・`images/sashie-02.png` だけを `loadTemplateImages` が base64 で読み、置換・組版スタイル変換の対象外として展開する（リンク切れの防止）
 - 全テキストファイルに対する置換:
   - `竜の巣` → 作品タイトル
