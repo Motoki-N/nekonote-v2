@@ -40,7 +40,7 @@ const ALLOWED_EXTENSIONS = /\.(png|jpe?g|webp|gif)$/i;
 
 /**
  * 画像アップロードの確認ダイアログ（SPEC-vertical-editor-phase3 §6）。
- * 種別（本文中カット／全面挿絵）・配置・キャプションを決めて images/ へ即コミットする。
+ * 種別（本文中カット／全面挿絵）・配置・キャプション・図番号の有無を決めて images/ へ即コミットする。
  * ダイアログは検証と入力のみを担い、アップロードと記法挿入は親の責務。
  * アトリエのイラスト（SPEC-illustrator §11）も同じ入力で挿入する（検証はファイルのときだけ）
  */
@@ -57,12 +57,15 @@ export function ImageUploadDialog({
     kind: IllustKind;
     position: IllustPosition;
     caption: string;
+    /** false ならキャプションの図番号（横書きテーマの「図1：」）を出さない */
+    numbered: boolean;
   }) => void;
   onCancel: () => void;
 }) {
   const [kind, setKind] = useState<IllustKind>("inline");
   const [position, setPosition] = useState<IllustPosition>("flow");
   const [caption, setCaption] = useState("");
+  const [numbered, setNumbered] = useState(true);
 
   const file = target?.type === "file" ? target.file : null;
   const atelierItem = target?.type === "atelier" ? target.item : null;
@@ -189,6 +192,24 @@ export function ImageUploadDialog({
                     />
                   </label>
                 )}
+                {kind === "inline" && caption.trim() !== "" && (
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={!numbered}
+                      onChange={(event) => setNumbered(!event.target.checked)}
+                      className="mt-0.5 accent-[var(--primary)]"
+                    />
+                    <span className="flex min-w-0 flex-col">
+                      <span className="text-foreground">
+                        図番号（「図1：」）を付けない
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        横書きのテーマで自動で付く番号です（縦書きではもともと付きません）
+                      </span>
+                    </span>
+                  </label>
+                )}
               </>
             )}
           </div>
@@ -206,7 +227,7 @@ export function ImageUploadDialog({
             type="button"
             disabled={uploading || error !== null}
             onClick={() =>
-              onConfirm({ kind, position, caption: caption.trim() })
+              onConfirm({ kind, position, caption: caption.trim(), numbered })
             }
           >
             {uploading && (

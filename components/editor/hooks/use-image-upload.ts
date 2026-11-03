@@ -43,10 +43,12 @@ export function useImageUpload({
       kind,
       position,
       caption,
+      numbered,
     }: {
       kind: IllustKind;
       position: IllustPosition;
       caption: string;
+      numbered: boolean;
     }) => {
       const target = pendingImage;
       if (!target) return;
@@ -74,7 +76,7 @@ export function useImageUpload({
         if (view) {
           const pos = view.state.selection.main.from;
           // 挿絵は独立した段落として前後を空行で区切る
-          const insert = `\n\n${illustNotation(result.data.fileName, kind, caption, position)}\n\n`;
+          const insert = `\n\n${illustNotation(result.data.fileName, kind, caption, position, numbered)}\n\n`;
           view.dispatch({
             changes: { from: pos, insert },
             selection: EditorSelection.cursor(pos + insert.length),
