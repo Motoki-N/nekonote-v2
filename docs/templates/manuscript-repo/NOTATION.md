@@ -55,6 +55,12 @@
 ![キャプション](../images/ファイル名.png){.illust-inline .illust-top-right}
 ```
 
+挿絵（本文中・キャプションの図番号を出さない。横書きで自動で付く「図1：」を消す）
+
+```
+![キャプション](../images/ファイル名.png){.illust-inline .illust-nonumber}
+```
+
 挿絵（1ページ全面）
 
 ```

@@ -96,6 +96,7 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 | 全面挿絵（裁ち落とし） | `![キャプションは刷られない](../images/x.png){.illust-full}`（alt 空の `![](../images/x.png){.illust-full}` も可） |
 | 本文中カット | `![キャプション](../images/x.png){.illust-inline}`（alt 空の `![](../images/x.png){.illust-inline}` も可） |
 | 本文中カット（ページの四隅） | `![キャプション](../images/x.png){.illust-inline .illust-bottom-left}`（`.illust-top-right` / `.illust-bottom-right` / `.illust-top-left` / `.illust-bottom-left`。ページに収まらないと次のページへ送られる。EPUB では通常のカットとして表示） |
+| 本文中カット（図番号なし） | `![キャプション](../images/x.png){.illust-inline .illust-nonumber}`（横書きテーマがキャプション前に自動で付ける「図1：」を出さず、番号の数え上げからも外す。四隅の修飾クラスと併用可） |
 | 扉・奥付 | フロントマターで `class: titlepage` / `class: colophon` |
 
 ### 全面挿絵の修正を既存リポジトリへ反映する
@@ -123,6 +124,12 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 選んだ隅と別の隅に置かれた（例: 左上を選ぶと左下）。本テンプレートの各横書きテーマから
 「本文中カットの四隅配置（仕組みは nekonote-parts.css）を横書き向けに上書きする」ブロックを、既存リポジトリの同ファイルの
 `/* nekonote-toc: begin` の直前に追記する（縦書きテーマ・EPUBテーマは変更不要）。
+
+### キャプションの図番号なしを既存リポジトリへ反映する
+
+ネコノテAIの画像ダイアログで「図番号を付けない」を選ぶと、`{.illust-inline .illust-nonumber}` のような修飾クラスを書き込む。
+以前の `nekonote-parts.css` にはこの指定がなく、選んでも「図1：」が付いたままになる（崩れはしない）。
+本テンプレートの `themes/nekonote-parts.css` から「キャプションの図番号を出さない」節を、既存リポジトリの同ファイルの「傍点（圏点）」節の直前に追記する。
 
 ## ローカルビルド
 

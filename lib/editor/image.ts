@@ -51,6 +51,7 @@ export function illustNotation(
   kind: "inline" | "full",
   caption: string,
   position: IllustPosition = "flow",
+  numbered = true,
 ): string {
   const safeCaption = caption.replace(/[[\]()\n]/g, "");
   // 配置の修飾クラスは本文中カットにのみ付ける（全面挿絵は専用ページなので無関係）
@@ -60,5 +61,7 @@ export function illustNotation(
       : position === "flow"
         ? ".illust-inline"
         : `.illust-inline .illust-${position}`;
-  return `![${safeCaption}](../images/${fileName}){${classes}}`;
+  // 図番号（横書きテーマの「図1：」）を出さない修飾クラス。キャプションがなければ番号も出ないので付けない
+  const nonumber = !numbered && kind === "inline" && safeCaption !== "";
+  return `![${safeCaption}](../images/${fileName}){${classes}${nonumber ? " .illust-nonumber" : ""}}`;
 }

@@ -195,6 +195,18 @@ img.illust-inline {
   float: block-end inline-end;
 }
 
+/* ---- キャプションの図番号を出さない ----
+ * 横書きテーマ（theme-techbook）は画像入りの figure のキャプション前に「図1：」を自動で付ける
+ * （theme-base の crossref。縦書きの theme-bunko はもともと出さない）。
+ * {.illust-inline .illust-nonumber} のように修飾クラスを重ねると、その画像だけ番号を出さず、
+ * 番号の数え上げからも外す（後続の図の番号が飛ばない） */
+figure:has(> img.illust-nonumber) {
+  counter-increment: none;
+}
+figure:has(> img.illust-nonumber) figcaption::before {
+  content: none;
+}
+
 /* ---- 傍点（圏点）---- */
 .tenten {
   text-emphasis: filled sesame;
