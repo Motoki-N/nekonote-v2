@@ -40,6 +40,22 @@
   --nekonote--slot-bottom-center: counter(page);
 }
 
+/* 本文中カットの四隅配置（仕組みは nekonote-parts.css）を横書き向けに上書きする。
+ * nekonote-parts.css の float 値は縦書き前提（block-start＝右・inline-start＝天）のため、
+ * 横書き（block-start＝天・inline-start＝左）ではそのままだと天地左右が入れ替わる */
+:is(figure, p):has(> img.illust-inline.illust-top-right) {
+  float: block-start inline-end;
+}
+:is(figure, p):has(> img.illust-inline.illust-bottom-right) {
+  float: block-end inline-end;
+}
+:is(figure, p):has(> img.illust-inline.illust-top-left) {
+  float: block-start inline-start;
+}
+:is(figure, p):has(> img.illust-inline.illust-bottom-left) {
+  float: block-end inline-start;
+}
+
 /* nekonote-toc: begin — 目次（ネコノテAI の設定フォームが管理。begin〜end の間を手で編集するとフォームは読み取り専用になる） */
 :root {
   --vs-toc--page-counter-display: inline;
