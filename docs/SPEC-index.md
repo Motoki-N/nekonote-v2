@@ -118,6 +118,8 @@ CLAUDE.md は「仕様が存在しない機能は先に仕様策定を提案す�
 | [dev-story/](dev-story/README.md) | 開発記録の章単位ドラフト（技術書典21 向け書籍の素材） |
 | [incident-log.md](incident-log.md) | 障害記録（INC採番） |
 | [doc-audit-20260812.md](doc-audit-20260812.md) | ドキュメント突き合わせ結果（Step 3） |
+| [doc-audit-20261111.md](doc-audit-20261111.md) | ドキュメント突き合わせ結果（2回目。65件の指摘と対応結果・前回との比較） |
+| [manuscript-repo-upgrade.md](manuscript-repo-upgrade.md) | 既存の原稿リポジトリの更新ガイド（テンプレートの変更を日付順に引く索引） |
 | security-audit / code-review（日付つき） | セキュリティ監査・コードレビューの記録 |
 | [原稿リポジトリテンプレート](templates/manuscript-repo/README.md) | 初期セットアップで展開する雛形の README と、記法チートシート [NOTATION.md](templates/manuscript-repo/NOTATION.md)。**利用者の原稿リポジトリにそのまま入る文書** |
 | `.claude/hooks/` | `guard-merged-pr-push.sh`（マージ済みPRのブランチへの push を止める。INC-4）。migration-guard・typecheck・eslint のフックは `.claude/settings.json` に直接書いている |
