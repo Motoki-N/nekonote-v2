@@ -111,7 +111,7 @@
 
 - [ ] 「レビュー履歴」タブに全フェーズのセッションが降順で並び、開くと往復が読み取り専用で表示される。コピーボタンが効く
 
-## 6. ビートボード（深掘り→SPEC-beat-board / SPEC-structure-templates / SPEC-outline-board）
+## 6. ビートボード（深掘り→SPEC-beat-board / SPEC-structure-templates / SPEC-outline-board / SPEC-board-chapters / SPEC-manuscript-bridge）
 
 ### 小説プロジェクト（4部構成）
 
@@ -142,7 +142,7 @@
 - [ ] 目次ボードが表示され、テンプレ適用・章カード D&D・原稿紐づけバッジ・構成レビュー（技術書プロファイル既定）が動く
 - [ ] 章カードの編集ダイアログ「原稿ファイルを新規作成」と、構成承認後の「まとめて作成」で原稿ファイルが作られ、「未執筆」バッジが出る
 
-## 7. 原稿と校正・講評（深掘り→SPEC-proofreading / SPEC-proofread-selection / SPEC-manuscript-history / SPEC-vertical-editor-phase4）
+## 7. 原稿と校正・講評（深掘り→SPEC-proofreading / SPEC-proofread-selection / SPEC-manuscript-history / SPEC-vertical-editor-phase4 / SPEC-dashboard-critique-settings）
 
 検証プロジェクトの repo を `<poc-repo>` に設定して実施。
 
@@ -159,7 +159,7 @@
 - [ ] 講評の「レビューメモへ書き戻す」→ `manuscripts/00-review-notes.md` へ追記コミット
 - [ ] 校正後に別経路で新コミット→「原稿が更新されています」バナーが出る
 
-## 8. 縦書きエディタ（深掘り→SPEC-vertical-editor-phase2〜5 / SPEC-aozora-export / SPEC-repo-setup）
+## 8. 縦書きエディタ（深掘り→SPEC-vertical-editor-phase2〜5 / SPEC-aozora-export / SPEC-repo-setup / SPEC-toc-settings / SPEC-ebook-pdf / SPEC-horizontal-typesetting）
 
 `<poc-repo>` で実施。
 

@@ -12,6 +12,6 @@ Please report vulnerabilities via GitHub's Private Vulnerability Reporting (Secu
 
 - 認証はメール許可リストの2層ゲート（環境変数 `ALLOWED_EMAILS` ＋ DB の `private.auth_allowlist`）。いずれも空なら全拒否（フェイルクローズ）
 - レートリミットはインメモリの固定ウィンドウ方式（`lib/rate-limit.ts`）。サーバーレス環境ではインスタンス間で共有されないため、不特定多数向けの運用には別途対策が必要
-- 既知の監査記録は [docs/security-audit-20260714.md](docs/security-audit-20260714.md) を参照
+- 既知の監査記録は [docs/security-audit-20260812.md](docs/security-audit-20260812.md)（最新）と [docs/security-audit-20260714.md](docs/security-audit-20260714.md) を参照
 
 フォークして複数ユーザー向けに運用する場合は、上記の前提を見直してください。

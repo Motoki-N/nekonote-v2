@@ -1,7 +1,8 @@
-# 原稿リポジトリテンプレート（縦書きエディタ Phase 1）
+# 原稿リポジトリテンプレート
 
-SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書いて push し、
-入稿タグを打つと GitHub Actions が入稿品質の PDF を Releases に添付する。
+ネコノテAIの原稿リポジトリの構成（SPEC-vertical-editor §3）。ネコノテAIの縦書きエディタ、または VS Code 等で
+VFM を書いて push し、タグを打つと GitHub Actions が入稿PDF・EPUB・電子配布用PDF を Releases に添付する。
+縦書き（文庫）と横書き（技術書）の両方の組版に対応する。
 
 > **テンプレート編集時の注意**: アプリ内の初期セットアップ（SPEC-repo-setup）は、
 > サンプル値 `竜の巣`（タイトル）・`灰谷 汀`（著者名）・`ryu-no-su`（出力ファイル名）を
@@ -19,7 +20,10 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 ├─ NOTATION.md          … 記法チートシート（原稿で使える記法の早見表）
 ├─ book.config.js        … 書誌情報＋ビルド設定（文庫判A6）
 ├─ book.config.b6.js     … B6判ビルド設定（横書きに切り替えると book.config.b5.js に置き換わる）
+├─ book.config.b5.js     … B5判ビルド設定（横書き用のひな形。初期セットアップでは展開されない。手でコピーして
+│                           縦書きで使うときは削除する——残すと横書きへの切替が「移行先が既にある」で失敗する）
 ├─ book.config.epub.js   … EPUB（電子書籍）ビルド設定
+├─ package.json / package-lock.json … ビルド用の依存（lock は CI が必須とするので消さない）
 ├─ themes/
 │   ├─ theme-bunko-a6.css … 文庫判テーマ（theme-bunko派生・16行×40字）
 │   ├─ theme-b6.css       … B6判テーマ（theme-bunko派生・17行×44字）
@@ -31,7 +35,8 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 ├─ images/               … 挿絵（Git管理。太ったらLFS移行）
 ├─ scripts/
 │   ├─ check-images.mjs  … 画像検査（実効解像度・カラー検出）
-│   └─ check-pages.mjs   … ページ数検査（4の倍数）
+│   ├─ check-pages.mjs   … ページ数検査（4の倍数）
+│   └─ make-test-images.mjs … 画像検査の動作確認用のテスト画像生成（実作品では不要）
 └─ .github/workflows/
     ├─ build-pdf.yml     … 入稿タグpush → 入稿PDF自動生成
     ├─ build-epub.yml    … EPUBタグpush → EPUB自動生成
@@ -141,6 +146,8 @@ npm install
 npx vivliostyle build -c book.config.js       # 文庫判A6 → output/*.pdf
 npx vivliostyle build -c book.config.b6.js    # B6判
 npx vivliostyle build -c book.config.epub.js  # EPUB → output/*.epub
+# 横書き（技術書）に切り替えたリポジトリでは、book.config.js が A5、第2判型が B5 になる
+npx vivliostyle build -c book.config.b5.js    # B5判（npm run build:b5）
 node scripts/check-images.mjs                 # 画像検査
 node scripts/check-pages.mjs output/ryu-no-su-a6.pdf  # ページ数検査
 GS_OPTIONS=-dNOSAFER npx press-ready build --input output/ryu-no-su-a6.pdf --output output/ryu-no-su-a6-press.pdf

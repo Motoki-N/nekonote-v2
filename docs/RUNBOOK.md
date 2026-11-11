@@ -67,7 +67,7 @@ npx supabase --version && npx vercel --version && gh --version
 | **Supabase（DB/Auth）** | 全機能停止（ログインもできない） | 不可 |
 | **Supabase Storage** | アトリエの画像表示・添付ファイルのみ停止 | 可（他機能は動く） |
 | **AIプロバイダ1社** | その社に割り当てた能力帯（high/medium/low/image）を使う機能のみ停止 | **可**——設定画面のAIモデル設定で別プロバイダへ切り替える（→ §3.2） |
-| **GitHub** | 原稿タブ・エディタ・校正の書き戻し・入稿ビルドが停止 | 可（ノート・企画書・ビートボードは動く） |
+| **GitHub** | 原稿タブ・エディタ・校正の書き戻し・入稿ビルド・ボードからの原稿ファイル作成・アトリエの採用マーク更新・Zenn 投稿が停止 | 可（ノート・企画書・ビートボードは動く） |
 | **Resend** | 締切リマインドメールのみ停止（サイレント障害になりやすい → §6.4） | 可 |
 
 ### 1.2 主要な設定ファイル
@@ -83,7 +83,7 @@ npx supabase --version && npx vercel --version && gh --version
 
 ## 2. 環境変数一覧
 
-コードから参照される環境変数は以下の8つ（`app` / `lib` / `scripts` を走査した結果）。
+コードから参照される環境変数は以下の11個（`app` / `lib` / `scripts` を走査した結果。うち AI プロバイダのキー3つは `lib/ai/models.ts` の `PROVIDER_ENV_KEY` 経由で読まれる）。
 
 | 変数 | 用途 | Vercel スコープ | 失うと | 再取得 |
 | --- | --- | --- | --- | --- |
@@ -262,7 +262,7 @@ read -rs CRON && curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bea
 | 権限 | 用途 | 無いとどうなるか |
 | --- | --- | --- |
 | **Contents: Read and write** | 原稿の読み書き・校正の反映・エディタの保存 | 原稿タブ／エディタが401・403 |
-| **Workflows: Read and write** | 初期セットアップで `.github/workflows/` に入稿ビルド用ワークフローを書き込む | 「PATに Workflows: Read and write 権限が必要です」で初期セットアップが失敗 |
+| **Workflows: Read and write** | 初期セットアップで `.github/workflows/` に入稿ビルド用ワークフローを書き込む。書籍設定の組版スタイル切替（縦書き ⇄ 横書き）でもワークフローを書き換える | 「PATに Workflows: Read and write 権限が必要です」で初期セットアップが失敗 |
 
 #### 更新・差し替え手順
 
@@ -626,6 +626,7 @@ OpenAI・Google 分は各社の料金ページで現行単価を確認して同�
 - **複数Issueは直列で対応**する。1件をPR作成まで進めてから次に着手。同じファイルに触るIssue同士は前のPRマージ後に次へ
 - 同じ作業ディレクトリで複数の Claude Code セッションを同時に走らせない（ブランチが衝突する）
 - **認証・RLS・秘密情報に触れる修正は security-reviewer の通過が必須**（自動フローでも省略しない）
+- **マージ済みPRのブランチへ追加 push しない**。push しても PR にも main にも入らず、エラーも出ない（INC-4）。`.claude/hooks/guard-merged-pr-push.sh` が Claude Code からの push を止めるが、手元の端末からの push は止まらない。追加の修正は最新の main から新しいブランチを切って新しいPRにする
 
 ### 9.3 人間への設計確認が必要な変更
 

@@ -2,6 +2,7 @@
 
 作成日: 2026-08-30（インタビュー駆動で策定）
 ステータス: **確定**（2026-08-30 プラン承認をもって設計確認とする）
+改訂: 2026-10-23 原稿ファイルの**表示名**を追加（Issue #340・PR #341。章一覧・原稿タブ・紐づけの選択欄で、ファイル名の代わりに「シーンN：タイトル」／章タイトルを出す。ファイル名（§3 の自動採番）は変えず、番号はボードの現在の並びに追従する。2026-11-01 に章は自動の「第N章」を付けず章タイトルのみとした = PR #367・#368。実装は `lib/editor/manuscript-naming.ts` の `manuscriptDisplayNames`）
 前提: **SPEC-board-chapters**（章マーカーの導入）。本SPECは章の存在を前提とする
 関連: SPEC-vertical-editor-phase2（新規章作成）/ -phase3（entry管理）/ -phase4（相互リンク）/ SPEC-repo-setup / SPEC-proofreading
 
