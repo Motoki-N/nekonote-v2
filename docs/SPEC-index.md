@@ -92,6 +92,11 @@ CLAUDE.md は「仕様が存在しない機能は先に仕様策定を提案す�
 | **エディタの横書き対応**（テーマ追従の自動判定） | 07-23 | Issue #97・PR #116／dev-log セッション61（アプリ内切替は [SPEC-horizontal-typesetting](SPEC-horizontal-typesetting.md)） |
 | **EPUB 出力**（`v*-epub` タグ・`build-epub.yml`・EPUB専用テーマ） | 07-24 | Issue #119・PR #120／dev-log セッション64（設計3点を AskUserQuestion で確定） |
 | **企画書の版管理・差分表示** | 08-09 | Issue #64・PR #168／`20260809000001_proposal_versions.sql`／dev-log セッション83 |
+| **レビュー失敗の切り分けと実行上限300秒**（失敗理由の画面表示・プラットフォーム側の失敗との区別・`maxDuration` 引き上げ） | 08-23 | PR #211・#212（Issue非経由）／`docs/RUNBOOK.md` §6.2 |
+| **書籍設定フォームでのプレビュー対象テーマの明示** | 09-06 | Issue #242・PR #246／dev-log セッション114 |
+| **エディタの検索置換**（章内の検索パネル＋現在のファイル／全ファイルの一括置換。置換結果は未コミット待避へ） | 09-21 | Issue #263・PR #276／dev-log セッション119（設計論点4点を1往復で確定） |
+| **字下げなし改行（行末の半角スペース2つ）の可視化** | 09-21 | Issue #248・PR #279／dev-log セッション120 |
+| **原稿ファイルの表示名**（章は章タイトルのみ・シーンは「シーンN：タイトル」） | 10-23 | Issue #340・PR #341、PR #367・#368（11-01） |
 
 ※ ノートの版履歴・企画書の版管理・EPUB出力は、それぞれ親にあたる SPEC（SPEC-notes / SPEC-proposal-review / SPEC-vertical-editor）の冒頭「改訂:」行からも辿れる。
 

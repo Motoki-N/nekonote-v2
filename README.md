@@ -72,7 +72,10 @@ npm run dev
 ```bash
 npm run typecheck
 npm run lint
+npm run format:check
 ```
+
+整形崩れは `npm run format` で直す（リントは prettier を見ないため、`format:check` でしか検出できない。CI でも3つとも実行される）。
 
 ## ドキュメント
 

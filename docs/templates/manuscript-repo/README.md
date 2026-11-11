@@ -54,6 +54,7 @@ SPEC-vertical-editor §3 の原稿リポジトリ構成。VS Code で VFM を書
 判型テーマCSSは切り替えても削除しない（組み設定・ノンブル/柱・目次の調整は、戻したときに復元される）。
 横書きの本文書体は Noto Sans CJK JP（ゴシック）を優先する。
 
+## ノンブル・柱
 
 ノンブル（ページ番号）と柱（章タイトル）をどこに出すかは、判型テーマ（`theme-bunko-a6.css` / `theme-b6.css`。横書きは `theme-techbook-a5.css` / `theme-techbook-b5.css`）の
 `:root` にある4つのスロット変数で決める。ネコノテAIの書籍設定フォームからも編集できる。
