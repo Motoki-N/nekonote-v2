@@ -49,7 +49,7 @@ review_profiles: id, name, target_phase（proposal|character|structure|scene|pro
 - テンプレあり＋自由編集可：標準プロファイルを同梱しつつ、ユーザーが複製・編集・新規作成できる
 - プロンプト差し替えでレビューフレームワーク自体を変更できる設計（別の指南書への切り替え等）
 
-## 標準プロファイル（13種）
+## 標準プロファイル（14種）
 
 小説向け（writing_genre: novel）:
 
@@ -72,6 +72,7 @@ review_profiles: id, name, target_phase（proposal|character|structure|scene|pro
 11. **技術書企画書レビュー**（proposal、技術書編集者）— テーマ・対象読者と前提知識・本のゴール・スコープ実現可能性
 12. **技術書講評**（manuscript、エンジニア読者）— 前提知識の穴・コード例の追従可能性・学びの実感
 13. **技術書校正**（proofreading、校正さん）— 技術用語の表記統一＋コードブロック校正除外（構造化出力）
+14. **技術書構成レビュー**（structure、技術書編集者）— 目次（章立ての並び）と企画書を対象に、章立ての流れ・前提知識の積み上がり・学習曲線・章間の重複と欠落を見る（目次ボード用。SPEC-outline-board）
 
 小説系チェックリストの詳細な観点は story-engineering スキルを参照。
 
