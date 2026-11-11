@@ -402,6 +402,7 @@
 
 - §7 と同じ **PAT（Contents: Read/Write）＋ repo / base_path** の設定
 - 原稿リポジトリがテンプレート構成（`manuscripts/` 配下の章ファイル・`book.config.js`・`themes/`・入稿ビルド用 GitHub Actions。雛形は本リポジトリの `docs/templates/manuscript-repo/`）に従っていること
+- **以前に作った原稿リポジトリ**は、その後のテンプレートの修正が入っていない。何を取り込む必要があるかは [既存の原稿リポジトリの更新ガイド](manuscript-repo-upgrade.md) で、作成日から引ける
 - 原稿フォーマットは **VFM**（Vivliostyle Flavored Markdown）。ルビは `{漢字|かんじ}`、メモはHTMLコメント `<!-- -->`
 - 使える記法の早見表は、原稿リポジトリ直下の **`NOTATION.md`**（記法チートシート）にある。初期セットアップで一緒に展開され、ツールバーにない記法（見出し・表・コードブロック・フロントマターなど）もここで引ける。2026-11 より前に作ったリポジトリには入っていないので、必要なら本リポジトリの `docs/templates/manuscript-repo/NOTATION.md` をコピーする
 

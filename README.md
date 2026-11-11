@@ -82,6 +82,7 @@ npm run format:check
 - [変更履歴（CHANGELOG）](CHANGELOG.md)
 - [ユーザーマニュアル](docs/manual.md)
 - [運用ランブック（RUNBOOK）](docs/RUNBOOK.md)
+- [既存の原稿リポジトリの更新ガイド](docs/manuscript-repo-upgrade.md)
 - [要求仕様](docs/ネコノテAI_第二期_要求仕様ドキュメント.md)
 - [実装計画](docs/ネコノテAI_第二期_実装計画.md)
 - [機能仕様の索引（SPEC-index.md）](docs/SPEC-index.md)
