@@ -41,7 +41,7 @@
 - ヘッダー: 「章 N枚」・構成承認済みバッジ・「定番構成から追加」メニュー・「構成レビューを受ける」トグル
 - 「＋章を追加」→ `createScene(projectId, 'chapter')` → 直後に編集ダイアログを開く（ビートボードと同型）
 
-### 3.3 章カードダイアログ（components/board/outline-dialog.tsx）
+### 3.3 章カードダイアログ（components/board/outline-dialog.tsx。2026-08-30 に `chapter-dialog.tsx` へ改名 = SPEC-board-chapters §5.3）
 
 - 章タイトル・内容メモ・原稿ファイル select（scene-dialog と同じ getManuscriptTree 遅延取得・
   エディタが開ける章のみ表示・消えたパスの現在値温存・「エディタで開く」リンク）・削除（確認→物理削除）

@@ -9,7 +9,7 @@
 
 - **本文は策定当時（着手前）の設計の記録**であり、現在の実装仕様と1対1ではない。第二期は「着手前に SPEC を書き、新しいセッションで実装する」流儀を採ったため、SPEC は時点の文書として保存している
 - 後から決定が変わった箇所は、各 SPEC の冒頭にある **「改訂:」行**（日付＋Issue番号＋要点）と、本文中の**取り消し線**が示す。取り消し線のある「スコープ外」項目は、その後実装されたもの
-- 現在の実装が知りたい場合の一次資料は、**スキーマ = `supabase/migrations/`（29本）／挙動 = コード／経緯 = `docs/dev-log.md`**
+- 現在の実装が知りたい場合の一次資料は、**スキーマ = `supabase/migrations/`（34本。2026-11-11 時点）／挙動 = コード／経緯 = `docs/dev-log.md`**
 
 ---
 
@@ -119,4 +119,6 @@ CLAUDE.md は「仕様が存在しない機能は先に仕様策定を提案す�
 | [incident-log.md](incident-log.md) | 障害記録（INC採番） |
 | [doc-audit-20260812.md](doc-audit-20260812.md) | ドキュメント突き合わせ結果（Step 3） |
 | security-audit / code-review（日付つき） | セキュリティ監査・コードレビューの記録 |
+| [原稿リポジトリテンプレート](templates/manuscript-repo/README.md) | 初期セットアップで展開する雛形の README と、記法チートシート [NOTATION.md](templates/manuscript-repo/NOTATION.md)。**利用者の原稿リポジトリにそのまま入る文書** |
+| `.claude/hooks/` | `guard-merged-pr-push.sh`（マージ済みPRのブランチへの push を止める。INC-4）。migration-guard・typecheck・eslint のフックは `.claude/settings.json` に直接書いている |
 | `.claude/skills/` | `story-engineering` / `draft-to-clean-model` / `review-profiles`（知識）・`fix-issue`（ワークフロー） |
